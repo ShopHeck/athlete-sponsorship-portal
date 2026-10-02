@@ -1,9 +1,10 @@
 {
   "name": "heck-sponsor-360",
   "version": "1.0.0",
-  "description": "Standalone, embeddable 360° sponsorship placement selector for Team Heck. Static HTML/CSS/JS with no build step.",
+  "description": "Config-driven, embeddable 360° athlete sponsorship portal generated from tenant JSON.",
   "main": "app.js",
   "scripts": {
+    "build": "node scripts/build.mjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

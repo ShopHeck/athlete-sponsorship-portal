@@ -5,3 +5,5 @@ node_modules/
 .netlify/
 deno.lock
 dist/
+public/index.html
+netlify/lib/portal-config.generated.json

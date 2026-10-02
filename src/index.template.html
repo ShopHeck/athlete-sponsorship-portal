@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080808">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <title>{{seo.title}}</title>
+  <meta name="description" content="{{seo.description}}">
+  <link rel="canonical" href="{{portalUrl}}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{seo.siteName}}">
+  <meta property="og:title" content="{{seo.ogTitle}}">
+  <meta property="og:description" content="{{seo.ogDescription}}">
+  <meta property="og:url" content="{{portalUrl}}">
+  {{{posterMeta}}}
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{seo.ogTitle}}">
+  <meta name="twitter:description" content="{{seo.twitterDescription}}">
+  {{{posterTwitterImage}}}
+  {{{posterPreload}}}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="portal-shell">
+    <header class="topbar">
+      <a class="brand" href="{{homeUrl}}" target="_top" aria-label="{{copy.brandAriaLabel}}">
+        <span class="brand-mark">{{athlete.brandMark}}</span>
+        <span class="brand-copy"><strong>{{athlete.displayName}}</strong><small>{{event.portalSubtitle}}</small></span>
+      </a>
+      <div class="event-lockup"><span>{{event.lockupKicker}}</span><strong>{{event.lockupDate}}</strong></div>
+    </header>
+
+    <section class="experience" aria-label="{{copy.experienceLabel}}">
+      <aside class="intro-panel">
+        <p class="eyebrow">{{hero.eyebrow}}</p>
+        <h1>{{{hero.titleHtml}}}</h1>
+        <p class="intro-copy">{{hero.intro}}</p>
+        <div class="garment-tabs" role="tablist" aria-label="{{copy.apparelLabel}}">
+          {{{garmentTabs}}}
+        </div>
+        <div class="view-actions" aria-label="{{copy.quickViewsLabel}}">
+          <button data-view="front">{{copy.frontView}}</button>
+          <button data-view="back">{{copy.backView}}</button>
+          <button data-view="left">{{copy.leftView}}</button>
+          <button data-view="right">{{copy.rightView}}</button>
+        </div>
+        <div class="drag-instruction"><span class="drag-line"></span> {{copy.dragInstruction}}</div>
+        {{{posterCard}}}
+      </aside>
+
+      <div class="model-stage" id="modelStage">
+        {{{stageBackdrop}}}
+        <div class="stage-glow"></div>
+        <canvas id="viewer" class="viewer-canvas" tabindex="0" aria-label="{{copy.canvasLabel}}" role="img"></canvas>
+        <div class="viewer-loading" id="viewerLoading" aria-live="polite"><span class="spinner"></span><span id="loadingText">{{copy.loading}}</span></div>
+        <button class="rotate-button rotate-prev" id="rotatePrev" aria-label="{{copy.rotateLeftAriaLabel}}">‹</button>
+        <button class="rotate-button rotate-next" id="rotateNext" aria-label="{{copy.rotateRightAriaLabel}}">›</button>
+        <div class="orientation" aria-live="polite"><span id="orientationLabel">{{initialOrientationLabel}}</span><div class="orientation-track"><i id="orientationNeedle"></i></div></div>
+        <div class="model-credit">{{copy.modelCredit}}</div>
+      </div>
+
+      <aside class="inventory-panel">
+        <div class="inventory-heading">
+          <div><p class="eyebrow">{{copy.inventoryEyebrow}}</p><h2 id="inventoryTitle">{{garments.0.label}} · {{copy.frontView}}</h2></div>
+          <span class="availability" id="availability"><i></i> {{copy.available}}</span>
+        </div>
+        <div class="inventory-list" id="inventoryList"></div>
+        <div class="selection-card" id="selectionCard">
+          <div class="selection-top"><span id="selectionCode">{{firstPlacement.id}}</span><span id="selectionStatus">{{copy.availableStatus}}</span></div>
+          <h3 id="selectionName">{{firstPlacement.name}}</h3>
+          <p id="selectionDescription">{{firstPlacement.detail}}</p>
+          <img class="sponsor-logo" id="sponsorLogo" alt="" hidden>
+          <button class="secondary-cta" id="openPlacements" hidden>{{copy.openPlacements}}</button>
+          <div class="preview-thumb" id="previewThumb" hidden>
+            <img id="previewImg" alt="{{copy.previewAlt}}">
+            <button type="button" id="removePreview">{{copy.removePreview}}</button>
+          </div>
+          <label class="logo-upload">
+            <input id="logoInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+            <span id="uploadLabel">{{copy.uploadLogo}}</span>
+          </label>
+          <div class="bid-success" id="bidSuccess" role="status" hidden>
+            <strong id="bidSuccessTitle"></strong>
+            <p id="bidSuccessText"></p>
+            <a id="bidSuccessLink" class="pay-cta" target="_blank" rel="noopener" hidden>{{copy.payInvoice}}</a>
+          </div>
+          <div class="bid-panel" id="bidPanel">
+            <div class="bid-status">
+              <div class="bid-stat"><span>{{copy.currentBid}}</span><strong id="bidHigh">—</strong><small id="bidMeta">{{copy.bidLoading}}</small></div>
+              <div class="bid-stat bid-stat--lock"><span>{{copy.lockItNow}}</span><strong id="lockPrice">{{initialLockPrice}}</strong><small>{{copy.skipAuction}}</small></div>
+            </div>
+            <form id="bidForm" novalidate>
+              <div class="bid-fields">
+                <input name="company" placeholder="{{copy.companyPlaceholder}}" autocomplete="organization" required>
+                <input name="name" placeholder="{{copy.contactNamePlaceholder}}" autocomplete="name" required>
+                <input name="email" type="email" placeholder="{{copy.emailPlaceholder}}" autocomplete="email" required>
+                <input name="phone" type="tel" placeholder="{{copy.phonePlaceholder}}" autocomplete="tel">
+              </div>
+              <div class="bid-actions">
+                <label class="bid-amount"><span>{{initialPriceSymbol}}</span><input name="amount" type="number" inputmode="numeric" min="{{initialMinBid}}" step="{{initialIncrement}}" aria-label="{{copy.bidAmountAriaLabel}}"></label>
+                <button type="submit" class="primary-cta" id="bidButton">{{copy.bidButton}}</button>
+              </div>
+              <button type="button" class="lock-cta" id="lockButton"><span id="lockLabel">{{initialLockLabel}}</span></button>
+              <p class="bid-error" id="bidError" role="alert" hidden></p>
+            </form>
+            <details class="bid-benefits">
+              <summary>{{copy.benefitsHeading}}</summary>
+              <p>{{copy.benefitsIntroBefore}} <strong>{{packageName}}</strong> {{copy.benefitsIntroAfter}}</p>
+              <ul>
+                {{{benefitItems}}}
+              </ul>
+            </details>
+            <p class="bid-note" id="bidNote">{{initialBidNote}} <a href="mailto:{{contact.notifyEmail}}" id="contactLink" target="_top">{{contact.contactLinkText}}</a></p>
+          </div>
+          <p class="privacy-note">{{copy.privacyNote}}</p>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="portal-footer">
+      <div><strong>{{athlete.fullDisplay}}</strong><span>{{athlete.footerLine}}</span></div>
+      <button id="embedButton">{{copy.embedButton}}</button>
+    </footer>
+  </main>
+
+  {{{posterDialog}}}
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="embedDialog">
+    <button class="dialog-close" id="dialogClose" aria-label="{{copy.dialogCloseAriaLabel}}">×</button>
+    <p class="eyebrow">{{copy.embedEyebrow}}</p>
+    <h2>{{copy.embedHeading}}</h2>
+    <p>{{copy.embedIntro}}</p>
+    <pre><code id="embedCode">{{{embedCode}}}</code></pre>
+    <button class="primary-cta" id="copyEmbed">{{copy.copyEmbed}}</button>
+  </dialog>
+
+  {{{configScript}}}
+  <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.170.0/examples/jsm/"}}</script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

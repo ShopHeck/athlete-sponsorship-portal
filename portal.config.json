@@ -1,0 +1,631 @@
+{
+  "slug": "michael-heckert",
+  "portalUrl": "https://heck-sponsor-360.netlify.app/",
+  "homeUrl": "https://teamheck.netlify.app",
+  "athlete": {
+    "firstName": "Michael",
+    "displayName": "MICHAEL HECKERT",
+    "fullDisplay": "MICHAEL “KING KILLER” HECKERT",
+    "brandMark": "HKRT",
+    "footerLine": "2–1 PROFESSIONAL RECORD · FOURTH BKFC FIGHT · CLEARWATER HOMECOMING"
+  },
+  "event": {
+    "name": "BKFC Clearwater",
+    "portalSubtitle": "BKFC CLEARWATER SPONSORSHIP PORTAL",
+    "lockupKicker": "FIGHT NIGHT",
+    "lockupDate": "OCT 23, 2026",
+    "timeZone": "America/New_York"
+  },
+  "seo": {
+    "title": "Michael Heckert Sponsorship Portal",
+    "description": "Bid on or lock in a logo placement on Michael “King Killer” Heckert's fight shorts and walkout T-shirt for BKFC Fight Night Clearwater, Oct 23. Heckert vs McConnico.",
+    "siteName": "Michael Heckert Sponsorship Portal",
+    "ogTitle": "Sponsor Michael Heckert · BKFC Fight Night Clearwater · Oct 23",
+    "ogDescription": "Put your logo on the fight shorts and walkout T-shirt. Explore the 360° model, bid from $500 or lock a placement for $2,500.",
+    "ogImageAlt": "BKFC Fight Night Clearwater poster: Heckert vs McConnico, October 23",
+    "twitterDescription": "Put your logo on the fight shorts and walkout T-shirt. Bid from $500 or lock a placement for $2,500."
+  },
+  "hero": {
+    "eyebrow": "YOUR BRAND. FIGHT NIGHT.",
+    "titleHtml": "Choose your<br><em>position.</em>",
+    "intro": "Rotate Michael to explore every available placement. Switch apparel, select a position, and preview your logo."
+  },
+  "poster": {
+    "card": "assets/backdrop/fight-poster.webp",
+    "stage900": "assets/backdrop/stage-900.webp",
+    "stage1500": "assets/backdrop/stage-1500.webp",
+    "ogImage": "assets/backdrop/og-image.jpg",
+    "alt": "BKFC Fight Night Clearwater poster — Heckert vs McConnico",
+    "dialogAlt": "BKFC Fight Night Clearwater poster — Heckert vs McConnico, October 23",
+    "kicker": "BKFC Fight Night · Clearwater",
+    "title": "Heckert vs McConnico",
+    "subtitle": "Welterweight bout · Oct 23 · View the fight poster"
+  },
+  "brand": {
+    "accent": "#f36a16",
+    "accentDark": "#9d3008",
+    "wash": "#35140a",
+    "accentHover": "#ff7c2c",
+    "accentPayHover": "#ff7d2e",
+    "accentStroke": "#80502e",
+    "accentPanel": "#1a1512",
+    "accentGradient": "#1d120b"
+  },
+  "model": "assets/models/heckert.glb",
+  "ring": {
+    "enabled": true,
+    "padText": "BKFC",
+    "ropeColors": [
+      "#b8241d",
+      "#e6e0d4",
+      "#1c1c1c",
+      "#b8241d"
+    ],
+    "cornerColors": [
+      "#b8241d",
+      "#1f3f9a"
+    ],
+    "padColor": "#111111"
+  },
+  "pricing": {
+    "minBid": 500,
+    "increment": 50,
+    "lockPrice": 2500,
+    "deadline": "2026-10-16T23:59:59-04:00",
+    "currency": "usd"
+  },
+  "contact": {
+    "notifyEmail": "michaelheckert@heckholdings.com",
+    "notifyFrom": "Team Heck Sponsorships <sponsors@michaelheckert.com>",
+    "contactLinkText": "Questions? Email Michael."
+  },
+  "packageName": "Champion package",
+  "benefits": [
+    "Logo on the fight shorts and T-shirt at BKFC Clearwater, 50% larger than standard placements",
+    "Logo on the walkout robe and fan T-shirts",
+    "Social media promotion plus pre- and post-fight interview shout-outs",
+    "Post-fight branded media kit",
+    "Two VIP ringside tickets ($576 value)",
+    "Vendor table and logo on the photo backdrop at the downtown St. Pete Fight Week Fan Event",
+    "Official Sponsor listing on michaelheckert.com"
+  ],
+  "copy": {
+    "brandAriaLabel": "Team Heck home",
+    "experienceLabel": "Interactive sponsorship placement viewer",
+    "apparelLabel": "Apparel",
+    "quickViewsLabel": "Quick views",
+    "frontView": "Front",
+    "backView": "Back",
+    "leftView": "Left",
+    "rightView": "Right",
+    "rotateLeftAriaLabel": "Rotate left",
+    "rotateRightAriaLabel": "Rotate right",
+    "bidAmountAriaLabel": "Bid amount in US dollars",
+    "payInvoice": "Pay invoice",
+    "bidLoading": "Loading…",
+    "companyPlaceholder": "Company",
+    "contactNamePlaceholder": "Contact name",
+    "emailPlaceholder": "Email",
+    "phonePlaceholder": "Phone (optional)",
+    "dialogCloseAriaLabel": "Close",
+    "posterDialogLabel": "Fight poster",
+    "inventoryEyebrow": "PLACEMENT INVENTORY",
+    "dragInstruction": "Drag the athlete to rotate 360°",
+    "modelCredit": "Real-time 3D · drag to rotate · scroll to zoom",
+    "canvasLabel": "Interactive 3D model of Michael Heckert in fight apparel. Use the arrow keys to rotate.",
+    "loading": "Loading 3D model…",
+    "modelLoadingProgress": "Loading 3D model… {percent}%",
+    "modelLoadError": "The 3D model could not be loaded. Please refresh the page.",
+    "available": "Available",
+    "openPlacements": "See open placements",
+    "uploadLogo": "Upload logo preview",
+    "replaceLogo": "Replace logo preview",
+    "previewAlt": "Your uploaded logo preview",
+    "removePreview": "Remove preview",
+    "currentBid": "Current bid",
+    "lockItNow": "Lock it now",
+    "skipAuction": "Skip the auction",
+    "bidButton": "Place bid",
+    "bidNoteInitial": "Bids start at {minBid} in {increment} steps. Nothing is charged on this page — lock-ins receive a Stripe invoice by email right away, and the winning bidder is invoiced when bidding closes.",
+    "bidNote": "Bids start at {minBid} in {increment} steps and close {closingDate}. Nothing is charged on this page — lock-ins receive a Stripe invoice by email right away, and the winning bidder is invoiced when bidding closes.",
+    "privacyNote": "Upload a logo before you bid and it is saved with your bid, then shown on the placement once it is locked or won. Final artwork is confirmed personally.",
+    "benefitsHeading": "What the winning sponsor gets",
+    "benefitsIntroBefore": "Every open placement carries the full",
+    "benefitsIntroAfter": "benefits, whether you win the auction or lock it now:",
+    "emptyInventory": "Rotate to the front or back to see the placements on this garment.",
+    "unknownSponsorPlacement": "Unknown placement in portal.config.json",
+    "sponsorsLogoLoadError": "Sponsor logo failed to load",
+    "sponsorsUnavailable": "Sponsor list unavailable",
+    "soldStatus": "SOLD",
+    "lockedStatus": "LOCKED",
+    "wonStatus": "WON",
+    "availableStatus": "AVAILABLE",
+    "biddingStatus": "BIDDING",
+    "statusBid": "BID {amount}",
+    "statusOpen": "OPEN · {amount}",
+    "availabilityCount": "{open} of {total} available",
+    "lockedFallback": "Locked",
+    "lockedInFallback": "Locked in",
+    "sponsorFallback": "Sponsor",
+    "confirmedFor": "This placement is confirmed for",
+    "placementLocked": "This placement has been locked in",
+    "placementWon": "Bidding has closed and this placement was won",
+    "invoiceIssued": "the invoice has been issued.",
+    "soldDescription": "{name}. This placement is confirmed for {sponsor}.",
+    "lockedDescription": "{name}. {status}{holder}; {invoiceIssued}",
+    "noBids": "No bids yet",
+    "offline": "Bidding unavailable offline",
+    "nextBid": "next {amount}",
+    "openingBid": "Opening bid {amount}",
+    "bidCountOne": "bid",
+    "bidCountMany": "bids",
+    "lockLabel": "Lock it now — {price}",
+    "logoUnsupported": "Please choose a PNG, JPG, WebP or SVG image.",
+    "logoTooLarge": "Please choose a logo under 5 MB.",
+    "logoUnreadable": "That file could not be read as an image.",
+    "missingContact": "Please enter your company and contact name.",
+    "invalidEmail": "Please enter a valid email address.",
+    "bidTooLow": "Your bid must be at least {amount}.",
+    "lockConfirmation": "Lock {id} · {name} now for {price}? This closes bidding on the placement and a Stripe invoice for {price} will be emailed to {email}.",
+    "sending": "Sending…",
+    "saveFailed": "Your request could not be saved. Please try again.",
+    "networkError": "Network error — please try again.",
+    "successLockedTitle": "{id} is yours",
+    "successInvoiceReady": "Your {price} Stripe invoice is ready — pay it below{emailed}. {firstName} will follow up for your artwork once it's paid.",
+    "successInvoiceEmailSuffix": " or from the copy we sent to {email}",
+    "successInvoicePending": "{firstName} will email your {price} invoice to {email} shortly.",
+    "successHighBidTitle": "High bid: {amount}",
+    "successBidConfirmation": "Confirmation sent to {email}.{logo} {successOutro}",
+    "successLogoSaved": "Your logo is saved with your bid.",
+    "successOutro": "We'll let you know if you're outbid; the winning bidder is invoiced when bidding closes.",
+    "toastLocked": "{id} is locked in for {price}.",
+    "toastHighBid": "You're the high bidder on {id} at {amount}.",
+    "embedEyebrow": "EMBED ON TEAM HECK",
+    "embedTitle": "Michael Heckert sponsorship portal",
+    "embedHeading": "Add the portal to any page.",
+    "embedIntro": "Once hosted, paste this responsive iframe where the sponsorship experience should appear.",
+    "embedButton": "Embed portal",
+    "copyEmbed": "Copy embed code",
+    "embedCopied": "Copied",
+    "embedCopyHint": "Press Ctrl+C to copy",
+    "emailQuestions": "Questions? Reply to this email or write to",
+    "emailOpenLink": "Or open this link:",
+    "emailViewPlacement": "View placement",
+    "emailBidAgain": "Bid again",
+    "emailOutro": "Once payment clears, Michael will reach out for your final artwork and the Champion package details (walkout gear, robe and fan T-shirt logos, social promotion, two VIP ringside tickets, Fight Week vendor table, and the post-fight media kit).",
+    "invoiceFooter": "Includes the full Champion package: shorts + T-shirt logo, walkout robe and fan T-shirt logos, social and interview promotion, post-fight media kit, two VIP ringside tickets, Fight Week vendor table, and Official Sponsor listing.",
+    "invoiceSource": "the Team Heck sponsorship portal",
+    "dashboardSiteName": "heck-sponsor-360",
+    "emailInvoiceButton": "Pay {amount} invoice",
+    "bidReceiptIntro": "Thanks {name} — you're currently the <strong>high bidder</strong> on this placement. If you're still on top when bidding closes, we'll email you a Stripe invoice for your winning amount.",
+    "bidReceiptOutro": "We'll let you know if someone outbids you so you can respond. Want to skip the auction? You can lock the placement outright for {price} in the portal.",
+    "outbidIntro": "Hi {name} — another sponsor has outbid you on this placement.",
+    "outbidOutro": "You can place a new bid any time before bidding closes, or lock the placement outright for {price}.",
+    "invoiceLockedIntro": "Congratulations {name} — <strong>{id}</strong> is locked in for {company}. Bidding on it is now closed. Your Stripe invoice for {amount} is ready; pay securely by card or bank transfer using the button below.",
+    "invoiceWonIntro": "Congratulations {name} — bidding has closed and <strong>{company}</strong> is the winning sponsor for <strong>{id}</strong>. Your Stripe invoice for {amount} is ready; pay securely by card or bank transfer using the button below.",
+    "invoiceLockedHeading": "Placement locked — invoice enclosed",
+    "invoiceWonHeading": "You won the placement — invoice enclosed",
+    "emailBidReceivedHeading": "Bid received",
+    "emailOutbidHeading": "You've been outbid",
+    "emailBidSubject": "You're the high bidder on {id} · {amount}",
+    "emailOutbidSubject": "You've been outbid on {id}",
+    "emailInvoiceLockedSubject": "Locked: {id} · invoice {amount}",
+    "emailInvoiceWonSubject": "You won: {id} · invoice {amount}",
+    "invoiceQuestionReply": "Questions? Reply to this email or write to",
+    "placementLabel": "Placement",
+    "yourBid": "Your bid",
+    "newHighBid": "New high bid",
+    "nextMinimum": "Next minimum",
+    "biddingCloses": "Bidding closes",
+    "amountDue": "Amount due",
+    "invoiceLabel": "Invoice",
+    "companyLabel": "Company",
+    "termsLabel": "Terms",
+    "dueOnReceipt": "Due on receipt",
+    "invoiceLockAction": "Lock It Now",
+    "invoiceWinningAction": "Winning auction bid",
+    "invoiceItemLockAction": "Lock It Now",
+    "invoiceItemWinningAction": "winning bid",
+    "invoiceDescription": "{event} sponsorship — {id} ({label}). {action} via {source}.",
+    "invoiceItemDescription": "{event} sponsorship placement {id} — {label} ({action})"
+  },
+  "garments": [
+    {
+      "id": "shorts",
+      "tab": "Fight shorts",
+      "label": "Fight shorts",
+      "lateralLabel": "Side",
+      "placements": [
+        {
+          "id": "SF-L1",
+          "name": "Front left · Upper",
+          "detail": "Prime camera-facing logo placement on the left leg.",
+          "side": "front",
+          "x": 0.105,
+          "y": 0.9225,
+          "w": 0.115,
+          "h": 0.07499999999999996,
+          "label": "Fight shorts · Front left leg · Upper"
+        },
+        {
+          "id": "SF-L2",
+          "name": "Front left · Center",
+          "detail": "Central placement with strong walkout and stance visibility on the left leg.",
+          "side": "front",
+          "x": 0.105,
+          "y": 0.8275,
+          "w": 0.115,
+          "h": 0.07499999999999996,
+          "label": "Fight shorts · Front left leg · Center"
+        },
+        {
+          "id": "SF-L3",
+          "name": "Front left · Lower",
+          "detail": "Lower-leg placement built for full-body photography on the left leg.",
+          "side": "front",
+          "x": 0.105,
+          "y": 0.7324999999999999,
+          "w": 0.115,
+          "h": 0.07500000000000007,
+          "label": "Fight shorts · Front left leg · Lower"
+        },
+        {
+          "id": "SF-R1",
+          "name": "Front right · Upper",
+          "detail": "Prime camera-facing logo placement on the right leg.",
+          "side": "front",
+          "x": -0.105,
+          "y": 0.9225,
+          "w": 0.115,
+          "h": 0.07499999999999996,
+          "label": "Fight shorts · Front right leg · Upper"
+        },
+        {
+          "id": "SF-R2",
+          "name": "Front right · Center",
+          "detail": "Central placement with strong walkout and stance visibility on the right leg.",
+          "side": "front",
+          "x": -0.105,
+          "y": 0.8275,
+          "w": 0.115,
+          "h": 0.07499999999999996,
+          "label": "Fight shorts · Front right leg · Center"
+        },
+        {
+          "id": "SF-R3",
+          "name": "Front right · Lower",
+          "detail": "Lower-leg placement built for full-body photography on the right leg.",
+          "side": "front",
+          "x": -0.105,
+          "y": 0.7324999999999999,
+          "w": 0.115,
+          "h": 0.07500000000000007,
+          "label": "Fight shorts · Front right leg · Lower"
+        },
+        {
+          "id": "SB-L1",
+          "name": "Back left · Upper",
+          "detail": "Prime camera-facing logo placement on the left leg.",
+          "side": "back",
+          "x": 0.105,
+          "y": 0.9225,
+          "w": 0.115,
+          "h": 0.07499999999999996,
+          "label": "Fight shorts · Back left leg · Upper"
+        },
+        {
+          "id": "SB-L2",
+          "name": "Back left · Center",
+          "detail": "Central placement with strong walkout and stance visibility on the left leg.",
+          "side": "back",
+          "x": 0.105,
+          "y": 0.8275,
+          "w": 0.115,
+          "h": 0.07499999999999996,
+          "label": "Fight shorts · Back left leg · Center"
+        },
+        {
+          "id": "SB-L3",
+          "name": "Back left · Lower",
+          "detail": "Lower-leg placement built for full-body photography on the left leg.",
+          "side": "back",
+          "x": 0.105,
+          "y": 0.7324999999999999,
+          "w": 0.115,
+          "h": 0.07500000000000007,
+          "label": "Fight shorts · Back left leg · Lower"
+        },
+        {
+          "id": "SB-R1",
+          "name": "Back right · Upper",
+          "detail": "Prime camera-facing logo placement on the right leg.",
+          "side": "back",
+          "x": -0.105,
+          "y": 0.9225,
+          "w": 0.115,
+          "h": 0.07499999999999996,
+          "label": "Fight shorts · Back right leg · Upper"
+        },
+        {
+          "id": "SB-R2",
+          "name": "Back right · Center",
+          "detail": "Central placement with strong walkout and stance visibility on the right leg.",
+          "side": "back",
+          "x": -0.105,
+          "y": 0.8275,
+          "w": 0.115,
+          "h": 0.07499999999999996,
+          "label": "Fight shorts · Back right leg · Center"
+        },
+        {
+          "id": "SB-R3",
+          "name": "Back right · Lower",
+          "detail": "Lower-leg placement built for full-body photography on the right leg.",
+          "side": "back",
+          "x": -0.105,
+          "y": 0.7324999999999999,
+          "w": 0.115,
+          "h": 0.07500000000000007,
+          "label": "Fight shorts · Back right leg · Lower"
+        }
+      ]
+    },
+    {
+      "id": "shirt",
+      "tab": "Black T-shirt",
+      "label": "Black T-shirt",
+      "lateralLabel": "Sleeves",
+      "placements": [
+        {
+          "id": "TF-01",
+          "name": "Front grid · Row 1, column 1",
+          "detail": "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
+          "side": "front",
+          "x": -0.105,
+          "y": 1.432,
+          "w": 0.095,
+          "h": 0.072,
+          "label": "Walkout T-shirt · Front grid · Row 1, column 1"
+        },
+        {
+          "id": "TF-02",
+          "name": "Front grid · Row 1, column 2",
+          "detail": "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
+          "side": "front",
+          "x": 0,
+          "y": 1.432,
+          "w": 0.095,
+          "h": 0.072,
+          "label": "Walkout T-shirt · Front grid · Row 1, column 2"
+        },
+        {
+          "id": "TF-03",
+          "name": "Front grid · Row 1, column 3",
+          "detail": "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
+          "side": "front",
+          "x": 0.105,
+          "y": 1.432,
+          "w": 0.095,
+          "h": 0.072,
+          "label": "Walkout T-shirt · Front grid · Row 1, column 3"
+        },
+        {
+          "id": "TF-04",
+          "name": "Front grid · Row 2, column 1",
+          "detail": "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
+          "side": "front",
+          "x": -0.105,
+          "y": 1.3499999999999999,
+          "w": 0.095,
+          "h": 0.072,
+          "label": "Walkout T-shirt · Front grid · Row 2, column 1"
+        },
+        {
+          "id": "TF-05",
+          "name": "Front grid · Row 2, column 2",
+          "detail": "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
+          "side": "front",
+          "x": 0,
+          "y": 1.3499999999999999,
+          "w": 0.095,
+          "h": 0.072,
+          "label": "Walkout T-shirt · Front grid · Row 2, column 2"
+        },
+        {
+          "id": "TF-06",
+          "name": "Front grid · Row 2, column 3",
+          "detail": "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
+          "side": "front",
+          "x": 0.105,
+          "y": 1.3499999999999999,
+          "w": 0.095,
+          "h": 0.072,
+          "label": "Walkout T-shirt · Front grid · Row 2, column 3"
+        },
+        {
+          "id": "TF-07",
+          "name": "Front grid · Row 3, column 1",
+          "detail": "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
+          "side": "front",
+          "x": -0.105,
+          "y": 1.268,
+          "w": 0.095,
+          "h": 0.072,
+          "label": "Walkout T-shirt · Front grid · Row 3, column 1"
+        },
+        {
+          "id": "TF-08",
+          "name": "Front grid · Row 3, column 2",
+          "detail": "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
+          "side": "front",
+          "x": 0,
+          "y": 1.268,
+          "w": 0.095,
+          "h": 0.072,
+          "label": "Walkout T-shirt · Front grid · Row 3, column 2"
+        },
+        {
+          "id": "TF-09",
+          "name": "Front grid · Row 3, column 3",
+          "detail": "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
+          "side": "front",
+          "x": 0.105,
+          "y": 1.268,
+          "w": 0.095,
+          "h": 0.072,
+          "label": "Walkout T-shirt · Front grid · Row 3, column 3"
+        },
+        {
+          "id": "TF-10",
+          "name": "Front grid · Row 4, column 1",
+          "detail": "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
+          "side": "front",
+          "x": -0.105,
+          "y": 1.186,
+          "w": 0.095,
+          "h": 0.072,
+          "label": "Walkout T-shirt · Front grid · Row 4, column 1"
+        },
+        {
+          "id": "TF-11",
+          "name": "Front grid · Row 4, column 2",
+          "detail": "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
+          "side": "front",
+          "x": 0,
+          "y": 1.186,
+          "w": 0.095,
+          "h": 0.072,
+          "label": "Walkout T-shirt · Front grid · Row 4, column 2"
+        },
+        {
+          "id": "TF-12",
+          "name": "Front grid · Row 4, column 3",
+          "detail": "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
+          "side": "front",
+          "x": 0.105,
+          "y": 1.186,
+          "w": 0.095,
+          "h": 0.072,
+          "label": "Walkout T-shirt · Front grid · Row 4, column 3"
+        },
+        {
+          "id": "TB-01",
+          "name": "Upper back · Shoulder blades",
+          "detail": "Wide statement placement across the upper back of the walkout T-shirt.",
+          "side": "back",
+          "x": 0,
+          "y": 1.415,
+          "w": 0.3,
+          "h": 0.11,
+          "label": "Walkout T-shirt · Upper back"
+        },
+        {
+          "id": "TS-01",
+          "name": "Sleeve pair · Upper",
+          "detail": "Matching logo placement on both sleeves near the shoulder.",
+          "side": "left",
+          "x": 0,
+          "y": 1.47,
+          "w": 0.075,
+          "h": 0.042,
+          "mirror": "right",
+          "label": "Walkout T-shirt · Sleeve pair · Upper"
+        },
+        {
+          "id": "TS-02",
+          "name": "Sleeve pair · Center",
+          "detail": "Matching logo placement on both sleeves at mid-arm.",
+          "side": "left",
+          "x": 0,
+          "y": 1.42,
+          "w": 0.075,
+          "h": 0.042,
+          "mirror": "right",
+          "label": "Walkout T-shirt · Sleeve pair · Center"
+        },
+        {
+          "id": "TS-03",
+          "name": "Sleeve pair · Lower",
+          "detail": "Matching logo placement on both sleeves above the cuff.",
+          "side": "left",
+          "x": 0,
+          "y": 1.37,
+          "w": 0.075,
+          "h": 0.042,
+          "mirror": "right",
+          "label": "Walkout T-shirt · Sleeve pair · Lower"
+        }
+      ]
+    }
+  ],
+  "sold": {
+    "SF-L1": {
+      "sponsor": "Boxrope",
+      "logo": "assets/sponsors/boxrope.png"
+    },
+    "SF-L2": {
+      "sponsor": "LJC Construction",
+      "logo": "assets/sponsors/ljc-construction.png"
+    },
+    "SF-L3": {
+      "sponsor": "Nitro",
+      "logo": "assets/sponsors/nitro.png"
+    },
+    "SF-R1": {
+      "sponsor": "Tummo Studios",
+      "logo": "assets/sponsors/tummo-studios.png"
+    },
+    "SF-R2": {
+      "sponsor": "Sammy Sharks",
+      "logo": "assets/sponsors/sammy-sharks.png"
+    },
+    "SF-R3": {
+      "sponsor": "BluefitMD",
+      "logo": "assets/sponsors/bluefitmd.png"
+    },
+    "TF-01": {
+      "sponsor": "Boxrope",
+      "logo": "assets/sponsors/boxrope-white.png"
+    },
+    "TF-02": {
+      "sponsor": "LJC Construction",
+      "logo": "assets/sponsors/ljc-construction.png"
+    },
+    "TF-03": {
+      "sponsor": "Nitro",
+      "logo": "assets/sponsors/nitro.png"
+    },
+    "TF-04": {
+      "sponsor": "Tummo Studios",
+      "logo": "assets/sponsors/tummo-studios.png"
+    },
+    "TF-05": {
+      "sponsor": "Sammy Sharks",
+      "logo": "assets/sponsors/sammy-sharks.png"
+    },
+    "TF-06": {
+      "sponsor": "BluefitMD",
+      "logo": "assets/sponsors/bluefitmd.png"
+    },
+    "SB-L1": {
+      "sponsor": "Mekkalabs",
+      "logo": "assets/sponsors/mekkalabs.png"
+    },
+    "SB-L2": {
+      "sponsor": "BabySNEK",
+      "logo": "assets/sponsors/babysnek.png"
+    },
+    "TS-01": {
+      "sponsor": "Mekkalabs",
+      "logo": "assets/sponsors/mekkalabs.png"
+    },
+    "TS-02": {
+      "sponsor": "BabySNEK",
+      "logo": "assets/sponsors/babysnek.png"
+    },
+    "TB-01": {
+      "sponsor": "Watchmen",
+      "logo": "assets/sponsors/watchmen.png"
+    }
+  }
+}

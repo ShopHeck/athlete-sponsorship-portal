@@ -1,7 +1,7 @@
 [build]
   publish = "public"
   functions = "netlify/functions"
-  command = "node scripts/stamp-assets.mjs"
+  command = "node scripts/build.mjs"
 
 [functions]
   node_bundler = "esbuild"
@@ -20,10 +20,5 @@
 
 [[headers]]
   for = "/*.js"
-  [headers.values]
-    Cache-Control = "public, max-age=0, must-revalidate"
-
-[[headers]]
-  for = "/assets/sponsors.json"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
