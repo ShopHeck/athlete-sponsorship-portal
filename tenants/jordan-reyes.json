@@ -1,6 +1,7 @@
 {
   "slug": "jordan-reyes",
-  "portalUrl": "https://jordan-reyes.example/",
+  "status": "draft",
+  "embedOrigins": [],
   "homeUrl": "https://jordanreyes.example/",
   "athlete": {
     "firstName": "Jordan",
@@ -41,7 +42,7 @@
     "accentPanel": "#111a29",
     "accentGradient": "#101a31"
   },
-  "model": "assets/models/heckert.glb",
+  "model": "/tenants/michael-heckert/models/heckert.glb",
   "ring": {
     "enabled": true,
     "padText": null,
@@ -112,7 +113,7 @@
     "benefitsIntroBefore": "Every open placement carries the full",
     "benefitsIntroAfter": "benefits, whether you win the auction or lock it now:",
     "emptyInventory": "Rotate to the front or back to see the placements on this garment.",
-    "unknownSponsorPlacement": "Unknown placement in portal.config.json",
+    "unknownSponsorPlacement": "Unknown placement in tenant configuration",
     "sponsorsLogoLoadError": "Sponsor logo failed to load",
     "sponsorsUnavailable": "Sponsor list unavailable",
     "soldStatus": "SOLD",

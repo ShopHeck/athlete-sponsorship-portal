@@ -1,150 +1,98 @@
 # Athlete Sponsorship Portal
 
-Config-driven, embeddable 360° sponsorship placement portal. `portal.config.json` is the committed Michael
-Heckert/BKFC Clearwater tenant; build another athlete by selecting a different JSON file without editing code.
+A multi-tenant platform for embeddable 360° athlete sponsorship portals. Each tenant has a config at
+`tenants/<slug>.json` and assets under `public/tenants/<slug>/`; tenant pages are served at
+`https://athletes.michaelheckert.com/<slug>`.
 
-## Inventory
+## Add a tenant
 
-The selected tenant's garments, placement geometry and labels, sponsor inventory, prices, ring, branding and copy
-are all configured in its JSON file. Michael's config contains the existing 28-placement inventory.
+1. Add a uniquely named `tenants/<slug>.json` file. The filename must match its lowercase slug.
+2. Add tenant-specific assets under `public/tenants/<slug>/`. Relative model, poster, and sold-logo paths resolve
+   from that directory. Root-relative and HTTP URLs can be used for shared or externally hosted assets.
+3. Set `"status": "draft"` and add the tenant's embed origins, athlete/event details, placements, pricing, ring,
+   branding, benefits, contact details, and copy.
+4. Run `npm run build`, then preview at `/<slug>?preview=$PREVIEW_TOKEN`. After review, change status to `"live"`
+   and rebuild.
 
-The build renders `src/index.template.html` to `public/index.html` and generates the server config bundle. The
-generated files are ignored by Git.
+Draft preview pages pass the token to bid APIs in the `x-preview-token` header; logo requests use the `preview`
+query parameter. Preview bids and locks use the normal flow and persist as real Blobs records under the draft
+tenant's slug, and can send normal emails/invoices if real services are configured. Use local mocks or approved
+test recipients; draft tenants remain excluded from the scheduled close job.
 
-## Run locally
+Placement IDs and labels are defined in `garments[].placements`; IDs must be unique per tenant and no longer than
+eight characters. Confirmed sponsors live in the config's `sold` map. Pricing, deadline, event, and owner inbox
+values are tenant-configured rather than selected with per-site environment overrides.
+
+## Build and local development
 
 ```bash
 npm install
 npm run build
-npx netlify dev
-# open http://localhost:8888/
+npx netlify dev --offline --port 8890
 ```
 
-To build the included fictional Jordan Reyes demo instead:
+`npm run build` validates every tenant, renders each once as a smoke check, and generates the ignored
+`netlify/lib/platform.generated.json` bundle. The root `public/index.html` is only a small platform placeholder;
+tenant pages are rendered per request.
+
+## Local integration tests
+
+Use the mock Stripe and Resend endpoints; do not use real credentials:
 
 ```bash
-PORTAL_CONFIG=examples/demo-athlete.json npm run build
+MOCK_PORT=4343 node scripts/mock-services.mjs
 ```
 
-## Reusing this for another athlete or event
+In another terminal:
 
-This repo is the template for the sponsorship-portal service. The playbook lives in
-`.devin/skills/sponsorship-portal/` (`SKILL.md` plus `reference/intake.md`, `configuration.md`,
-`launch-checklist.md`, `gotchas.md`). Inside this repo it is discovered automatically by **Devin**
-(`.devin/skills`), **Claude Code** (`.claude/skills`, symlink) and **Codex CLI** (`.agents/skills`, symlink; see also
-`AGENTS.md`). Start a new portal with
-`gh repo create <org>/<athlete>-sponsor-portal --private --clone --template ShopHeck/heck-sponsor-360`.
-
-To install it globally or hand it to a client, run `scripts/package-skill.sh` → `dist/skill/`:
-`sponsorship-portal-skill.zip` (upload to Claude.ai Skills, or unzip into `~/.claude/skills`, `~/.agents/skills`,
-`~/.config/devin/skills`) and `chatgpt/` (Custom GPT instructions ≤ 8000 chars + knowledge files). `dist/skill/INSTALL.md`
-has the per-tool steps.
-
-### Local end-to-end test (no real Stripe or email)
-
-```sh
-npm run build                              # build the selected tenant first
-node scripts/mock-services.mjs &          # fake Stripe + Resend on :4242
-STRIPE_SECRET_KEY=sk_test_mock STRIPE_API_BASE=http://127.0.0.1:4242 \
-RESEND_API_KEY=re_mock RESEND_API_BASE=http://127.0.0.1:4242 \
-NOTIFY_EMAIL=owner@example.test PORTAL_URL=http://localhost:8888 ADMIN_TOKEN=devtoken \
-npx netlify dev --offline --port 8888 &
-scripts/smoke-test.sh http://localhost:8888 SB-R1 TF-12   # two OPEN placement ids
+```bash
+PREVIEW_TOKEN=devpreview ADMIN_TOKEN=devtoken PLATFORM_URL=http://localhost:8890 \
+STRIPE_SECRET_KEY=sk_test_mock STRIPE_API_BASE=http://127.0.0.1:4343 \
+RESEND_API_KEY=re_mock RESEND_API_BASE=http://127.0.0.1:4343 \
+npx netlify dev --offline --port 8890
 ```
 
-Choose open IDs from the selected config's `garments[].placements`, excluding entries in `sold`.
+Reset only this checkout's Blobs sandbox with `rm -rf .netlify/blobs-serve` before each test:
 
-## Deploy
+```bash
+scripts/smoke-test.sh http://localhost:8890 michael-heckert SB-R1 TF-12
+scripts/tenant-test.sh http://localhost:8890
+```
 
-Deploy on Netlify: the build generates the static page and function config, and the bidding API is a Netlify
-Function (`netlify/functions/bids.mjs`, served at `/api/bids`) backed by Netlify Blobs. `netlify.toml` configures
-both. Run locally with `npm install && npm run build && npx netlify dev`.
+The smoke-test signature is `[base-url] [slug] [open-placement-A] [open-placement-B]`. Choose two IDs defined
+in the tenant config, absent from its `sold` map, and with no existing local bid records.
 
-### Bidding
+## Runtime architecture
 
-Open placements accept bids using the selected tenant's `pricing.minBid`, `pricing.increment`, and
-`pricing.lockPrice` values. Environment variables can override those defaults. Bids and locks are stored per
-placement in the `bids` Blobs store (company, contact, email, phone, note, full history); the public API only
-exposes the high bid, bidder company and count.
+- `scripts/build.mjs` validates tenant configs and bundles their registry with the HTML template.
+- `netlify/functions/portal.mjs` renders live or closed tenants at `/<slug>`; draft tenants require the preview
+  token. A valid draft page includes the token only in its inlined config and is not cached. Draft API requests
+  require the `x-preview-token` header; logo requests also accept `?preview=<token>`. A tenant-specific CSP
+  controls which sites may frame its portal.
+- `GET` and `POST /api/<slug>/bids` expose tenant-scoped bid data. Logo images are served from
+  `/api/<slug>/logos/<id>`. Blobs stores remain named `bids` and `logos`, with keys prefixed by `<slug>/`.
+- `POST /api/close-auction` is admin-only. It processes every non-draft tenant, or one tenant when passed
+  `?tenant=<slug>`. The scheduled daily job processes all non-draft tenants.
+- Stripe creates invoice links; the portal does not charge cards. Resend sends bid confirmations, outbid notices,
+  invoices, and owner notifications. Global credentials and service API bases are environment variables; tenant
+  business settings stay in each tenant config.
+- The frontend uses a tenant's model and placement geometry in a Three.js scene. The `heck-portal-height`
+  `postMessage` type is retained for embedded hosts.
 
-**Logos** — a logo uploaded before bidding is downscaled in the browser (max 800px PNG) and sent with the bid. It is stored in the `logos` Blobs store (one key per placement, 1.5 MB cap, PNG/JPG/WebP only), served at `/api/logos/:id`, and rendered on the model and detail card once the placement is locked or won. A new high bidder without artwork clears the previous bidder's logo.
-
-**Emails (Resend)** — the bidder gets a confirmation, the previous high bidder an "outbid" notice, and the
-configured portal owner a copy of everything.
-
-**Invoices (Stripe)** — no card is taken in the portal. Instead:
-
-- **Lock it now** (or a bid ≥ `$2,500`) creates a Stripe customer + finalised invoice for the lock price, *due on receipt*, and emails the sponsor a **Pay invoice** link (Stripe's hosted invoice page) via Resend. The same link is shown in the portal right after locking. Stripe itself does not send email.
-- **Auction winners** — `netlify/functions/close-auction.mjs` runs daily; once `BID_DEADLINE` has passed it marks each open placement with bids as closed and invoices the high bidder the same way. It also retries any lock whose invoice failed. Trigger it manually (or force-close early) with `curl -X POST -H "authorization: Bearer $ADMIN_TOKEN" https://<site>/api/close-auction[?force=1]`; locally, `npx netlify functions:invoke close-auction`.
-- Every invoice is recorded on the placement (`invoice.id/url/status`) so re-runs never double-invoice. Failures email the configured owner with the Stripe error.
-
-Environment variables (Netlify → Site configuration → Environment variables):
+## Environment variables
 
 | Variable | Purpose |
 | --- | --- |
-| `STRIPE_SECRET_KEY` | **Required for invoicing.** `sk_live_…` in production; use `sk_test_…` locally. |
-| `RESEND_API_KEY` | **Required for email.** |
-| `PORTAL_CONFIG` | Selects a tenant config at build time; defaults to `portal.config.json`. |
-| `NOTIFY_FROM` | Resend sender; defaults to `contact.notifyFrom` in the tenant config. |
-| `NOTIFY_EMAIL` | Owner inbox and sponsor-email reply-to; defaults to `contact.notifyEmail`. |
-| `PORTAL_URL` | Public portal URL used in emails; defaults to the tenant's `portalUrl` (Netlify's `URL` is also supported). |
-| `ADMIN_TOKEN` | Enables `POST /api/close-auction` for manual runs. |
-| `MIN_BID`, `BID_INCREMENT`, `LOCK_PRICE`, `BID_DEADLINE`, `EVENT_NAME` | Optional overrides for tenant `pricing` and `event.name`. |
+| `STRIPE_SECRET_KEY` | Stripe credentials for invoice creation; use mock credentials locally. |
+| `RESEND_API_KEY` | Resend credentials for email; use mock credentials locally. |
+| `STRIPE_API_BASE`, `RESEND_API_BASE` | Optional service API bases, typically pointed at the mock server in tests. |
+| `PLATFORM_URL` | Platform origin used to construct tenant page and API links. |
+| `PREVIEW_TOKEN` | Allows draft page preview through `?preview=<token>` and draft API access via `x-preview-token` (logo URLs may use the query token). |
+| `ADMIN_TOKEN` | Bearer token required for `POST /api/close-auction`. |
+| `NOTIFY_FROM` | Global fallback sender when a tenant does not define `contact.notifyFrom`. |
 
-For local testing set `STRIPE_API_BASE` / `RESEND_API_BASE` to point the functions at a mock server.
+## Skill and agent references
 
-## Fight poster & share image
-
-`public/assets/backdrop/` holds the optimised poster set configured in the tenant's `poster` object: stage images,
-poster card, and social share image. Setting `poster` to `null` removes the poster card/dialog, stage backdrop,
-preload, and poster-based OG image.
-
-## Embed on teamheck.netlify.app
-
-Once hosted, paste this where the portal should appear (the "Embed portal" button in the app generates the same snippet):
-
-```html
-<iframe src="https://heck-sponsor-360.netlify.app/" title="Michael Heckert sponsorship portal" loading="lazy" allow="fullscreen" style="width:100%;height:900px;border:0"></iframe>
-```
-
-When framed, the portal switches to an embed layout (fixed stage height, no "Embed portal" button) and posts its document height to the host as `{ type: "heck-portal-height", height }`. To make the iframe grow with the content instead of scrolling internally, add on the host page:
-
-```html
-<script>
-addEventListener("message", (e) => {
-  if (e.origin !== "https://heck-sponsor-360.netlify.app" || e.data?.type !== "heck-portal-height") return;
-  document.querySelector('iframe[src^="https://heck-sponsor-360.netlify.app"]').style.height = e.data.height + "px";
-});
-</script>
-```
-
-## 3D viewer
-
-The stage is a real-time three.js (WebGL) scene loaded from the unpkg import map in the HTML template. The selected
-tenant's `model` path identifies its textured full-body GLB. Every placement is a `DecalGeometry` patch projected
-onto the mesh surface (clickable, raycast-selected, and textured with the uploaded logo). Placement coordinates
-and labels live in the tenant JSON.
-
-### Swapping the model
-
-The existing Heckert mesh is an AI approximation, not a scan. To replace it with a photogrammetry capture (Polycam /
-Luma AI) or an artist-made GLB, drop the file in `public/assets/models/` and set its path in the tenant JSON (or
-use `?model=assets/models/<file>.glb` to preview an override). The GLB is scaled to 1.86 m, centred on the floor
-and auto-flipped to face +Z; placements are re-projected onto the surface, so a model in a similar stance can
-reuse the existing geometry.
-
-## Reference photography
-
-`process_assets.py` converts the supplied 12-angle photography (`IMG_1267–IMG_1278`) into the WebP frames in `assets/processed/`. They are reference material for the model's build and shorts design and are not used by the viewer.
-
-## Sold placements (confirmed sponsors)
-
-Confirmed sponsors are listed in the selected tenant's `sold` map, keyed by placement ID. Each entry names the
-sponsor and points to a logo file (transparent PNG or SVG, roughly the aspect ratio of the placement) stored in
-`public/assets/sponsors/`:
-
-```json
-{ "sold": { "SF-R1": { "sponsor": "HKA USA", "logo": "assets/sponsors/hka-usa.png" } } }
-```
-
-Sold placements render the sponsor's logo directly on the garment, show `SOLD` in the inventory and selection card, and cannot be previewed or requested. Sleeve IDs (`TS-0x`) mark both sleeves. Delete an entry to reopen the placement.
+The tenant setup and operating playbook lives in `.devin/skills/sponsorship-portal/` (`SKILL.md` and the
+configuration, launch checklist, and gotchas references). `AGENTS.md` contains repository commands and rules.
+Package the skill for client handoff with `scripts/package-skill.sh`.

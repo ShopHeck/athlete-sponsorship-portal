@@ -1,6 +1,13 @@
 {
   "slug": "michael-heckert",
-  "portalUrl": "https://heck-sponsor-360.netlify.app/",
+  "status": "live",
+  "embedOrigins": [
+    "https://teamheck.netlify.app",
+    "https://*.netlify.app",
+    "https://michaelheckert.com",
+    "https://*.michaelheckert.com"
+  ],
+  "publicUrl": "https://teamheck.netlify.app",
   "homeUrl": "https://teamheck.netlify.app",
   "athlete": {
     "firstName": "Michael",
@@ -31,10 +38,10 @@
     "intro": "Rotate Michael to explore every available placement. Switch apparel, select a position, and preview your logo."
   },
   "poster": {
-    "card": "assets/backdrop/fight-poster.webp",
-    "stage900": "assets/backdrop/stage-900.webp",
-    "stage1500": "assets/backdrop/stage-1500.webp",
-    "ogImage": "assets/backdrop/og-image.jpg",
+    "card": "backdrop/fight-poster.webp",
+    "stage900": "backdrop/stage-900.webp",
+    "stage1500": "backdrop/stage-1500.webp",
+    "ogImage": "backdrop/og-image.jpg",
     "alt": "BKFC Fight Night Clearwater poster — Heckert vs McConnico",
     "dialogAlt": "BKFC Fight Night Clearwater poster — Heckert vs McConnico, October 23",
     "kicker": "BKFC Fight Night · Clearwater",
@@ -51,7 +58,7 @@
     "accentPanel": "#1a1512",
     "accentGradient": "#1d120b"
   },
-  "model": "assets/models/heckert.glb",
+  "model": "models/heckert.glb",
   "ring": {
     "enabled": true,
     "padText": "BKFC",
@@ -133,7 +140,7 @@
     "benefitsIntroBefore": "Every open placement carries the full",
     "benefitsIntroAfter": "benefits, whether you win the auction or lock it now:",
     "emptyInventory": "Rotate to the front or back to see the placements on this garment.",
-    "unknownSponsorPlacement": "Unknown placement in portal.config.json",
+    "unknownSponsorPlacement": "Unknown placement in tenant configuration",
     "sponsorsLogoLoadError": "Sponsor logo failed to load",
     "sponsorsUnavailable": "Sponsor list unavailable",
     "soldStatus": "SOLD",
@@ -561,71 +568,71 @@
   "sold": {
     "SF-L1": {
       "sponsor": "Boxrope",
-      "logo": "assets/sponsors/boxrope.png"
+      "logo": "sponsors/boxrope.png"
     },
     "SF-L2": {
       "sponsor": "LJC Construction",
-      "logo": "assets/sponsors/ljc-construction.png"
+      "logo": "sponsors/ljc-construction.png"
     },
     "SF-L3": {
       "sponsor": "Nitro",
-      "logo": "assets/sponsors/nitro.png"
+      "logo": "sponsors/nitro.png"
     },
     "SF-R1": {
       "sponsor": "Tummo Studios",
-      "logo": "assets/sponsors/tummo-studios.png"
+      "logo": "sponsors/tummo-studios.png"
     },
     "SF-R2": {
       "sponsor": "Sammy Sharks",
-      "logo": "assets/sponsors/sammy-sharks.png"
+      "logo": "sponsors/sammy-sharks.png"
     },
     "SF-R3": {
       "sponsor": "BluefitMD",
-      "logo": "assets/sponsors/bluefitmd.png"
+      "logo": "sponsors/bluefitmd.png"
     },
     "TF-01": {
       "sponsor": "Boxrope",
-      "logo": "assets/sponsors/boxrope-white.png"
+      "logo": "sponsors/boxrope-white.png"
     },
     "TF-02": {
       "sponsor": "LJC Construction",
-      "logo": "assets/sponsors/ljc-construction.png"
+      "logo": "sponsors/ljc-construction.png"
     },
     "TF-03": {
       "sponsor": "Nitro",
-      "logo": "assets/sponsors/nitro.png"
+      "logo": "sponsors/nitro.png"
     },
     "TF-04": {
       "sponsor": "Tummo Studios",
-      "logo": "assets/sponsors/tummo-studios.png"
+      "logo": "sponsors/tummo-studios.png"
     },
     "TF-05": {
       "sponsor": "Sammy Sharks",
-      "logo": "assets/sponsors/sammy-sharks.png"
+      "logo": "sponsors/sammy-sharks.png"
     },
     "TF-06": {
       "sponsor": "BluefitMD",
-      "logo": "assets/sponsors/bluefitmd.png"
+      "logo": "sponsors/bluefitmd.png"
     },
     "SB-L1": {
       "sponsor": "Mekkalabs",
-      "logo": "assets/sponsors/mekkalabs.png"
+      "logo": "sponsors/mekkalabs.png"
     },
     "SB-L2": {
       "sponsor": "BabySNEK",
-      "logo": "assets/sponsors/babysnek.png"
+      "logo": "sponsors/babysnek.png"
     },
     "TS-01": {
       "sponsor": "Mekkalabs",
-      "logo": "assets/sponsors/mekkalabs.png"
+      "logo": "sponsors/mekkalabs.png"
     },
     "TS-02": {
       "sponsor": "BabySNEK",
-      "logo": "assets/sponsors/babysnek.png"
+      "logo": "sponsors/babysnek.png"
     },
     "TB-01": {
       "sponsor": "Watchmen",
-      "logo": "assets/sponsors/watchmen.png"
+      "logo": "sponsors/watchmen.png"
     }
   }
 }

@@ -18,7 +18,7 @@ SOURCES = [
     "/home/ubuntu/attachments/32823eea-c4a7-45e4-b1ed-50c04477e9d5/IMG_1278.PNG",
 ]
 
-OUT = Path("/home/ubuntu/heck-sponsor-360/public/assets/processed")
+OUT = Path(__file__).resolve().parent / "public/tenants/michael-heckert/processed"
 OUT.mkdir(parents=True, exist_ok=True)
 
 for index, source in enumerate(SOURCES):
