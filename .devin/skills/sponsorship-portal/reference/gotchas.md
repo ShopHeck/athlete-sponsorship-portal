@@ -11,9 +11,9 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
   branch. *Process:* base every PR on `main`; if you must stack, include the parent commits so merge order
   doesn't matter, and check `git branch -r --contains <sha>` after merging.
 - **New HTML with old CSS/JS → broken layout (giant poster card, grey floor, undarkened backdrop).** The custom
-  domain was proxied by Cloudflare, which rewrote `Cache-Control` to `max-age=14400`. Fixed by stamping
-  `styles.css?v=<commit>` / `app.js?v=<commit>` at build (`scripts/stamp-assets.mjs`) and sending
-  `must-revalidate` for CSS/JS. Still recommend grey-cloud DNS for Netlify hosts.
+  domain was proxied by Cloudflare, which rewrote `Cache-Control` to `max-age=14400`. Tenant pages reference
+  versioned `/styles.css?v=<version>` and `/app.js?v=<version>` URLs from the generated platform bundle; retain
+  the CSS/JS `must-revalidate` headers. Still recommend grey-cloud DNS for Netlify hosts.
 - **`netlify deploy` fails with "Cannot find module build.mjs"** on a site whose `netlify.toml` has a build
   command you don't have. Use `--no-build --dir .`.
 - **A site's source is nowhere on disk / repo is stale.** Recover the exact published deploy via the API:
@@ -23,6 +23,10 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
 - **Netlify secret env vars read back as `***`.** By design. Keep the value elsewhere at creation time.
 - **Env var added to the wrong site.** Check with `netlify api getEnvVars --data '{"account_id":…,"site_id":…}'`
   per site; the CLI `env:list` only shows the linked site.
+- **Switching athletes appears to require a rebuild.** Tenant pages and APIs are selected by URL slug
+  (`/<slug>` and `/api/<slug>/…`), so switching tenants does not require a separate build or server restart.
+  Rebuild the platform registry after editing tenant configs; restart local Netlify Dev when it needs to reload
+  that generated registry.
 
 ## Bidding / invoicing
 - **Every successful lock showed "Network error" in the UI even though the server saved it.** `busy.textContent =
@@ -39,6 +43,9 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
   functions use whatever `STRIPE_SECRET_KEY` is set — confirm the account name in the dashboard before going live.
 - **Test lock on production.** Fine — void the invoice in Stripe and delete the `bids`/`logos` records. The
   record was the only thing making the placement LOCKED.
+- **Mock email or invoice shows the wrong athlete.** Use dummy Stripe/Resend keys and point both
+  `STRIPE_API_BASE` and `RESEND_API_BASE` at the same local mock service. Inspect `.netlify/mock-log.jsonl` for
+  tenant copy, sender, and invoice amounts; do not open mock invoice URLs expecting real checkout.
 
 ## Frontend
 - **Visitors landed on a SOLD placement ("0 of 6 available").** Default was "first shorts-front slot". Landing
@@ -46,15 +53,25 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
   auto-rotate visibility check select a sold slot, don't re-select mid programmatic rotation, and bound the
   initial bids wait (4 s race + 8 s abort) so a hung API can't hide the viewer.
 - **Uploaded logo disappeared on refresh.** It was a browser-only object URL by design. Now rasterised to a
-  ≤800 px PNG, sent with the bid, stored in Blobs `logos`, served at `/api/logos/:id`, rendered for locked/won.
+  ≤800 px PNG, sent with the bid, stored in Blobs `logos` under `<slug>/<placementId>`, served at
+  `/api/:slug/logos/:id`, rendered for locked/won.
 - **Black block under the model inside the embed.** Embed stage was fixed 740 px while the side columns grew.
   Stage now stretches to the grid row. Also `documentElement.scrollHeight` inside an iframe is never smaller than
   the iframe, so the host frame could grow but never shrink — measure `document.body` instead.
 - **Bid form and Lock button below the fold on laptops.** Standalone desktop layout is now an exact 100vh flex
   shell; the inventory list absorbs the slack and scrolls. Scoped to `min-width:821px and min-height:600px` so
   short landscape phones keep the scrolling layout.
-- **Placement rejected as "Unknown placement".** IDs come from the selected tenant's `portal.config.json`;
-  ensure the smoke-test IDs are not in its `sold` map.
+- **Placement rejected as "Unknown placement".** IDs come from `tenants/<slug>.json`; ensure smoke-test IDs are
+  defined in that tenant's config and are not in its `sold` map.
+- **“Bidding unavailable offline” appears during local testing.** Netlify Dev bid GETs can intermittently time
+  out, leaving bidding unavailable until the next poll succeeds. Time consecutive requests to
+  `/api/<slug>/bids` before attributing the symptom; do not change frontend timeout values to mask it.
+- **Draft preview bid changed tenant state.** A valid preview token authorizes the normal bid/lock flow, and its
+  records persist under the draft tenant's slug; configured real email/Stripe services can still send/create.
+  Use mocks or approved test recipients, and remember the scheduled close job skips drafts.
+- **Local iframe is blocked by CSP.** Each tenant's `embedOrigins` controls permitted parent origins. Use a
+  permitted parent to verify actual framing; a top-level `?embed` page plus a `heck-portal-height` message
+  listener can separately check height messages, but does not prove the parent is allowed.
 - **Headless timing.** In headless Chromium the WebGL scene runs slowly; camera tweens take seconds, so wait
   longer after clicks before asserting rotation-dependent state.
 

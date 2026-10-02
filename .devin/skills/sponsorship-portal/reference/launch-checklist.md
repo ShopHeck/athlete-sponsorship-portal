@@ -1,73 +1,54 @@
-# Launch checklist and operations runbook
+# Tenant launch and operations checklist
 
-## A. Netlify
-- [ ] Create the site in the **client's** Netlify team and link the GitHub repo (Site configuration → Build &
-      deploy → Link repository, branch `main`). From now on only Git deploys — a CLI `netlify deploy` gets
-      overwritten by the next Git build.
-- [ ] `netlify.toml` already sets publish `public`, functions dir, esbuild, the asset-stamping build command,
-      cache headers and CSP `frame-ancestors`. Add the marketing site's origin to `frame-ancestors`.
-- [ ] Locally: `netlify link` to the site so `netlify env:*` and `netlify blobs:*` target it.
-- [ ] Env vars (see `configuration.md`). Verify with
-      `netlify api getEnvVars --data '{"account_id":"<team>","site_id":"<site>"}'` — names only, values masked.
-- [ ] Confirm the scheduled function registered: `netlify functions:list` shows `close-auction` with a schedule.
+## Prepare the tenant
 
-## B. Resend
-- [ ] Add the client's domain in Resend; publish the DKIM TXT and both SPF CNAMEs. **Receiving MX is optional**
-      (only for inbound). Status `partially_verified` with DKIM+SPF verified is fine for sending.
-- [ ] `NOTIFY_FROM` = `Name <sponsors@domain>`; `NOTIFY_EMAIL` = owner inbox (also reply-to).
-- [ ] If the sender domain has no MX at all, mail *to* that address bounces — say so to the client.
-- [ ] Send one real test (the smoke test only hits the mock): a lock during the dry run, or
-      `node --input-type=module -e 'import {invoiceEmail,sendEmail} from "./netlify/lib/sponsorship.mjs"; …'`
-      with `RESEND_API_KEY` in the environment. Check `GET https://api.resend.com/emails/<id>` → `delivered`.
+- [ ] Confirm the config filename matches its valid slug under `tenants/`.
+- [ ] Confirm the tenant's athlete, event, placements, pricing, deadline, copy, sold map, and contact details.
+- [ ] Add artwork under `public/tenants/<slug>/` and confirm all configured asset paths resolve there or are valid
+      root-relative/HTTP URLs.
+- [ ] Set `status` to `"draft"` and set `embedOrigins` to the exact host origins that may frame this portal.
+- [ ] Run `npm run build`; fix every validation error before deploying.
 
-## C. Stripe
-- [ ] Use the **client's** Stripe account. Confirm the account in Stripe dashboard → Settings before setting keys
-      (an agent-connected MCP account is not necessarily the client's).
-- [ ] Start with `sk_test_…`, run the dry run, then swap to `sk_live_…` (`netlify env:set … --secret`).
-- [ ] Invoice settings in Stripe: business name, logo, support email, and "Bank transfer" enabled if sponsors
-      will pay by ACH. Stripe does not email the invoice (`auto_advance:false`); the portal's Resend email does.
-- [ ] Payment terms are "due on receipt" in code (`days_until_due: 0`). Change in `createInvoice()` if needed.
+## Platform and services
 
-## D. Domain
-- [ ] Portal: CNAME `portal` → `<site>.netlify.app`. If DNS is Cloudflare, set **DNS only (grey cloud)** —
-      proxying rewrites cache headers to 4 h and breaks fresh deploys (mitigated by asset stamping, but avoid).
-- [ ] Add the custom domain in Netlify (or `netlify api updateSite --data '{"site_id":"…","body":{"custom_domain":"…"}}'`)
-      and wait for the certificate (`netlify api showSiteTLSCertificate`).
-- [ ] Set `PORTAL_URL`, `<link rel=canonical>`, `og:url`, `og:image`, `twitter:image` in `index.html` to the
-      final host. Redeploy (merge).
-- [ ] If a marketing site will own the "sponsors" subdomain and the portal is embedded, give the portal its
-      own host (e.g. `portal.`) and repoint the embed's `src` **and** its `PORTAL_ORIGIN` check together.
-- [ ] Optional vanity path (e.g. `athlete.com/portal`): a 301 at the marketing host (Cloudflare Redirect Rule,
-      Netlify `_redirects`, or a line in the Worker).
+- [ ] Create/configure the platform's Netlify site and connect the intended repository and production branch.
+- [ ] Set `PLATFORM_URL` to the public platform origin; tenant canonical and API links append `/<slug>`.
+- [ ] Set a strong global `PREVIEW_TOKEN` and `ADMIN_TOKEN`.
+- [ ] Configure `STRIPE_SECRET_KEY` for the correct Stripe account and `RESEND_API_KEY` for a verified sender domain.
+- [ ] Set a tenant's `contact.notifyFrom` and `contact.notifyEmail`. `NOTIFY_FROM` is only a global fallback sender.
+- [ ] Confirm Stripe and Resend service API bases are production defaults; use mock API bases only in local tests.
 
-## E. The real dry run (do this, every time)
-1. On the live site, pick an open placement, enter the client's name/email, upload a logo, **Lock it now**.
-2. Expect: success panel with pay link; sponsor email from `NOTIFY_FROM` with "Pay invoice" button; owner
-   notification with Stripe dashboard link; reload shows LOCKED with the logo.
-3. Stripe → Invoices → **void** the test invoice.
-4. Reset: `netlify blobs:get bids <ID> > backup.json && netlify blobs:delete bids <ID> --force && netlify blobs:delete logos <ID> --force`.
-   Confirm `curl https://PORTAL/api/bids` no longer lists it.
-5. Verify the portal lands on an OPEN placement and the embed on the marketing site shows no gap under the model.
+## Preview and verify
 
-## F. Distribution (what worked)
-- Branded host (`portal.athlete.com`), OG share image so links unfurl as the fight card.
-- Deep links per placement `https://PORTAL/#SF-L1` in personal outreach ("your logo on the front-left leg").
-- Embed on the marketing site + link in bio; screenshot LOCKED placements as they happen for social urgency.
-- Emails already carry the deadline; the portal shows "N of M available".
+- [ ] Deploy the tenant while it remains draft and open `/<slug>?preview=<PREVIEW_TOKEN>`.
+- [ ] Confirm a request without the preview token returns 404 and the preview response has `cache-control: no-store`.
+- [ ] Confirm the preview page sends `x-preview-token` on bid API requests and logo URLs carry `?preview=<PREVIEW_TOKEN>`; requests without the token remain 404.
+- [ ] Treat preview bids and locks as real records under the draft tenant slug; use mocks or approved test recipients because the normal email/invoice flow can run.
+- [ ] Confirm the tenant-specific CSP includes every required `embedOrigins` value.
+- [ ] Verify front/back placement projection, labels, sold logos, poster, model, ring, mobile layout, and embed sizing.
+- [ ] Run `scripts/smoke-test.sh <base> <slug> <OPEN-ID-A> <OPEN-ID-B>` with two available IDs.
+- [ ] Confirm the tenant-scoped bid and logo endpoints use `/api/<slug>/...` and do not expose other tenants' records.
+- [ ] Verify a test bid, notification email, Stripe invoice, recipient, sender, amount, and hosted payment link with
+      approved test credentials before accepting real bids.
+
+## Go live
+
+- [ ] Get the athlete's approval of the draft page, placement inventory, pricing, email copy, and sponsor flow.
+- [ ] Change `status` to `"live"`, rebuild, and merge/deploy through the normal Git flow.
+- [ ] Check `/<slug>` and `/api/<slug>/bids` on the live host; verify page headers and representative asset URLs.
+- [ ] Confirm the intended host can frame the portal and the `heck-portal-height` message is handled by its iframe.
+- [ ] Send the athlete the public URL, embed snippet, admin-close instructions, and bid/auction operating notes.
 
 ## Operations
 
-| Task | How |
+| Action | Procedure |
 | --- | --- |
-| See all bids and contact details | Netlify dashboard → Blobs → `bids`, or `netlify blobs:list bids` / `netlify blobs:get bids <ID>` |
-| Reopen a placement (test lock, withdrawn sponsor) | Void the invoice in Stripe, then `netlify blobs:delete bids <ID> --force` and `netlify blobs:delete logos <ID> --force` (back up first) |
-| Mark a placement sold outside the portal | Add it to the tenant's `sold` map in `portal.config.json` with the logo, rebuild, and merge |
-| Close the auction early / invoice winners now | `curl -X POST -H "authorization: Bearer $ADMIN_TOKEN" "https://PORTAL/api/close-auction?force=1"` |
-| Retry a failed invoice | Same endpoint without `?force=1` (also runs daily automatically) |
-| Change prices or deadline | `netlify env:set …` then redeploy (trigger a deploy in Netlify or merge a no-op) |
-| Extend the deadline after close | Update `BID_DEADLINE`; closed placements stay closed (`closed:true` on the record) unless the record is deleted |
-| Find an invoice | Owner notification email links to `dashboard.stripe.com/invoices/<id>`; also `invoice.id` on the Blobs record |
-| Rotate the admin token | `netlify env:set ADMIN_TOKEN "$(openssl rand -hex 24)" --secret --context production deploy-preview branch-deploy`, redeploy, store the new value |
+| Mark a placement sold outside the portal | Add it to the `sold` map in `tenants/<slug>.json`, include its logo, rebuild, and merge/deploy. |
+| Reopen a sold placement | Remove its entry from that tenant's `sold` map and rebuild/deploy. Back up any existing bid record first. |
+| View public bids | `GET /api/<slug>/bids`; the response does not expose bidder contact details. |
+| Close or retry one tenant | `POST /api/close-auction?tenant=<slug>` with `Authorization: Bearer $ADMIN_TOKEN`. |
+| Close or retry all non-draft tenants | `POST /api/close-auction` with the same admin token. |
+| Preview a draft | Open `/<slug>?preview=<PREVIEW_TOKEN>`; do not share the token publicly. |
 
-Invoice states on a record: `sent` (created + emailed), `failed` (Stripe error, owner alerted, daily retry),
-`skipped` (no `STRIPE_SECRET_KEY` at the time — invoice manually or set the key and let the job retry).
+Never send a real test email, create a real invoice, delete a Blobs record, or change a live placement without the
+owner's explicit approval.

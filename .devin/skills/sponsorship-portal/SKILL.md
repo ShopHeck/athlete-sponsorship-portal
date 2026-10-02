@@ -1,105 +1,86 @@
 ---
 name: sponsorship-portal
-description: Build, configure, launch and operate a 360° athlete sponsorship portal — a 3D placement picker with live bidding, Lock It Now buy-outs, Stripe invoicing and Resend email — from the heck-sponsor-360 template. Use when a fighter, athlete, team or event wants to sell logo placements on their kit, when setting up a new portal for a client, when changing placements/pricing/copy on an existing portal, when launching (Netlify, Stripe, Resend, domain, embed), or when operating one (reading bids, closing the auction, invoicing winners, resetting a placement).
+description: Build, configure, launch and operate a multi-tenant 360° athlete sponsorship portal with a 3D placement picker, live bidding, Lock It Now, Stripe invoicing and Resend email.
 ---
 
 # Sponsorship portal playbook
 
-This repository is the reference implementation (Michael "King Killer" Heckert, BKFC Clearwater) and the
-template resold to other athletes. Work through the phases in order and skip what the user has already done.
-Read a reference file when you reach the phase that needs it; do not guess env var names, placement IDs or copy.
+This repository is the multi-tenant platform for athlete sponsorship portals. Work through the phases in order and
+skip what the user has already completed. Read the relevant reference before editing configuration or launching.
 
 | Reference (`reference/`) | Read it for |
 | --- | --- |
 | `intake.md` | Client questionnaire and delivery checklist — Phase 0 |
-| `configuration.md` | Tenant JSON schema, placements, sold sponsors, copy, env vars, brand, poster/backdrop recipe, 3D model requirements, embed snippet — Phase 1 |
-| `launch-checklist.md` | Netlify / Resend / Stripe / domain setup, the real dry run, distribution, operations runbook — Phases 3–4 |
-| `gotchas.md` | Every trap hit on the original build, with cause and fix — read before debugging anything |
+| `configuration.md` | Tenant JSON, placements, sold sponsors, assets, copy, branding, ring and model setup — Phase 1 |
+| `launch-checklist.md` | Tenant preview, Netlify, Stripe, Resend, domain, embed, and operations — Phases 2–4 |
+| `gotchas.md` | Known build, API, and operational traps |
 
-## How the product works (30-second model)
+## How the platform works
 
-- `public/` is a static site: three.js (import map, unpkg) renders the athlete GLB; each placement is a rectangle
-  in metres projected onto the garment as a decal. Bidding UI, logo preview, poster backdrop, embed mode.
-- `netlify/functions/`: `bids.mjs` (GET public summary / POST bid or lock), `logo.mjs` (bidder logos),
-  `close-auction.mjs` (daily: invoices winners after the deadline, retries failed invoices),
-  `admin-close.mjs` (`POST /api/close-auction`, bearer `ADMIN_TOKEN`, `?force=1` closes early).
-- `portal.config.json`: the default tenant's identity, event, placements, pricing, ring, brand, sold sponsors, and copy.
-- `scripts/build.mjs`: renders the selected tenant config into the static page and function bundle before Netlify builds.
-- `netlify/lib/sponsorship.mjs`: tenant settings with environment overrides, placement labels, Stripe + Resend helpers.
-- Netlify Blobs: store `bids` (one JSON record per placement with history and invoice state) and `logos`.
-- Money: bids are non-binding until `BID_DEADLINE`. Lock It Now (or a bid ≥ `LOCK_PRICE`) creates a Stripe
-  customer + finalised `send_invoice` invoice due on receipt and emails the sponsor a pay link via Resend.
-  Stripe's own emails stay off; nothing is charged in the browser. Invoice state is saved on the record, so
-  re-runs never double-invoice.
-- `scripts/build.mjs` also cache-busts `styles.css` / `app.js` per deploy.
+- `tenants/<slug>.json` contains each tenant's identity, event, status, placements, pricing, ring, branding, sponsors,
+  copy, and contact details.
+- `public/tenants/<slug>/` contains that tenant's model, poster, and sponsor artwork. Relative paths resolve within
+  this directory.
+- `scripts/build.mjs` validates every tenant and bundles the configs and page template for Netlify Functions.
+- `netlify/functions/portal.mjs` renders each page at `/<slug>`. Draft tenants require the preview token; live and
+  closed tenants receive tenant-specific CSP and cache headers.
+- Bid and logo routes are `/api/<slug>/bids` and `/api/<slug>/logos/<id>`. Blobs stores are shared by name but keys
+  are tenant-prefixed (`<slug>/<placementId>`).
+- `netlify/lib/sponsorship.mjs` exports `forTenant(config, { portalUrl })`, which closes email, invoice, pricing,
+  and placement helpers over one tenant.
+- The scheduled job processes every non-draft tenant; the admin close endpoint may process all non-draft tenants or
+  one selected tenant.
 
 ## Phase 0 — Intake
 
-Complete `reference/intake.md` with the client. Minimum before code: athlete/event names and date; garments and
-the placement list with physical sizes; pre-sold sponsors and logo files; pricing (`MIN_BID`, `BID_INCREMENT`,
-`LOCK_PRICE`, `BID_DEADLINE` with timezone); benefits list; brand colours; portal domain; confirmed access to the
-client's **own** Stripe and Resend accounts; the owner-notification inbox.
+Complete `reference/intake.md` with the client. Collect the athlete and event details, garments and placement
+geometry, sold sponsors and artwork, pricing and deadline, branding, model/poster assets, embed origins, the
+owner-notification inbox, and access to the client's Stripe and Resend accounts.
 
-## Phase 1 — New portal from the template
+## Phase 1 — Configure a tenant
+
+1. Add `tenants/<slug>.json`, with a lowercase slug that matches the filename. Start with `"status": "draft"`.
+2. Add tenant-specific files under `public/tenants/<slug>/` and use relative asset paths in the config.
+3. Define every placement in `garments[].placements`. IDs must be unique within the tenant and no longer than
+   eight characters; the build generates the server allowlist and email labels from this data.
+4. Add confirmed placements and their logos to the config's `sold` map.
+5. Configure athlete, event, SEO, hero, benefits, copy, contact, pricing, brand, ring, and optional poster values.
+   Pricing, deadlines, event names, and notification inboxes come from tenant config, not per-site overrides.
+6. Run `npm run build`. Preview `/<slug>?preview=$PREVIEW_TOKEN`; the page sends the token in `x-preview-token`
+   on bid API requests and in the query string on logo image requests. After review, switch the tenant to `"live"`
+   and rebuild.
+
+Draft previews run the normal bid/lock flow. Those bids are real Blobs records scoped to the draft tenant, and can
+send real emails or create invoices if production services are configured. Use mocks or approved test recipients;
+the scheduled close job skips drafts.
+
+For schema and path details, follow `reference/configuration.md`.
+
+## Phase 2 — Local integration test
+
+Use only mock Stripe and Resend credentials:
 
 ```bash
-gh repo create <org>/<athlete>-sponsor-portal --private --clone --template ShopHeck/heck-sponsor-360
-cd <athlete>-sponsor-portal && npm install
+MOCK_PORT=4343 node scripts/mock-services.mjs
+PREVIEW_TOKEN=devpreview ADMIN_TOKEN=devtoken PLATFORM_URL=http://localhost:8890 \
+STRIPE_SECRET_KEY=sk_test_mock STRIPE_API_BASE=http://127.0.0.1:4343 \
+RESEND_API_KEY=re_mock RESEND_API_BASE=http://127.0.0.1:4343 \
+npx netlify dev --offline --port 8890
+scripts/smoke-test.sh http://localhost:8890 <slug> <OPEN-ID-A> <OPEN-ID-B>
+scripts/tenant-test.sh http://localhost:8890
 ```
-Then, in this order (details and file paths in `reference/configuration.md`):
-1. **Tenant config** → create one JSON file from `portal.config.json`; set `PORTAL_CONFIG` to its path when building.
-2. **3D model** → put `public/assets/models/<athlete>.glb` in the repo and set `model` in the tenant JSON. Scale and
-   facing are normalised automatically; check the FRONT view after loading. `?model=` remains available as an override.
-3. **Placements** → edit `garments[].placements` in the tenant JSON. IDs, labels, geometry, sold inventory, and the server allowlist are generated from this one source; do not edit application or function code for a new tenant.
-4. **Pre-sold sponsors** → add entries to the JSON `sold` map and store logos in `public/assets/sponsors/`.
-5. **Copy** → configure `seo`, `hero`, `event`, `benefits`, and `copy` in the tenant JSON.
-6. **Brand and ring** → set `brand` and `ring` in the tenant JSON; `poster: null` removes the poster UI and backdrop.
-7. **Poster / backdrop / share image** → ffmpeg recipe in `reference/configuration.md` into `public/assets/backdrop/`.
-8. **Pricing and deadline** → set `pricing` in the tenant JSON; `MIN_BID`, `BID_INCREMENT`, `LOCK_PRICE`, and `BID_DEADLINE` environment variables override those defaults.
 
-Build before previewing: `npm run build` (or `PORTAL_CONFIG=examples/demo-athlete.json npm run build`), then `npx netlify dev` (Blobs runs in a local sandbox). Small PRs, each based on `main`.
-
-## Phase 2 — Local end-to-end test (no real money, no real email)
-
-```bash
-node scripts/mock-services.mjs &                      # fake Stripe + Resend on :4242
-STRIPE_SECRET_KEY=sk_test_mock STRIPE_API_BASE=http://127.0.0.1:4242 \
-RESEND_API_KEY=re_mock RESEND_API_BASE=http://127.0.0.1:4242 \
-NOTIFY_EMAIL=owner@example.test PORTAL_URL=http://localhost:8888 ADMIN_TOKEN=devtoken \
-npx netlify dev --offline --port 8888 &
-scripts/smoke-test.sh http://localhost:8888 <OPEN-ID-A> <OPEN-ID-B>   # must print SMOKE TEST PASSED
-```
-Then open the page and confirm: it lands on an OPEN placement; a lock shows the pay link; a reload keeps LOCKED
-and the uploaded logo. `FAIL_INVOICE=1 node scripts/mock-services.mjs` exercises failure → owner alert → retry.
-Reset the local sandbox between runs with `rm -rf .netlify/blobs-serve`.
+Reset the local Blobs sandbox before each test run with `rm -rf .netlify/blobs-serve`. Never run test locks or real
+emails against production without the owner's explicit confirmation.
 
 ## Phase 3 — Launch
 
-Follow `reference/launch-checklist.md` sections A–E exactly. Highlights: link the Netlify site to the repo and
-deploy only through Git; secrets via `netlify env:set KEY value --secret --context production deploy-preview
-branch-deploy`; Resend domain verified (DKIM + SPF) and `NOTIFY_FROM` set; Stripe test key first, live key after
-the dry run; portal DNS record **DNS only** if Cloudflare; CSP `frame-ancestors` includes the marketing site.
-Finish with the **real dry run** (lock with the client's email → invoice + emails arrive → void in Stripe →
-`netlify blobs:delete bids <ID>` and `logos <ID>`).
+Follow `reference/launch-checklist.md` for the tenant's Netlify site, production credentials, domain, frame origins,
+and host embed. Confirm the draft preview, switch to live only after approval, then smoke-test the live page and
+tenant API.
 
 ## Phase 4 — Operate
 
-Use the runbook table in `reference/launch-checklist.md` → Operations. The daily job handles the deadline;
-the admin endpoint runs it on demand. Bids and contact details live in Netlify → Blobs → `bids`.
-
-## Rules carried over from the original build
-
-- Base every PR on `main`; never stack PRs (a stacked PR merged into its feature branch silently misses `main`).
-- After a merge, confirm the Git build is live (`curl` for a string from the change) before reporting done.
-- Placement IDs and labels are configured only in the tenant JSON; the build generates the frontend inventory and server allowlist.
-- Secrets never appear in chat or commits; set them straight into Netlify with `--secret`.
-- Deleting Blobs records is destructive: confirm the ID with the owner and back it up first
-  (`netlify blobs:get bids <ID> > backup.json`).
-- Real sends (test email, test lock) are real-world side effects: confirm first, use the owner's own address.
-- Address every automated PR-review comment (fix or justify, reply on the thread) before calling a PR mergeable.
-
-## Notes per environment
-
-- **Devin / Claude Code / Codex CLI**: you can run everything above directly. Prefer the smoke test over manual curl.
-- **Claude.ai / ChatGPT (no shell)**: act as the architect — run the intake, then hand the operator exact
-  commands, file diffs and checklist items from the references, and ask for outputs to verify each step.
+Use `/api/<slug>/bids` for that tenant's public bid summary. `POST /api/close-auction` requires `ADMIN_TOKEN`;
+pass `?tenant=<slug>` to process one non-draft tenant or omit it to process every non-draft tenant. Confirm with
+the owner before deleting Blobs records or sending a real test email.

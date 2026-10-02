@@ -23,7 +23,8 @@ const formatCopy = (template, values = {}) => String(template).replace(/\{([A-Za
 
 const SIDE_AZIMUTH = { front: 0, back: Math.PI, left: Math.PI / 2, right: -Math.PI / 2 };
 const state = { garment: garments[0].id, selected: firstPlacement.id, hovered: null, logos: {}, logoImages: {}, sold: {}, soldImages: {}, bidImages: {}, azimuth: 0, bids: {}, auction: { minBid: config.pricing.minBid, increment: config.pricing.increment, lockPrice: config.pricing.lockPrice, deadline: config.pricing.deadline, online: false } };
-const BIDS_URL = "/api/bids";
+const BIDS_URL = `/api/${config.slug}/bids`;
+const previewHeaders = config.previewToken ? { "x-preview-token": config.previewToken } : {};
 const isLocked = (id) => Boolean(state.bids[id]?.locked || state.bids[id]?.closed);
 const isSold = (id) => Boolean(state.sold[id]) || isLocked(id);
 const usd = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: config.pricing.currency.toUpperCase(), maximumFractionDigits: 0 }).format(Math.round(n));
@@ -577,7 +578,7 @@ openPlacementsBtn.addEventListener("click", () => {
 /* ------------------------------------------------------------ bidding */
 async function loadBids() {
   try {
-    const res = await fetch(BIDS_URL, { cache: "no-store", signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(8000) : undefined });
+    const res = await fetch(BIDS_URL, { cache: "no-store", headers: previewHeaders, signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(8000) : undefined });
     if (!res.ok) throw new Error(res.statusText);
     const data = await res.json();
     state.auction = { minBid: data.minBid, increment: data.increment, lockPrice: data.lockPrice, deadline: data.deadline, online: true };
@@ -592,7 +593,9 @@ async function loadBids() {
 async function loadBidLogos() {
   await Promise.all(Object.values(state.bids).map(async (b) => {
     if (!b.logo) { delete state.bidImages[b.id]; return; }
-    const url = new URL(b.logo, location.href).href;
+    const logoUrl = new URL(b.logo, location.href);
+    if (config.previewToken) logoUrl.searchParams.set("preview", config.previewToken);
+    const url = logoUrl.href;
     if (state.bidImages[b.id]?.src === url) return;
     try { state.bidImages[b.id] = await loadImage(url); }
     catch { console.warn("Bidder logo failed to load", b.id); }
@@ -655,7 +658,7 @@ async function submitBid(type) {
   const busy = type === "lock" ? lockLabel : bidButton;
   const label = busy.textContent; busy.textContent = config.copy.sending;
   try {
-    const res = await fetch(BIDS_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const res = await fetch(BIDS_URL, { method: "POST", headers: { "content-type": "application/json", ...previewHeaders }, body: JSON.stringify(payload) });
     const data = await res.json().catch(() => ({}));
     if (data.placement) { state.bids[spot.id] = data.placement; await loadBidLogos(); }
     if (!res.ok) { showBidError(data.error || config.copy.saveFailed); renderSlots(); renderInventory(); renderSelection(); return; }
