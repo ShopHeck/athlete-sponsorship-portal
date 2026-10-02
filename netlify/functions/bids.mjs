@@ -1,19 +1,16 @@
 import { getStore } from "@netlify/blobs";
-import {
-  MIN_BID, INCREMENT, LOCK_PRICE, DEADLINE, isPlacementId, json, usd, describePlacement, soldPlacements, DASHBOARD_SITE_NAME,
-  tryEmail, notifyOwner, bidConfirmationEmail, outbidEmail, invoicePlacement
-} from "../lib/sponsorship.mjs";
+import { forTenant, json } from "../lib/sponsorship.mjs";
+import { resolveTenantForApi } from "../lib/tenants.mjs";
 
 /* ---------------------------------------------------------------------------
    Sponsor bidding for open placements.
 
-   GET  /api/bids            → public summary per placement (no contact details)
-   POST /api/bids            → { id, type: "bid" | "lock", amount?, company, name, email, phone, note? }
+   GET  /api/:slug/bids      → public summary per placement (no contact details)
+   POST /api/:slug/bids      → { id, type: "bid" | "lock", amount?, company, name, email, phone, note? }
 
    Bids start at MIN_BID and must beat the current high bid by at least INCREMENT.
    "lock" buys the placement outright for LOCK_PRICE and closes bidding on it.
-   Records live in the Netlify Blobs store "bids" (one key per placement) and
-   are viewable in the Netlify dashboard → Blobs.
+   Records live in the Netlify Blobs store "bids" under tenant-prefixed keys.
 
    Emails (Resend): bidder gets a confirmation, the previous high bidder an
    outbid notice, the portal owner a copy of everything. Locks are invoiced immediately
@@ -22,7 +19,7 @@ import {
 --------------------------------------------------------------------------- */
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const publicView = (id, rec) => ({
+const publicView = (slug, id, rec) => ({
   id,
   high: rec.high,
   company: rec.bidder?.company || null,
@@ -30,7 +27,7 @@ const publicView = (id, rec) => ({
   locked: Boolean(rec.locked),
   lockedBy: rec.locked ? rec.lockedBy?.company || null : null,
   closed: Boolean(rec.closed),
-  logo: rec.logo ? `/api/logos/${id}?v=${encodeURIComponent(rec.logo.at)}` : null
+  logo: rec.logo ? `/api/${slug}/logos/${id}?v=${encodeURIComponent(rec.logo.at)}` : null
 });
 
 const clean = (v, max = 120) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -47,23 +44,39 @@ function parseLogo(v) {
   return { type: m[1], bytes };
 }
 
-export default async (req) => {
+export default async (req, context) => {
+  const slug = context.params?.slug || "";
+  const tenant = await resolveTenantForApi(req, context);
+  if (!tenant) return json({ error: "Tenant not found." }, 404);
+  const portalBase = (process.env.PLATFORM_URL || new URL(req.url).origin).replace(/\/+$/, "");
+  const services = forTenant(tenant, { portalUrl: `${portalBase}/${slug}` });
+  const {
+    MIN_BID, INCREMENT, LOCK_PRICE, DEADLINE, isPlacementId, usd, describePlacement,
+    soldPlacements, DASHBOARD_SITE_NAME, tryEmail, notifyOwner, bidConfirmationEmail,
+    outbidEmail, invoicePlacement
+  } = services;
   const store = getStore({ name: "bids", consistency: "strong" });
+  const prefix = `${slug}/`;
+  const storageKey = (id) => `${prefix}${id}`;
+
+  if (req.method !== "GET" && req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (tenant.status === "closed" && req.method === "POST") return json({ error: "Bidding is closed." }, 409);
 
   if (req.method === "GET") {
-    const { blobs } = await store.list();
+    const { blobs } = await store.list({ prefix });
     const placements = {};
     await Promise.all(blobs.map(async ({ key }) => {
+      const id = key.slice(prefix.length);
+      if (!isPlacementId(id)) return;
       const rec = await store.get(key, { type: "json" });
-      if (rec) placements[key] = publicView(key, rec);
+      if (rec) placements[id] = publicView(slug, id, rec);
     }));
     return json({ minBid: MIN_BID, increment: INCREMENT, lockPrice: LOCK_PRICE, deadline: DEADLINE, placements });
   }
 
-  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-
   let body;
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON body." }, 400); }
+  body ||= {};
 
   const id = clean(body.id, 8);
   const type = body.type === "lock" ? "lock" : "bid";
@@ -77,10 +90,10 @@ export default async (req) => {
   if (!EMAIL.test(bidder.email)) return json({ error: "A valid email address is required." }, 400);
   if (logo?.error) return json({ error: logo.error }, 400);
   if (Date.now() > new Date(DEADLINE).getTime()) return json({ error: "Bidding has closed for this event." }, 409);
-  if ((await soldPlacements(req.url)).has(id)) return json({ error: "This placement is already sold." }, 409);
+  if ((await soldPlacements()).has(id)) return json({ error: "This placement is already sold." }, 409);
 
-  const rec = (await store.get(id, { type: "json" })) || { high: 0, bidder: null, history: [], locked: false };
-  if (rec.locked || rec.closed) return json({ error: "This placement has been locked by another sponsor.", placement: publicView(id, rec) }, 409);
+  const rec = (await store.get(storageKey(id), { type: "json" })) || { high: 0, bidder: null, history: [], locked: false };
+  if (rec.locked || rec.closed) return json({ error: "This placement has been locked by another sponsor.", placement: publicView(slug, id, rec) }, 409);
 
   const now = new Date().toISOString();
   const previous = rec.high ? rec.history[rec.history.length - 1] : null;
@@ -91,7 +104,7 @@ export default async (req) => {
     amount = Math.round(Number(body.amount));
     const floor = Math.max(MIN_BID, rec.high ? rec.high + INCREMENT : 0);
     if (!Number.isFinite(amount) || amount < floor) {
-      return json({ error: `Bid must be at least ${usd(floor)}.`, placement: publicView(id, rec) }, 409);
+      return json({ error: `Bid must be at least ${usd(floor)}.`, placement: publicView(slug, id, rec) }, 409);
     }
     if (amount >= LOCK_PRICE) amount = LOCK_PRICE;
   }
@@ -104,17 +117,17 @@ export default async (req) => {
   rec.bidder = bidder;
   rec.history.push({ amount, type: rec.locked ? "lock" : "bid", at: now, ...bidder, note, logo: Boolean(logo) });
   if (logo) {
-    await getStore({ name: "logos", consistency: "strong" }).set(id, logo.bytes, { metadata: { type: logo.type, company: bidder.company, email: bidder.email, at: now } });
+    await getStore({ name: "logos", consistency: "strong" }).set(storageKey(id), logo.bytes, { metadata: { type: logo.type, company: bidder.company, email: bidder.email, at: now } });
     rec.logo = { type: logo.type, size: logo.bytes.length, company: bidder.company, at: now };
   } else if (rec.logo && previous && previous.email !== bidder.email) {
     delete rec.logo; // a new high bidder without artwork shouldn't inherit the previous bidder's logo
   }
-  await store.setJSON(id, rec);
+  await store.setJSON(storageKey(id), rec);
 
   if (rec.locked) {
     await invoicePlacement(store, id, rec, "lock");
     if (previous && previous.email !== bidder.email) await tryEmail(outbidEmail(id, rec, previous));
-    return json({ ok: true, placement: publicView(id, rec), invoiceUrl: rec.invoice?.url || null, emailed: Boolean(rec.invoice?.emailed) });
+    return json({ ok: true, placement: publicView(slug, id, rec), invoiceUrl: rec.invoice?.url || null, emailed: Boolean(rec.invoice?.emailed) });
   }
 
   const label = `New high bid ${usd(amount)}`;
@@ -128,7 +141,7 @@ export default async (req) => {
       `Contact: ${bidder.name}`,
       `Email: ${bidder.email}`,
       `Phone: ${bidder.phone || "-"}`,
-      logo ? `Logo: ${new URL(`/api/logos/${id}`, req.url)}` : "Logo: not uploaded",
+      logo ? `Logo: ${new URL(`/api/${slug}/logos/${id}`, req.url)}` : "Logo: not uploaded",
       note ? `Note: ${note}` : "",
       previous ? `Outbid: ${previous.company} (${previous.email}) at ${usd(previous.amount)}` : "",
       `Time: ${now}`,
@@ -138,7 +151,7 @@ export default async (req) => {
     ])
   ]);
 
-  return json({ ok: true, placement: publicView(id, rec) });
+  return json({ ok: true, placement: publicView(slug, id, rec) });
 };
 
-export const config = { path: "/api/bids" };
+export const config = { path: "/api/:slug/bids" };
