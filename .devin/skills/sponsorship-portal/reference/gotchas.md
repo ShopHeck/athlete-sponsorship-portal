@@ -13,7 +13,7 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
 - **New HTML with old CSS/JS → broken layout (giant poster card, grey floor, undarkened backdrop).** The custom
   domain was proxied by Cloudflare, which rewrote `Cache-Control` to `max-age=14400`. Fixed by stamping
   `styles.css?v=<commit>` / `app.js?v=<commit>` at build (`scripts/stamp-assets.mjs`) and sending
-  `must-revalidate` for CSS/JS/`sponsors.json`. Still recommend grey-cloud DNS for Netlify hosts.
+  `must-revalidate` for CSS/JS. Still recommend grey-cloud DNS for Netlify hosts.
 - **`netlify deploy` fails with "Cannot find module build.mjs"** on a site whose `netlify.toml` has a build
   command you don't have. Use `--no-build --dir .`.
 - **A site's source is nowhere on disk / repo is stale.** Recover the exact published deploy via the API:
@@ -53,8 +53,8 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
 - **Bid form and Lock button below the fold on laptops.** Standalone desktop layout is now an exact 100vh flex
   shell; the inventory list absorbs the slack and scrolls. Scoped to `min-width:821px and min-height:600px` so
   short landscape phones keep the scrolling layout.
-- **Placement rejected as "Unknown placement".** IDs must match in `app.js`, the `PLACEMENT_ID` regex and
-  `describePlacement()`; the smoke test's default IDs must be open (not in `sponsors.json`).
+- **Placement rejected as "Unknown placement".** IDs come from the selected tenant's `portal.config.json`;
+  ensure the smoke-test IDs are not in its `sold` map.
 - **Headless timing.** In headless Chromium the WebGL scene runs slowly; camera tweens take seconds, so wait
   longer after clicks before asserting rotation-dependent state.
 

@@ -1,24 +1,29 @@
-# Michael Heckert — BKFC Clearwater Sponsorship Portal
+# Athlete Sponsorship Portal
 
-Standalone, embeddable 360° sponsorship placement selector for Team Heck. Static HTML/CSS/JS with no build step.
+Config-driven, embeddable 360° sponsorship placement portal. `portal.config.json` is the committed Michael
+Heckert/BKFC Clearwater tenant; build another athlete by selecting a different JSON file without editing code.
 
 ## Inventory
 
-| Garment | View | Placements |
-| --- | --- | --- |
-| Fight shorts | Front | `SF-L1..3` (left leg), `SF-R1..3` (right leg) |
-| Fight shorts | Back | `SB-L1..3` (left leg), `SB-R1..3` (right leg) |
-| Black T-shirt | Front | `TF-01..12` (4 × 3 grid) |
-| Black T-shirt | Back | `TB-01` (across the shoulder blades) |
-| Black T-shirt | Sleeves | `TS-01..03` (each shown on both sleeves) |
+The selected tenant's garments, placement geometry and labels, sponsor inventory, prices, ring, branding and copy
+are all configured in its JSON file. Michael's config contains the existing 28-placement inventory.
 
-Placements are data-driven in `app.js` (`placements`), so pricing, status, or a future GLB model can be added without rebuilding the selector.
+The build renders `src/index.template.html` to `public/index.html` and generates the server config bundle. The
+generated files are ignored by Git.
 
 ## Run locally
 
 ```bash
-python3 -m http.server 4173
-# open http://127.0.0.1:4173/
+npm install
+npm run build
+npx netlify dev
+# open http://localhost:8888/
+```
+
+To build the included fictional Jordan Reyes demo instead:
+
+```bash
+PORTAL_CONFIG=examples/demo-athlete.json npm run build
 ```
 
 ## Reusing this for another athlete or event
@@ -38,31 +43,40 @@ has the per-tool steps.
 ### Local end-to-end test (no real Stripe or email)
 
 ```sh
+npm run build                              # build the selected tenant first
 node scripts/mock-services.mjs &          # fake Stripe + Resend on :4242
 STRIPE_SECRET_KEY=sk_test_mock STRIPE_API_BASE=http://127.0.0.1:4242 \
 RESEND_API_KEY=re_mock RESEND_API_BASE=http://127.0.0.1:4242 \
 NOTIFY_EMAIL=owner@example.test PORTAL_URL=http://localhost:8888 ADMIN_TOKEN=devtoken \
 npx netlify dev --offline --port 8888 &
-scripts/smoke-test.sh http://localhost:8888 TS-02 TF-09   # two OPEN placement ids
+scripts/smoke-test.sh http://localhost:8888 SB-R1 TF-12   # two OPEN placement ids
 ```
+
+Choose open IDs from the selected config's `garments[].placements`, excluding entries in `sold`.
 
 ## Deploy
 
-Deploy on Netlify: static files live in `public/`, and the bidding API is a Netlify Function (`netlify/functions/bids.mjs`, served at `/api/bids`) backed by Netlify Blobs. `netlify.toml` configures both. Run locally with `npm install && npx netlify dev`.
+Deploy on Netlify: the build generates the static page and function config, and the bidding API is a Netlify
+Function (`netlify/functions/bids.mjs`, served at `/api/bids`) backed by Netlify Blobs. `netlify.toml` configures
+both. Run locally with `npm install && npm run build && npx netlify dev`.
 
 ### Bidding
 
-Open placements accept bids (min `$500`, `$50` increments) and a **Lock it now** buy-out at `$2,500` that closes the placement. Bids and locks are stored per placement in the `bids` Blobs store (company, contact, email, phone, note, full history); the public API only exposes the high bid, bidder company and count.
+Open placements accept bids using the selected tenant's `pricing.minBid`, `pricing.increment`, and
+`pricing.lockPrice` values. Environment variables can override those defaults. Bids and locks are stored per
+placement in the `bids` Blobs store (company, contact, email, phone, note, full history); the public API only
+exposes the high bid, bidder company and count.
 
 **Logos** — a logo uploaded before bidding is downscaled in the browser (max 800px PNG) and sent with the bid. It is stored in the `logos` Blobs store (one key per placement, 1.5 MB cap, PNG/JPG/WebP only), served at `/api/logos/:id`, and rendered on the model and detail card once the placement is locked or won. A new high bidder without artwork clears the previous bidder's logo.
 
-**Emails (Resend)** — the bidder gets a confirmation, the previous high bidder an "outbid" notice, and Michael a copy of everything.
+**Emails (Resend)** — the bidder gets a confirmation, the previous high bidder an "outbid" notice, and the
+configured portal owner a copy of everything.
 
 **Invoices (Stripe)** — no card is taken in the portal. Instead:
 
 - **Lock it now** (or a bid ≥ `$2,500`) creates a Stripe customer + finalised invoice for the lock price, *due on receipt*, and emails the sponsor a **Pay invoice** link (Stripe's hosted invoice page) via Resend. The same link is shown in the portal right after locking. Stripe itself does not send email.
 - **Auction winners** — `netlify/functions/close-auction.mjs` runs daily; once `BID_DEADLINE` has passed it marks each open placement with bids as closed and invoices the high bidder the same way. It also retries any lock whose invoice failed. Trigger it manually (or force-close early) with `curl -X POST -H "authorization: Bearer $ADMIN_TOKEN" https://<site>/api/close-auction[?force=1]`; locally, `npx netlify functions:invoke close-auction`.
-- Every invoice is recorded on the placement (`invoice.id/url/status`) so re-runs never double-invoice. Failures email Michael with the Stripe error.
+- Every invoice is recorded on the placement (`invoice.id/url/status`) so re-runs never double-invoice. Failures email the configured owner with the Stripe error.
 
 Environment variables (Netlify → Site configuration → Environment variables):
 
@@ -70,17 +84,20 @@ Environment variables (Netlify → Site configuration → Environment variables)
 | --- | --- |
 | `STRIPE_SECRET_KEY` | **Required for invoicing.** `sk_live_…` in production; use `sk_test_…` locally. |
 | `RESEND_API_KEY` | **Required for email.** |
-| `NOTIFY_FROM` | Resend sender; defaults to `Team Heck Sponsorships <sponsors@michaelheckert.com>` (michaelheckert.com is verified in Resend). |
-| `NOTIFY_EMAIL` | Michael's inbox; also the reply-to on sponsor emails (default `michaelheckert@heckholdings.com`). |
-| `PORTAL_URL` | Public portal URL used in emails (defaults to Netlify's `URL`). |
+| `PORTAL_CONFIG` | Selects a tenant config at build time; defaults to `portal.config.json`. |
+| `NOTIFY_FROM` | Resend sender; defaults to `contact.notifyFrom` in the tenant config. |
+| `NOTIFY_EMAIL` | Owner inbox and sponsor-email reply-to; defaults to `contact.notifyEmail`. |
+| `PORTAL_URL` | Public portal URL used in emails; defaults to the tenant's `portalUrl` (Netlify's `URL` is also supported). |
 | `ADMIN_TOKEN` | Enables `POST /api/close-auction` for manual runs. |
-| `MIN_BID`, `BID_INCREMENT`, `LOCK_PRICE`, `BID_DEADLINE`, `EVENT_NAME` | Auction settings (defaults `500`, `50`, `2500`, `2026-10-16T23:59:59-04:00`, `BKFC Clearwater`). |
+| `MIN_BID`, `BID_INCREMENT`, `LOCK_PRICE`, `BID_DEADLINE`, `EVENT_NAME` | Optional overrides for tenant `pricing` and `event.name`. |
 
 For local testing set `STRIPE_API_BASE` / `RESEND_API_BASE` to point the functions at a mock server.
 
 ## Fight poster & share image
 
-`public/assets/backdrop/` holds the optimised BKFC poster set: `stage-900/1500.webp` (pre-blurred, darkened backdrop behind the 3D stage — the model floor is a shadow-only material so the poster shows through), `fight-poster.webp` (poster card in the intro panel + lightbox), and `og-image.jpg` (1200×630 social share image referenced by the `og:`/`twitter:` meta tags). To swap in a new poster, regenerate with `ffmpeg` (see git history for the exact filters) and keep the same filenames.
+`public/assets/backdrop/` holds the optimised poster set configured in the tenant's `poster` object: stage images,
+poster card, and social share image. Setting `poster` to `null` removes the poster card/dialog, stage backdrop,
+preload, and poster-based OG image.
 
 ## Embed on teamheck.netlify.app
 
@@ -103,11 +120,18 @@ addEventListener("message", (e) => {
 
 ## 3D viewer
 
-The stage is a real-time three.js (WebGL) scene loaded from the unpkg import map in `index.html`. The athlete is `assets/models/heckert.glb`, a textured full-body mesh of Michael generated with Meshy (multi-image-to-3D) from his reference photos, already dressed in the plain black T-shirt and orange fight shorts, then Draco/WebP-compressed with `@gltf-transform/cli`. Every placement is a `DecalGeometry` patch projected onto the mesh surface (clickable, raycast-selected, and textured with the uploaded logo). Placement coordinates live at the top of `app.js`.
+The stage is a real-time three.js (WebGL) scene loaded from the unpkg import map in the HTML template. The selected
+tenant's `model` path identifies its textured full-body GLB. Every placement is a `DecalGeometry` patch projected
+onto the mesh surface (clickable, raycast-selected, and textured with the uploaded logo). Placement coordinates
+and labels live in the tenant JSON.
 
 ### Swapping the model
 
-The Meshy mesh is an AI approximation, not a scan. To replace it with a photogrammetry capture (Polycam / Luma AI) or an artist-made GLB, drop the file in `assets/models/` and load the portal with `?model=assets/models/<file>.glb` (or change `DEFAULT_MODEL` in `app.js`). The GLB is scaled to 1.86 m, centred on the floor and auto-flipped to face +Z; placements are re-projected onto whatever surface the rays hit, so a model in the same relaxed stance keeps the inventory intact (adjust the `x`/`y` coordinates in `app.js` if the pose differs).
+The existing Heckert mesh is an AI approximation, not a scan. To replace it with a photogrammetry capture (Polycam /
+Luma AI) or an artist-made GLB, drop the file in `public/assets/models/` and set its path in the tenant JSON (or
+use `?model=assets/models/<file>.glb` to preview an override). The GLB is scaled to 1.86 m, centred on the floor
+and auto-flipped to face +Z; placements are re-projected onto the surface, so a model in a similar stance can
+reuse the existing geometry.
 
 ## Reference photography
 
@@ -115,13 +139,12 @@ The Meshy mesh is an AI approximation, not a scan. To replace it with a photogra
 
 ## Sold placements (confirmed sponsors)
 
-Confirmed sponsors are listed in `public/assets/sponsors.json`, keyed by placement ID. Each entry names the sponsor and points to a logo file (transparent PNG or SVG, roughly the aspect ratio of the placement) stored in `public/assets/sponsors/`:
+Confirmed sponsors are listed in the selected tenant's `sold` map, keyed by placement ID. Each entry names the
+sponsor and points to a logo file (transparent PNG or SVG, roughly the aspect ratio of the placement) stored in
+`public/assets/sponsors/`:
 
 ```json
-{
-  "SF-R1": { "sponsor": "HKA USA", "logo": "assets/sponsors/hka-usa.png" },
-  "TS-01": { "sponsor": "UFC Gym", "logo": "assets/sponsors/ufc-gym.png" }
-}
+{ "sold": { "SF-R1": { "sponsor": "HKA USA", "logo": "assets/sponsors/hka-usa.png" } } }
 ```
 
 Sold placements render the sponsor's logo directly on the garment, show `SOLD` in the inventory and selection card, and cannot be previewed or requested. Sleeve IDs (`TS-0x`) mark both sleeves. Delete an entry to reopen the placement.

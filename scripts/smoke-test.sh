@@ -2,6 +2,7 @@
 # End-to-end smoke test of the bidding API against a local `netlify dev` that is pointed at
 # scripts/mock-services.mjs. Nothing real is created. Works with macOS bash 3.2.
 #
+#   Build the selected tenant first: npm run build (or PORTAL_CONFIG=examples/demo-athlete.json npm run build)
 #   Terminal 1:  node scripts/mock-services.mjs
 #   Terminal 2:  STRIPE_SECRET_KEY=sk_test_mock STRIPE_API_BASE=http://127.0.0.1:4242 \
 #                RESEND_API_KEY=re_mock RESEND_API_BASE=http://127.0.0.1:4242 \
@@ -9,8 +10,8 @@
 #                npx netlify dev --offline --port 8888
 #   Terminal 3:  scripts/smoke-test.sh [base-url] [open-placement-A] [open-placement-B]
 #
-# Pick two placements that are NOT in public/assets/sponsors.json and have no record in the local Blobs
-# sandbox (delete .netlify/blobs-serve to reset). Exit code is non-zero on any failed expectation.
+# Pick two placements defined in the selected config, absent from its `sold` map, and with no record in
+# the local Blobs sandbox (delete .netlify/blobs-serve to reset). Exit code is non-zero on any failed expectation.
 set -u
 BASE="${1:-http://localhost:8888}"; A="${2:-SB-R1}"; B="${3:-TF-12}"; TOKEN="${ADMIN_TOKEN:-devtoken}"
 fail=0

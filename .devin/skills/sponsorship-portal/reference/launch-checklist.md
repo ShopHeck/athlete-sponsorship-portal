@@ -61,7 +61,7 @@
 | --- | --- |
 | See all bids and contact details | Netlify dashboard → Blobs → `bids`, or `netlify blobs:list bids` / `netlify blobs:get bids <ID>` |
 | Reopen a placement (test lock, withdrawn sponsor) | Void the invoice in Stripe, then `netlify blobs:delete bids <ID> --force` and `netlify blobs:delete logos <ID> --force` (back up first) |
-| Mark a placement sold outside the portal | Add it to `public/assets/sponsors.json` with the logo; merge |
+| Mark a placement sold outside the portal | Add it to the tenant's `sold` map in `portal.config.json` with the logo, rebuild, and merge |
 | Close the auction early / invoice winners now | `curl -X POST -H "authorization: Bearer $ADMIN_TOKEN" "https://PORTAL/api/close-auction?force=1"` |
 | Retry a failed invoice | Same endpoint without `?force=1` (also runs daily automatically) |
 | Change prices or deadline | `netlify env:set …` then redeploy (trigger a deploy in Netlify or merge a no-op) |

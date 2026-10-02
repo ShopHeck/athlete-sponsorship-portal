@@ -9,18 +9,19 @@ https://sponsors.michaelheckert.com).
 operating one. `reference/gotchas.md` first when debugging.
 
 ## Commands
-- Dev server (functions + Blobs sandbox): `npx netlify dev`
+- Build the selected tenant (`portal.config.json` by default): `npm run build`
+- Dev server (functions + Blobs sandbox): run `npm run build` first, then `npx netlify dev`
 - End-to-end test, no real Stripe/Resend:
   `node scripts/mock-services.mjs &` then `netlify dev` with `STRIPE_API_BASE`/`RESEND_API_BASE=http://127.0.0.1:4242`
   (see `scripts/smoke-test.sh` header), then `scripts/smoke-test.sh http://localhost:8888 <OPEN-ID-A> <OPEN-ID-B>`
   → must print `SMOKE TEST PASSED`. Reset the sandbox with `rm -rf .netlify/blobs-serve`.
-- Syntax check: `for f in public/app.js netlify/lib/*.mjs netlify/functions/*.mjs scripts/*.mjs; do node --check "$f" || exit 1; done`
+- Syntax check: `for f in public/app.js public/arena.js netlify/lib/*.mjs netlify/functions/*.mjs scripts/*.mjs; do node --check "$f" || exit 1; done`
 - Package the skill for Claude / Codex / ChatGPT: `scripts/package-skill.sh` → `dist/skill/`
 - Production deploys happen from Git (`main`) via Netlify; do not `netlify deploy` a linked site.
 
 ## Rules
 - Base PRs on `main`; never stack. Verify the Netlify build is live after merging.
-- Placement IDs must match in `public/app.js`, `netlify/lib/sponsorship.mjs` (`PLACEMENT_ID`, `describePlacement`) and the smoke test.
+- Placement IDs and labels are defined only in the selected tenant config's `garments[].placements`; the build generates the server allowlist and labels from it.
 - Secrets only via `netlify env:set … --secret`; never in chat, code or commits.
 - Blobs deletions are destructive: confirm the placement ID and back up first.
 - Real test emails / locks need explicit confirmation and the owner's own address.

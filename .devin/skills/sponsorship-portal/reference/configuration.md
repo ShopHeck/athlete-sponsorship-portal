@@ -12,68 +12,68 @@ Non-secrets: `netlify env:set KEY value`. Changes apply on the **next deploy**.
 | --- | --- | --- |
 | `STRIPE_SECRET_KEY` | for invoicing | `sk_test_…` for the dry run, `sk_live_…` for launch. Without it a lock still saves and emails the owner an "invoice NOT created" alert; the daily job invoices once the key exists. |
 | `RESEND_API_KEY` | for email | Resend API key from the **client's** account. |
-| `NOTIFY_FROM` | yes | Sender, e.g. `Team X Sponsorships <sponsors@athlete.com>`. Domain must be verified in Resend (DKIM + SPF). `onboarding@resend.dev` only delivers to the account owner. |
-| `NOTIFY_EMAIL` | yes | Owner inbox for every bid/lock/invoice notification; also reply-to on sponsor emails. |
-| `PORTAL_URL` | yes | Public portal URL used in emails/deep links (falls back to Netlify's `URL`). |
+| `PORTAL_CONFIG` | no | Local build selection; defaults to root `portal.config.json`. Netlify builds use the committed default unless configured otherwise. |
+| `NOTIFY_FROM` | no | Sender; defaults to `contact.notifyFrom` in the selected config. Domain must be verified in Resend (DKIM + SPF). `onboarding@resend.dev` only delivers to the account owner. |
+| `NOTIFY_EMAIL` | no | Owner inbox for every bid/lock/invoice notification and reply-to on sponsor emails; defaults to `contact.notifyEmail`. |
+| `PORTAL_URL` | no | Public portal URL used in emails/deep links; defaults to `portalUrl` in the selected config (Netlify's `URL` also remains supported). |
 | `ADMIN_TOKEN` | yes | Random secret for `POST /api/close-auction`. Generate: `openssl rand -hex 24`. |
-| `MIN_BID` / `BID_INCREMENT` / `LOCK_PRICE` | no | Defaults 500 / 50 / 2500 (USD). |
-| `BID_DEADLINE` | yes | ISO 8601 with offset, e.g. `2026-10-16T23:59:59-04:00`. Bids are rejected after it; the daily job closes and invoices after it. |
-| `EVENT_NAME` | yes | e.g. `BKFC Clearwater` — invoice line items, email header. |
+| `MIN_BID` / `BID_INCREMENT` / `LOCK_PRICE` | no | Override `pricing.minBid`, `pricing.increment`, and `pricing.lockPrice` in the selected config. |
+| `BID_DEADLINE` | no | Overrides `pricing.deadline`, an ISO 8601 timestamp with offset. Bids are rejected after it; the daily job closes and invoices after it. |
+| `EVENT_NAME` | no | Overrides `event.name`, used in invoice line items and email headers. |
 | `STRIPE_API_BASE` / `RESEND_API_BASE` | local only | Point at `scripts/mock-services.mjs` for tests. Never set in production. |
 
-## Placements (`public/app.js`)
+Tenant values live in one JSON file (`portal.config.json` by default). Build the selected tenant before serving it:
 
-```js
-const placements = {
-  shorts: { front: [...], back: [...] },
-  shirt:  { front: [...], back: [...], sleeves: [...] }
-};
-// each: { id: "SF-L1", name: "Front left · Upper", detail: "...", side: "front"|"back"|"left"|"right",
-//         x, y, w, h /* metres, model normalised to 1.86 m tall, feet at y=0, facing +z */,
-//         mirror?: "right" /* sleeves: also project on the mirrored side */ }
+```bash
+npm run build
+# or: PORTAL_CONFIG=examples/demo-athlete.json npm run build
+npx netlify dev
 ```
+
+`scripts/build.mjs` renders `src/index.template.html` to `public/index.html` and generates
+`netlify/lib/portal-config.generated.json` for the functions. Both outputs are ignored by Git.
+
+## Placements (`portal.config.json`)
+
+Placements live in `garments[]`, in the desired tab order. Each placement has
+`{ id, name, detail, label, side, x, y, w, h, mirror? }`; `side` is `front`, `back`, `left`, or `right`.
+Coordinates are metres on a model normalised to 1.86 m tall, feet at y=0, facing +z.
 - `x` is athlete-left positive (viewer's right from the front). Rays are cast from ±3 m on the given side and the
   hit becomes a `DecalGeometry`, so placements wrap the real garment surface. If a placement logs
   "No surface found", its x/y misses the mesh — adjust or check the model's scale.
-- `id` convention `<GARMENT><SIDE>-<POS>`: keep ids ≤ 8 chars (server truncates) and update **all three**:
-  1. `placements` in `public/app.js`
-  2. `PLACEMENT_ID` regex in `netlify/lib/sponsorship.mjs`
-  3. `describePlacement(id)` in `netlify/lib/sponsorship.mjs` (human label used in emails and invoices)
-- `LANDING_ORDER` in `app.js` decides which open placement a visitor lands on (camera-facing first).
-- Garment tabs and quick-view buttons are in `index.html` (`.garment-tab[data-garment]`, `[data-view]`) — add a
-  tab if you add a garment, and extend `visiblePlacements()` / `garmentOf()` in `app.js`.
+- IDs must be unique and no longer than 8 characters (the API retains its existing ID cleaning/truncation).
+  `PLACEMENT_IDS`, `isPlacementId()`, and `describePlacement()` are generated from this list; no code-side ID
+  pattern or second label table should be edited.
+- `mirror` projects a placement on both sides (used for matching sleeve logos).
+- Placement order within each garment should be front, back, then lateral. The landing order prioritizes each
+  side across garments in config order.
 
-## Pre-sold sponsors (`public/assets/sponsors.json`)
+## Pre-sold sponsors (`portal.config.json`)
 
 ```json
-{ "SF-L1": { "sponsor": "Boxrope", "logo": "assets/sponsors/boxrope.png" } }
+{ "sold": { "SF-L1": { "sponsor": "Boxrope", "logo": "assets/sponsors/boxrope.png" } } }
 ```
 Logos: transparent PNG/WebP, ~1024 px wide, trimmed. Dark artwork is auto-detected and shown on a light card.
-A placement in this file is SOLD everywhere (UI, API rejects bids) regardless of the Blobs store.
+A placement in `sold` is SOLD everywhere (UI and API reject bids) regardless of the Blobs store.
 
 ## Copy locations
 
 | What | Where |
 | --- | --- |
-| `<title>`, meta description, OG/Twitter tags, canonical | `public/index.html` `<head>` |
-| Header name/subtitle, event date | `.topbar` in `index.html` |
-| Hero ("Choose your position"), intro copy | `.intro-panel` |
-| Poster card text (opponent, bout, date) | `.poster-card` |
-| Benefits list ("What the winning sponsor gets") | `.bid-benefits` |
-| Bid note / terms | `#bidNote` in `index.html` **and** the runtime string in `renderBidPanel()` in `app.js` |
-| Footer record/bio | `.portal-footer` |
-| Embed instructions dialog | `#embedDialog` |
-| Lock confirm dialog text, success panel text, toasts | `submitBid()` / `showBidSuccess()` in `app.js` |
-| Email subjects/bodies (bid confirmation, outbid, invoice, owner notices) | `netlify/lib/sponsorship.mjs` |
-| Invoice description, line item, footer (benefits summary) | `createInvoice()` in `sponsorship.mjs` |
-| Email visual header line ("MICHAEL … · EVENT") | `layout()` in `sponsorship.mjs` |
+| `<title>`, meta description, OG/Twitter tags, canonical | `seo` in the tenant config |
+| Header name/subtitle, lockup date, hero, benefits, footer | `athlete`, `event`, `hero`, and `benefits` in the tenant config |
+| Poster card text, image and stage backdrop | `poster` in the tenant config; set it to `null` to omit the poster |
+| Bid note, placement statuses, dialogs, toasts, embed instructions | `copy` in the tenant config |
+| Email subjects/bodies and visual header | `copy` plus `athlete`, `event`, and `contact` in the tenant config |
+| Invoice description, line item, footer and currency | `copy.invoiceDescription`, `copy.invoiceItemDescription`, `copy.invoiceFooter`, and `pricing.currency` |
+| Static markup and placeholder names | `src/index.template.html` and `scripts/build.mjs` |
 
 ## Brand
 
-`:root` in `public/styles.css`: `--bg`, `--panel`, `--line`, `--muted`, `--ink`, `--orange` (accent),
-`--orange-dark`, `--green`, fonts `--display` (Barlow Condensed via Google Fonts) and `--text` (Inter).
-The email template uses hard-coded `#f36a16` accents in `sponsorship.mjs` `layout()` — change to match.
-Favicon: `public/favicon.svg`. Brand mark text: `.brand-mark` in `index.html`.
+Set `brand.accent` and `brand.accentDark` in the tenant config; the build injects the CSS variables used by the
+site, and the same accent colors the 3D highlights and email template. Optional accent variants are also in the
+config. Ring ropes, corners, pad color, pad text, and whether the arena is shown come from `ring`. The favicon
+is still `public/favicon.svg`; the brand mark comes from `athlete.brandMark`.
 
 ## Poster, backdrop and share image (`public/assets/backdrop/`)
 
@@ -87,13 +87,15 @@ for W in 900 1500; do ffmpeg -y -i poster.jpg -vf "scale=$W:-1:flags=lanczos,gbl
 # 1200x630 share image: crop the faces band (adjust crop y to the poster)
 ffmpeg -y -i poster.jpg -vf "crop=iw:ih*0.42:0:ih*0.06,scale=1200:630:flags=lanczos,unsharp=3:3:0.5" -q:v 3 public/assets/backdrop/og-image.jpg
 ```
-Keep the filenames; `index.html` references them (`srcset`, preload, OG tags). Check the backdrop's
+Keep the filenames; `poster` references the card, stage images, and share image (`srcset`, preload, OG tags).
+Setting `poster` to `null` removes the card, dialog, stage backdrop, preload, and OG image. Check the backdrop's
 `object-position` in `.stage-backdrop img` so faces frame the model rather than sit behind it.
 Budget: backdrop ≤ 100 KB, poster ≤ 250 KB, share image ≤ 200 KB.
 
 ## 3D model requirements
 
 - Single `.glb` at `public/assets/models/<athlete>.glb` (Draco compression supported; decoder loads from unpkg).
+- Set its path in `model` in the tenant config. `?model=` can still override it for previewing.
 - Wearing the actual garments in the real colours; old sponsor marks removed from textures.
 - Any scale/position: the loader normalises to 1.86 m tall, feet at y = 0, centred; facing is auto-detected
   (toes protrude further than heels). If detection fails, the model is rotated 180° — check the FRONT view.

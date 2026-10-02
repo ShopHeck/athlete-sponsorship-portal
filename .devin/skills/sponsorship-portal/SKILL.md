@@ -12,7 +12,7 @@ Read a reference file when you reach the phase that needs it; do not guess env v
 | Reference (`reference/`) | Read it for |
 | --- | --- |
 | `intake.md` | Client questionnaire and delivery checklist — Phase 0 |
-| `configuration.md` | Placements schema, sponsors.json, copy locations, env vars, brand, poster/backdrop recipe, 3D model requirements, embed snippet — Phase 1 |
+| `configuration.md` | Tenant JSON schema, placements, sold sponsors, copy, env vars, brand, poster/backdrop recipe, 3D model requirements, embed snippet — Phase 1 |
 | `launch-checklist.md` | Netlify / Resend / Stripe / domain setup, the real dry run, distribution, operations runbook — Phases 3–4 |
 | `gotchas.md` | Every trap hit on the original build, with cause and fix — read before debugging anything |
 
@@ -23,13 +23,15 @@ Read a reference file when you reach the phase that needs it; do not guess env v
 - `netlify/functions/`: `bids.mjs` (GET public summary / POST bid or lock), `logo.mjs` (bidder logos),
   `close-auction.mjs` (daily: invoices winners after the deadline, retries failed invoices),
   `admin-close.mjs` (`POST /api/close-auction`, bearer `ADMIN_TOKEN`, `?force=1` closes early).
-- `netlify/lib/sponsorship.mjs`: settings from env, placement labels, Stripe + Resend helpers, all email copy.
+- `portal.config.json`: the default tenant's identity, event, placements, pricing, ring, brand, sold sponsors, and copy.
+- `scripts/build.mjs`: renders the selected tenant config into the static page and function bundle before Netlify builds.
+- `netlify/lib/sponsorship.mjs`: tenant settings with environment overrides, placement labels, Stripe + Resend helpers.
 - Netlify Blobs: store `bids` (one JSON record per placement with history and invoice state) and `logos`.
 - Money: bids are non-binding until `BID_DEADLINE`. Lock It Now (or a bid ≥ `LOCK_PRICE`) creates a Stripe
   customer + finalised `send_invoice` invoice due on receipt and emails the sponsor a pay link via Resend.
   Stripe's own emails stay off; nothing is charged in the browser. Invoice state is saved on the record, so
   re-runs never double-invoice.
-- `scripts/stamp-assets.mjs` (Netlify build command) cache-busts `styles.css` / `app.js` per deploy.
+- `scripts/build.mjs` also cache-busts `styles.css` / `app.js` per deploy.
 
 ## Phase 0 — Intake
 
@@ -45,18 +47,17 @@ gh repo create <org>/<athlete>-sponsor-portal --private --clone --template ShopH
 cd <athlete>-sponsor-portal && npm install
 ```
 Then, in this order (details and file paths in `reference/configuration.md`):
-1. **3D model** → `public/assets/models/<athlete>.glb`; set `DEFAULT_MODEL` in `public/app.js`. Scale and
-   facing are normalised automatically; check the FRONT view after loading.
-2. **Placements** → the `placements` object in `public/app.js` **and** `PLACEMENT_ID` + `describePlacement()`
-   in `netlify/lib/sponsorship.mjs`. All three must agree or the API answers "Unknown placement".
-3. **Pre-sold sponsors** → `public/assets/sponsors.json` + logos in `public/assets/sponsors/`.
-4. **Copy** → `public/index.html` (title/meta/OG, hero, benefits, footer, embed dialog), event and email strings
-   in `netlify/lib/sponsorship.mjs`, confirm/success strings in `public/app.js`.
-5. **Brand** → `:root` variables in `public/styles.css`, favicon, email accent colour in `sponsorship.mjs`.
-6. **Poster / backdrop / share image** → ffmpeg recipe in `reference/configuration.md` into `public/assets/backdrop/`.
-7. **Pricing and deadline** → env vars only; never hardcode.
+1. **Tenant config** → create one JSON file from `portal.config.json`; set `PORTAL_CONFIG` to its path when building.
+2. **3D model** → put `public/assets/models/<athlete>.glb` in the repo and set `model` in the tenant JSON. Scale and
+   facing are normalised automatically; check the FRONT view after loading. `?model=` remains available as an override.
+3. **Placements** → edit `garments[].placements` in the tenant JSON. IDs, labels, geometry, sold inventory, and the server allowlist are generated from this one source; do not edit application or function code for a new tenant.
+4. **Pre-sold sponsors** → add entries to the JSON `sold` map and store logos in `public/assets/sponsors/`.
+5. **Copy** → configure `seo`, `hero`, `event`, `benefits`, and `copy` in the tenant JSON.
+6. **Brand and ring** → set `brand` and `ring` in the tenant JSON; `poster: null` removes the poster UI and backdrop.
+7. **Poster / backdrop / share image** → ffmpeg recipe in `reference/configuration.md` into `public/assets/backdrop/`.
+8. **Pricing and deadline** → set `pricing` in the tenant JSON; `MIN_BID`, `BID_INCREMENT`, `LOCK_PRICE`, and `BID_DEADLINE` environment variables override those defaults.
 
-Preview with `npx netlify dev` (Blobs runs in a local sandbox). Small PRs, each based on `main`.
+Build before previewing: `npm run build` (or `PORTAL_CONFIG=examples/demo-athlete.json npm run build`), then `npx netlify dev` (Blobs runs in a local sandbox). Small PRs, each based on `main`.
 
 ## Phase 2 — Local end-to-end test (no real money, no real email)
 
@@ -90,7 +91,7 @@ the admin endpoint runs it on demand. Bids and contact details live in Netlify �
 
 - Base every PR on `main`; never stack PRs (a stacked PR merged into its feature branch silently misses `main`).
 - After a merge, confirm the Git build is live (`curl` for a string from the change) before reporting done.
-- Placement ID changes touch `app.js`, `sponsorship.mjs` (regex + labels) and the smoke-test IDs.
+- Placement IDs and labels are configured only in the tenant JSON; the build generates the frontend inventory and server allowlist.
 - Secrets never appear in chat or commits; set them straight into Netlify with `--secret`.
 - Deleting Blobs records is destructive: confirm the ID with the owner and back it up first
   (`netlify blobs:get bids <ID> > backup.json`).
