@@ -1,3 +1,5 @@
+import config from "./portal-config.generated.json";
+
 /* ---------------------------------------------------------------------------
    Shared helpers for the sponsorship functions: auction settings, placement
    labels, Resend email, and Stripe invoicing.
@@ -5,49 +7,43 @@
    Environment:
      STRIPE_SECRET_KEY  – enables invoicing (sk_test_… locally, sk_live_… in prod)
      RESEND_API_KEY     – enables email
-     NOTIFY_FROM        – verified Resend sender (default "Team Heck Sponsorships <sponsors@michaelheckert.com>")
-     NOTIFY_EMAIL       – Michael's inbox (also the reply-to on sponsor emails)
+     NOTIFY_FROM        – verified Resend sender
+     NOTIFY_EMAIL       – notification inbox (also the reply-to on sponsor emails)
      PORTAL_URL         – public URL sponsors should visit (the marketing site that embeds the portal, or the portal itself);
                           deep links are PORTAL_URL/#PLACEMENT-ID. API links always use Netlify's URL.
 --------------------------------------------------------------------------- */
-export const MIN_BID = Number(process.env.MIN_BID) || 500;
-export const INCREMENT = Number(process.env.BID_INCREMENT) || 50;
-export const LOCK_PRICE = Number(process.env.LOCK_PRICE) || 2500;
-export const DEADLINE = process.env.BID_DEADLINE || "2026-10-16T23:59:59-04:00";
-export const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || "michaelheckert@heckholdings.com";
-export const EVENT_NAME = process.env.EVENT_NAME || "BKFC Clearwater";
-const PORTAL_URL = process.env.PORTAL_URL || process.env.URL || "https://heck-sponsor-360.netlify.app";
+export const MIN_BID = Number(process.env.MIN_BID) || config.pricing.minBid;
+export const INCREMENT = Number(process.env.BID_INCREMENT) || config.pricing.increment;
+export const LOCK_PRICE = Number(process.env.LOCK_PRICE) || config.pricing.lockPrice;
+export const DEADLINE = process.env.BID_DEADLINE || config.pricing.deadline;
+export const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL || config.contact.notifyEmail;
+export const NOTIFY_FROM = process.env.NOTIFY_FROM || config.contact.notifyFrom;
+export const EVENT_NAME = process.env.EVENT_NAME || config.event.name;
+export const DASHBOARD_SITE_NAME = config.copy.dashboardSiteName;
+const PORTAL_URL = process.env.PORTAL_URL || process.env.URL || config.portalUrl.replace(/\/$/, "");
 // The functions/API always live on the Netlify host, even when PORTAL_URL points at the marketing site that embeds the portal.
-const API_URL = process.env.URL || "https://heck-sponsor-360.netlify.app";
+const API_URL = process.env.URL || process.env.API_URL || config.portalUrl;
 const STRIPE_API = process.env.STRIPE_API_BASE || "https://api.stripe.com";
 const RESEND_API = process.env.RESEND_API_BASE || "https://api.resend.com";
 
-export const PLACEMENT_ID = /^(S[FB]-[LR][1-3]|TF-(0[1-9]|1[0-2])|TB-01|TS-0[1-3])$/;
-export const usd = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
+const placements = config.garments.flatMap((garment) => garment.placements);
+export const PLACEMENT_IDS = new Set(placements.map((placement) => placement.id));
+export const isPlacementId = (id) => PLACEMENT_IDS.has(id);
+const formatCopy = (template, values = {}) => String(template).replace(/\{([A-Za-z][A-Za-z0-9]*)\}/g, (_, key) => values[key] ?? "");
+export const usd = (n) => new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: config.pricing.currency.toUpperCase(),
+  maximumFractionDigits: 0
+}).format(Math.round(n));
 export const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
 export function describePlacement(id) {
-  let m;
-  if ((m = id.match(/^S([FB])-([LR])([1-3])$/))) {
-    return `Fight shorts · ${m[1] === "F" ? "Front" : "Back"} ${m[2] === "L" ? "left" : "right"} leg · ${["Upper", "Center", "Lower"][m[3] - 1]}`;
-  }
-  if ((m = id.match(/^TF-(\d\d)$/))) {
-    const i = Number(m[1]) - 1;
-    return `Walkout T-shirt · Front grid · Row ${Math.floor(i / 3) + 1}, column ${(i % 3) + 1}`;
-  }
-  if (id === "TB-01") return "Walkout T-shirt · Upper back";
-  if ((m = id.match(/^TS-0([1-3])$/))) return `Walkout T-shirt · Sleeve pair · ${["Upper", "Center", "Lower"][m[1] - 1]}`;
-  return id;
+  return placements.find((placement) => placement.id === id)?.label || id;
 }
 
 export async function soldPlacements(origin) {
-  try {
-    const res = await fetch(new URL("/assets/sponsors.json", origin));
-    return res.ok ? new Set(Object.keys(await res.json())) : new Set();
-  } catch {
-    return new Set();
-  }
+  return new Set(Object.keys(config.sold || {}));
 }
 
 /* ------------------------------------------------------------------ email */
@@ -60,7 +56,7 @@ export async function sendEmail({ to, subject, text, html, replyTo }) {
     method: "POST",
     headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
     body: JSON.stringify({
-      from: process.env.NOTIFY_FROM || "Team Heck Sponsorships <sponsors@michaelheckert.com>",
+      from: NOTIFY_FROM,
       to: Array.isArray(to) ? to : [to],
       ...(replyTo ? { reply_to: replyTo } : {}),
       subject,
@@ -88,61 +84,89 @@ export function notifyOwner(subject, lines) {
 
 function layout({ heading, intro, rows, cta, outro }) {
   const rowsHtml = rows.map(([k, v]) => `<tr><td style="padding:6px 12px 6px 0;color:#9a9a9a;white-space:nowrap">${escapeHtml(k)}</td><td style="padding:6px 0;color:#fff;font-weight:600">${escapeHtml(v)}</td></tr>`).join("");
-  const ctaHtml = cta ? `<p style="margin:28px 0"><a href="${cta.href}" style="display:inline-block;background:#f36a16;color:#000;font-weight:700;text-decoration:none;padding:14px 26px;border-radius:8px;font-size:16px">${escapeHtml(cta.label)}</a></p><p style="margin:0 0 20px;color:#9a9a9a;font-size:13px">Or open this link: <a href="${cta.href}" style="color:#f36a16">${cta.href}</a></p>` : "";
+  const ctaHtml = cta ? `<p style="margin:28px 0"><a href="${cta.href}" style="display:inline-block;background:${config.brand.accent};color:#000;font-weight:700;text-decoration:none;padding:14px 26px;border-radius:8px;font-size:16px">${escapeHtml(cta.label)}</a></p><p style="margin:0 0 20px;color:#9a9a9a;font-size:13px">${config.copy.emailOpenLink} <a href="${cta.href}" style="color:${config.brand.accent}">${cta.href}</a></p>` : "";
   return `<!doctype html><html><body style="margin:0;background:#0a0a0a;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#e8e8e8">
 <div style="max-width:560px;margin:0 auto;padding:36px 24px">
-  <p style="margin:0 0 6px;letter-spacing:.18em;font-size:12px;color:#f36a16;font-weight:700">MICHAEL “KING KILLER” HECKERT · ${escapeHtml(EVENT_NAME.toUpperCase())}</p>
+  <p style="margin:0 0 6px;letter-spacing:.18em;font-size:12px;color:${config.brand.accent};font-weight:700">${escapeHtml(config.athlete.fullDisplay)} · ${escapeHtml(EVENT_NAME.toUpperCase())}</p>
   <h1 style="margin:0 0 18px;font-size:26px;line-height:1.2;color:#fff">${escapeHtml(heading)}</h1>
   <p style="margin:0 0 20px;font-size:16px;line-height:1.55">${intro}</p>
   <table style="border-collapse:collapse;font-size:15px;margin:0 0 8px">${rowsHtml}</table>
   ${ctaHtml}
   <p style="margin:0 0 20px;font-size:15px;line-height:1.55;color:#c8c8c8">${outro}</p>
-  <p style="margin:0;font-size:13px;color:#777">Questions? Reply to this email or write to <a href="mailto:${NOTIFY_EMAIL}" style="color:#f36a16">${NOTIFY_EMAIL}</a>.<br>Portal: <a href="${PORTAL_URL}" style="color:#f36a16">${PORTAL_URL}</a></p>
+  <p style="margin:0;font-size:13px;color:#777">${config.copy.emailQuestions} <a href="mailto:${NOTIFY_EMAIL}" style="color:${config.brand.accent}">${NOTIFY_EMAIL}</a>.<br>Portal: <a href="${PORTAL_URL}" style="color:${config.brand.accent}">${PORTAL_URL}</a></p>
 </div></body></html>`;
 }
 
 const textBlock = (heading, intro, rows, cta, outro) =>
-  [heading, "", intro, "", ...rows.map(([k, v]) => `${k}: ${v}`), "", cta ? `${cta.label}: ${cta.href}` : "", cta ? "" : null, outro, "", `Questions? Reply to this email or write to ${NOTIFY_EMAIL}.`, `Portal: ${PORTAL_URL}`].filter((l) => l !== null).join("\n");
+  [heading, "", intro, "", ...rows.map(([k, v]) => `${k}: ${v}`), "", cta ? `${cta.label}: ${cta.href}` : "", cta ? "" : null, outro, "", `${config.copy.emailQuestions} ${NOTIFY_EMAIL}.`, `Portal: ${PORTAL_URL}`].filter((l) => l !== null).join("\n");
 
 export function bidConfirmationEmail(id, rec) {
   const b = rec.bidder;
-  const rows = [["Placement", `${id} — ${describePlacement(id)}`], ["Your bid", usd(rec.high)], ["Company", b.company], ["Bidding closes", formatDeadline()]];
-  const intro = `Thanks ${escapeHtml(b.name)} — you're currently the <strong>high bidder</strong> on this placement. If you're still on top when bidding closes, we'll email you a Stripe invoice for your winning amount.`;
-  const outro = `We'll let you know if someone outbids you so you can respond. Want to skip the auction? You can lock the placement outright for ${usd(LOCK_PRICE)} in the portal.`;
+  const rows = [
+    [config.copy.placementLabel, `${id} — ${describePlacement(id)}`],
+    [config.copy.yourBid, usd(rec.high)],
+    [config.copy.companyLabel, b.company],
+    [config.copy.biddingCloses, formatDeadline()]
+  ];
+  const intro = formatCopy(config.copy.bidReceiptIntro, { name: escapeHtml(b.name) });
+  const outro = formatCopy(config.copy.bidReceiptOutro, { price: usd(LOCK_PRICE) });
   return {
     to: b.email, replyTo: NOTIFY_EMAIL,
-    subject: `You're the high bidder on ${id} · ${usd(rec.high)}`,
-    html: layout({ heading: "Bid received", intro, rows, cta: { href: placementLink(id), label: "View placement" }, outro }),
-    text: textBlock("Bid received", intro.replace(/<[^>]+>/g, ""), rows, { href: placementLink(id), label: "View placement" }, outro)
+    subject: formatCopy(config.copy.emailBidSubject, { id, amount: usd(rec.high) }),
+    html: layout({ heading: config.copy.emailBidReceivedHeading, intro, rows, cta: { href: placementLink(id), label: config.copy.emailViewPlacement }, outro }),
+    text: textBlock(config.copy.emailBidReceivedHeading, intro.replace(/<[^>]+>/g, ""), rows, { href: placementLink(id), label: config.copy.emailViewPlacement }, outro)
   };
 }
 
 export function outbidEmail(id, rec, previous) {
-  const rows = [["Placement", `${id} — ${describePlacement(id)}`], ["Your bid", usd(previous.amount)], ["New high bid", usd(rec.high)], ["Next minimum", usd(rec.high + INCREMENT)], ["Bidding closes", formatDeadline()]];
-  const intro = `Hi ${escapeHtml(previous.name)} — another sponsor has outbid you on this placement.`;
-  const outro = `You can place a new bid any time before bidding closes, or lock the placement outright for ${usd(LOCK_PRICE)}.`;
-  const cta = { href: placementLink(id), label: "Bid again" };
-  return { to: previous.email, replyTo: NOTIFY_EMAIL, subject: `You've been outbid on ${id}`, html: layout({ heading: "You've been outbid", intro, rows, cta, outro }), text: textBlock("You've been outbid", intro.replace(/<[^>]+>/g, ""), rows, cta, outro) };
+  const rows = [
+    [config.copy.placementLabel, `${id} — ${describePlacement(id)}`],
+    [config.copy.yourBid, usd(previous.amount)],
+    [config.copy.newHighBid, usd(rec.high)],
+    [config.copy.nextMinimum, usd(rec.high + INCREMENT)],
+    [config.copy.biddingCloses, formatDeadline()]
+  ];
+  const intro = formatCopy(config.copy.outbidIntro, { name: escapeHtml(previous.name) });
+  const outro = formatCopy(config.copy.outbidOutro, { price: usd(LOCK_PRICE) });
+  const cta = { href: placementLink(id), label: config.copy.emailBidAgain };
+  const heading = config.copy.emailOutbidHeading;
+  return {
+    to: previous.email,
+    replyTo: NOTIFY_EMAIL,
+    subject: formatCopy(config.copy.emailOutbidSubject, { id }),
+    html: layout({ heading, intro, rows, cta, outro }),
+    text: textBlock(heading, intro.replace(/<[^>]+>/g, ""), rows, cta, outro)
+  };
 }
 
 export function invoiceEmail(id, rec, kind) {
   const b = rec.bidder;
   const inv = rec.invoice;
   const locked = kind === "lock";
-  const rows = [["Placement", `${id} — ${describePlacement(id)}`], ["Amount due", usd(inv.amount)], ["Invoice", inv.number || inv.id], ["Company", b.company], ["Terms", "Due on receipt"]];
-  const heading = locked ? "Placement locked — invoice enclosed" : "You won the placement — invoice enclosed";
-  const intro = locked
-    ? `Congratulations ${escapeHtml(b.name)} — <strong>${escapeHtml(id)}</strong> is locked in for ${escapeHtml(b.company)}. Bidding on it is now closed. Your Stripe invoice for ${usd(inv.amount)} is ready; pay securely by card or bank transfer using the button below.`
-    : `Congratulations ${escapeHtml(b.name)} — bidding has closed and <strong>${escapeHtml(b.company)}</strong> is the winning sponsor for <strong>${escapeHtml(id)}</strong>. Your Stripe invoice for ${usd(inv.amount)} is ready; pay securely by card or bank transfer using the button below.`;
-  const outro = `Once payment clears, Michael will reach out for your final artwork and the Champion package details (walkout gear, robe and fan T-shirt logos, social promotion, two VIP ringside tickets, Fight Week vendor table, and the post-fight media kit).`;
-  const cta = { href: inv.url, label: `Pay ${usd(inv.amount)} invoice` };
-  return { to: b.email, replyTo: NOTIFY_EMAIL, subject: `${locked ? "Locked" : "You won"}: ${id} · invoice ${usd(inv.amount)}`, html: layout({ heading, intro, rows, cta, outro }), text: textBlock(heading, intro.replace(/<[^>]+>/g, ""), rows, cta, outro) };
+  const rows = [
+    [config.copy.placementLabel, `${id} — ${describePlacement(id)}`],
+    [config.copy.amountDue, usd(inv.amount)],
+    [config.copy.invoiceLabel, inv.number || inv.id],
+    [config.copy.companyLabel, b.company],
+    [config.copy.termsLabel, config.copy.dueOnReceipt]
+  ];
+  const heading = locked ? config.copy.invoiceLockedHeading : config.copy.invoiceWonHeading;
+  const intro = formatCopy(locked ? config.copy.invoiceLockedIntro : config.copy.invoiceWonIntro, {
+    name: escapeHtml(b.name),
+    id: escapeHtml(id),
+    company: escapeHtml(b.company),
+    amount: usd(inv.amount)
+  });
+  const outro = config.copy.emailOutro;
+  const cta = { href: inv.url, label: formatCopy(config.copy.emailInvoiceButton, { amount: usd(inv.amount) }) };
+  const subject = formatCopy(locked ? config.copy.emailInvoiceLockedSubject : config.copy.emailInvoiceWonSubject, { id, amount: usd(inv.amount) });
+  return { to: b.email, replyTo: NOTIFY_EMAIL, subject, html: layout({ heading, intro, rows, cta, outro }), text: textBlock(heading, intro.replace(/<[^>]+>/g, ""), rows, cta, outro) };
 }
 
 const placementLink = (id) => new URL(`#${id}`, PORTAL_URL.endsWith("/") ? PORTAL_URL : PORTAL_URL + "/").href;
 
 export function formatDeadline() {
-  return new Date(DEADLINE).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short" });
+  return new Date(DEADLINE).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: config.event.timeZone, timeZoneName: "short" });
 }
 
 /* ----------------------------------------------------------------- stripe */
@@ -198,16 +222,27 @@ export async function createInvoice({ id, amount, bidder, kind, at }) {
     days_until_due: 0,
     auto_advance: false,
     pending_invoice_items_behavior: "exclude",
-    description: `${EVENT_NAME} sponsorship — ${id} (${label}). ${kind === "lock" ? "Lock It Now" : "Winning auction bid"} via the Team Heck sponsorship portal.`,
-    footer: "Includes the full Champion package: shorts + T-shirt logo, walkout robe and fan T-shirt logos, social and interview promotion, post-fight media kit, two VIP ringside tickets, Fight Week vendor table, and Official Sponsor listing.",
+    description: formatCopy(config.copy.invoiceDescription, {
+      event: EVENT_NAME,
+      id,
+      label,
+      action: kind === "lock" ? config.copy.invoiceLockAction : config.copy.invoiceWinningAction,
+      source: config.copy.invoiceSource
+    }),
+    footer: config.copy.invoiceFooter,
     metadata: { placement: id, placement_label: label, kind, contact_name: bidder.name, contact_email: bidder.email, company: bidder.company, portal: PORTAL_URL }
   }, `${seed}-inv`);
   await stripe("POST", "invoiceitems", {
     customer: customer.id,
     invoice: draft.id,
     amount: Math.round(amount * 100),
-    currency: "usd",
-    description: `${EVENT_NAME} sponsorship placement ${id} — ${label} (${kind === "lock" ? "Lock It Now" : "winning bid"})`,
+    currency: config.pricing.currency,
+    description: formatCopy(config.copy.invoiceItemDescription, {
+      event: EVENT_NAME,
+      id,
+      label,
+      action: kind === "lock" ? config.copy.invoiceItemLockAction : config.copy.invoiceItemWinningAction
+    }),
     metadata: { placement: id }
   }, `${seed}-item`);
   const inv = await stripe("POST", `invoices/${draft.id}/finalize`, { auto_advance: false }, `${seed}-fin`);
@@ -215,7 +250,7 @@ export async function createInvoice({ id, amount, bidder, kind, at }) {
 }
 
 /* Invoices the current high bidder on a placement, saves the result on the
-   record, and emails both the sponsor (invoice link) and Michael. Safe to
+   record, and emails both the sponsor (invoice link) and portal owner. Safe to
    re-run: a placement with a sent invoice is skipped. */
 export async function invoicePlacement(store, id, rec, kind) {
   if (rec.invoice?.status === "sent") return rec;
@@ -253,7 +288,7 @@ export async function invoicePlacement(store, id, rec, kind) {
     `Sponsor pay link: ${rec.invoice.url}`,
     `Stripe dashboard: https://dashboard.stripe.com/invoices/${rec.invoice.id}`,
     rec.invoice.emailed ? "Sponsor emailed the invoice link via Resend." : "Sponsor was NOT emailed (Resend not configured or failed) — send them the pay link above.",
-    "", "All bids: Netlify dashboard → heck-sponsor-360 → Blobs → bids"
+      "", `All bids: Netlify dashboard → ${DASHBOARD_SITE_NAME} → Blobs → bids`
   ]);
   return rec;
 }

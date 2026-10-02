@@ -1,5 +1,5 @@
 import { getStore } from "@netlify/blobs";
-import { DEADLINE, PLACEMENT_ID, soldPlacements, invoicePlacement, stripeEnabled } from "./sponsorship.mjs";
+import { DEADLINE, isPlacementId, soldPlacements, invoicePlacement, stripeEnabled } from "./sponsorship.mjs";
 
 /* ---------------------------------------------------------------------------
    Two jobs, run daily by functions/close-auction.mjs (or on demand through
@@ -17,7 +17,7 @@ export async function closeAuction(origin, { force = false } = {}) {
   const summary = { pastDeadline, stripe: stripeEnabled(), invoiced: [], retried: [], noBids: [], skipped: [] };
 
   for (const { key: id } of blobs) {
-    if (!PLACEMENT_ID.test(id)) continue;
+    if (!isPlacementId(id)) continue;
     const rec = await store.get(id, { type: "json" });
     if (!rec) continue;
     if (rec.invoice?.status === "sent" || sold.has(id)) { summary.skipped.push(id); continue; }
