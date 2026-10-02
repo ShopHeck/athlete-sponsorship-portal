@@ -1,7 +1,7 @@
 {
-  "name": "heck-sponsor-360",
+  "name": "athlete-sponsorship-portal",
   "version": "1.0.0",
-  "description": "Config-driven, embeddable 360° athlete sponsorship portal generated from tenant JSON.",
+  "description": "Multi-tenant, embeddable 360° athlete sponsorship portal platform.",
   "main": "app.js",
   "scripts": {
     "build": "node scripts/build.mjs",

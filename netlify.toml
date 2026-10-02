@@ -1,18 +1,12 @@
 [build]
   publish = "public"
   functions = "netlify/functions"
-  command = "node scripts/build.mjs"
+  command = "npm run build"
 
 [functions]
   node_bundler = "esbuild"
 
-[[headers]]
-  for = "/*"
-  [headers.values]
-    Content-Security-Policy = "frame-ancestors https://teamheck.netlify.app https://*.netlify.app https://michaelheckert.com https://*.michaelheckert.com;"
-
-# Our own assets are re-stamped every deploy (see scripts/stamp-assets.mjs), so
-# tell browsers and the Cloudflare proxy not to hold on to the un-stamped copies.
+# Tenant pages version their CSS and JavaScript URLs at render time.
 [[headers]]
   for = "/*.css"
   [headers.values]
