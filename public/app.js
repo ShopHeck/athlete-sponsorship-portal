@@ -7,64 +7,26 @@ import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { DecalGeometry } from "three/addons/geometries/DecalGeometry.js";
 
 /* ---------------------------------------------------------------------------
-   The athlete is a photogrammetry-style GLB (assets/models/heckert.glb) generated
-   from Michael's reference photography, already wearing the black walkout
-   T-shirt and plain orange fight shorts. The model is normalised to 1.86 m tall,
-   feet on y = 0, facing +z. Athlete-left is +x (viewer's right from the front).
-
-   Placements are defined as rectangles in metres on a viewing side; at load
-   time each one is raycast onto the mesh and turned into a DecalGeometry so it
-   wraps the real garment surface.
+   Placements are defined in the tenant config as rectangles in metres on a
+   viewing side; each is raycast onto the model and projected as a decal.
 --------------------------------------------------------------------------- */
 const MODEL_HEIGHT = 1.86;
-const DEFAULT_MODEL = "assets/models/heckert.glb";
 const THREE_CDN = "https://unpkg.com/three@0.170.0/examples/jsm/";
+const config = JSON.parse(document.getElementById("portal-config").textContent);
+const garments = config.garments;
+const allPlacements = garments.flatMap((garment) => garment.placements);
+const garmentConfig = (id) => garments.find((garment) => garment.id === id);
+const garmentOf = (id) => garments.find((garment) => garment.placements.some((spot) => spot.id === id))?.id || garments[0].id;
+const firstPlacement = allPlacements[0];
+const accentColor = new THREE.Color(config.brand.accent);
+const formatCopy = (template, values = {}) => String(template).replace(/\{([A-Za-z][A-Za-z0-9]*)\}/g, (_, key) => values[key] ?? "");
 
 const SIDE_AZIMUTH = { front: 0, back: Math.PI, left: Math.PI / 2, right: -Math.PI / 2 };
-
-const legRows = [[0.96, 0.885], [0.865, 0.79], [0.77, 0.695]];
-const legDetail = ["Prime camera-facing logo placement", "Central placement with strong walkout and stance visibility", "Lower-leg placement built for full-body photography"];
-function legSlots(prefix, sideLabel, side, x, tier) {
-  return legRows.map(([top, bottom], i) => ({
-    id: `${prefix}${i + 1}`,
-    name: `${tier} ${sideLabel} · ${["Upper", "Center", "Lower"][i]}`,
-    detail: `${legDetail[i]} on the ${sideLabel.toLowerCase()} leg.`,
-    side, x, y: (top + bottom) / 2, w: 0.115, h: top - bottom
-  }));
-}
-
-const placements = {
-  shorts: {
-    front: [...legSlots("SF-L", "left", "front", 0.105, "Front"), ...legSlots("SF-R", "right", "front", -0.105, "Front")],
-    back: [...legSlots("SB-L", "left", "back", 0.105, "Back"), ...legSlots("SB-R", "right", "back", -0.105, "Back")]
-  },
-  shirt: {
-    front: Array.from({ length: 12 }, (_, i) => {
-      const row = Math.floor(i / 3), col = i % 3;
-      const top = 1.468 - row * 0.082;
-      return {
-        id: `TF-${String(i + 1).padStart(2, "0")}`,
-        name: `Front grid · Row ${row + 1}, column ${col + 1}`,
-        detail: "Front walkout T-shirt placement in the 4 × 3 sponsor grid.",
-        side: "front", x: (col - 1) * 0.105, y: top - 0.036, w: 0.095, h: 0.072
-      };
-    }),
-    back: [{ id: "TB-01", name: "Upper back · Shoulder blades", detail: "Wide statement placement across the upper back of the walkout T-shirt.", side: "back", x: 0, y: 1.415, w: 0.30, h: 0.11 }],
-    sleeves: [
-      { id: "TS-01", name: "Sleeve pair · Upper", detail: "Matching logo placement on both sleeves near the shoulder.", side: "left", x: 0.0, y: 1.47, w: 0.075, h: 0.042, mirror: "right" },
-      { id: "TS-02", name: "Sleeve pair · Center", detail: "Matching logo placement on both sleeves at mid-arm.", side: "left", x: 0.0, y: 1.42, w: 0.075, h: 0.042, mirror: "right" },
-      { id: "TS-03", name: "Sleeve pair · Lower", detail: "Matching logo placement on both sleeves above the cuff.", side: "left", x: 0.0, y: 1.37, w: 0.075, h: 0.042, mirror: "right" }
-    ]
-  }
-};
-const allPlacements = [...placements.shorts.front, ...placements.shorts.back, ...placements.shirt.front, ...placements.shirt.back, ...placements.shirt.sleeves];
-
-const state = { garment: "shorts", selected: "SF-L1", hovered: null, logos: {}, logoImages: {}, sold: {}, soldImages: {}, bidImages: {}, azimuth: 0, bids: {}, auction: { minBid: 500, increment: 50, lockPrice: 2500, deadline: null, online: false } };
-const SPONSORS_URL = "assets/sponsors.json";
+const state = { garment: garments[0].id, selected: firstPlacement.id, hovered: null, logos: {}, logoImages: {}, sold: {}, soldImages: {}, bidImages: {}, azimuth: 0, bids: {}, auction: { minBid: config.pricing.minBid, increment: config.pricing.increment, lockPrice: config.pricing.lockPrice, deadline: config.pricing.deadline, online: false } };
 const BIDS_URL = "/api/bids";
 const isLocked = (id) => Boolean(state.bids[id]?.locked || state.bids[id]?.closed);
 const isSold = (id) => Boolean(state.sold[id]) || isLocked(id);
-const usd = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
+const usd = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: config.pricing.currency.toUpperCase(), maximumFractionDigits: 0 }).format(Math.round(n));
 const minimumBid = (id) => { const b = state.bids[id]; return Math.max(state.auction.minBid, b?.high ? b.high + state.auction.increment : 0); };
 
 /* ------------------------------------------------------------------ DOM */
@@ -92,6 +54,7 @@ const bidError = document.getElementById("bidError");
 const bidButton = document.getElementById("bidButton");
 const lockButton = document.getElementById("lockButton");
 const bidNote = document.getElementById("bidNote");
+const bidNoteText = document.getElementById("bidNote").firstChild;
 const lockPriceEl = document.getElementById("lockPrice");
 const lockLabel = document.getElementById("lockLabel");
 const bidSuccess = document.getElementById("bidSuccess");
@@ -139,7 +102,7 @@ controls.autoRotate = true;
 controls.autoRotateSpeed = 0.9;
 controls.addEventListener("start", () => { controls.autoRotate = false; });
 
-const arena = buildArena(scene);
+const arena = buildArena(scene, config.ring);
 
 const key = new THREE.DirectionalLight(0xfff1e0, 2.2);
 key.position.set(2.5, 4.5, 3.5);
@@ -151,7 +114,7 @@ key.shadow.camera.right = key.shadow.camera.top = 1.6;
 key.shadow.bias = -0.0005; key.shadow.normalBias = 0.03;
 key.shadow.radius = 4;
 scene.add(key);
-const rim = new THREE.DirectionalLight(0xf36a16, 1.2);
+const rim = new THREE.DirectionalLight(accentColor, 1.2);
 rim.position.set(-3, 2.2, -3.5);
 scene.add(rim);
 const fill = new THREE.DirectionalLight(0x8fa3ff, 0.45);
@@ -164,7 +127,7 @@ const floor = new THREE.Mesh(new THREE.CircleGeometry(ROPE_RADIUS + 0.4, 96), ne
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
-const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.66, 96), new THREE.MeshBasicMaterial({ color: 0xf36a16, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.66, 96), new THREE.MeshBasicMaterial({ color: accentColor, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
 ring.rotation.x = -Math.PI / 2; ring.position.y = 0.002;
 scene.add(ring);
 
@@ -209,14 +172,14 @@ function drawSlot(slot) {
     g.fillStyle = selected ? "rgba(255,255,255,0.92)" : hovered ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.14)";
     roundRect(g, 8, 8, c.width - 16, c.height - 16, 14); g.fill();
     g.setLineDash([16, 10]); g.lineWidth = 6;
-    g.strokeStyle = selected ? "#f36a16" : "rgba(255,255,255,0.9)";
+    g.strokeStyle = selected ? config.brand.accent : "rgba(255,255,255,0.9)";
     roundRect(g, 8, 8, c.width - 16, c.height - 16, 14); g.stroke();
     g.setLineDash([]);
-    g.fillStyle = selected ? "#f36a16" : "#fff"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillStyle = selected ? config.brand.accent : "#fff"; g.textAlign = "center"; g.textBaseline = "middle";
     const bid = state.bids[spot.id];
     if (bid?.locked || bid?.closed) {
       g.font = `700 ${Math.round(c.height * 0.26)}px "Barlow Condensed", Impact, sans-serif`;
-      g.fillText(bid.locked ? "LOCKED" : "WON", c.width / 2, c.height / 2 + 2);
+      g.fillText(bid.locked ? config.copy.lockedStatus : config.copy.wonStatus, c.width / 2, c.height / 2 + 2);
     } else if (bid?.high) {
       g.font = `700 ${Math.round(c.height * 0.28)}px "Barlow Condensed", Impact, sans-serif`;
       g.fillText(spot.id.replace(/^[A-Z]+-/, ""), c.width / 2, c.height * 0.36);
@@ -227,7 +190,7 @@ function drawSlot(slot) {
       g.fillText(spot.id.replace(/^[A-Z]+-/, ""), c.width / 2, c.height / 2 + 2);
     }
   }
-  if (selected) { g.lineWidth = 10; g.strokeStyle = "#f36a16"; roundRect(g, 5, 5, c.width - 10, c.height - 10, 16); g.stroke(); }
+  if (selected) { g.lineWidth = 10; g.strokeStyle = config.brand.accent; roundRect(g, 5, 5, c.width - 10, c.height - 10, 16); g.stroke(); }
   tex.needsUpdate = true;
 }
 function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
@@ -264,8 +227,10 @@ function makeSlot(spot, side, meshes) {
 }
 
 function buildSlots(meshes) {
-  [...placements.shorts.front, ...placements.shorts.back, ...placements.shirt.front, ...placements.shirt.back].forEach((s) => makeSlot(s, s.side, meshes));
-  placements.shirt.sleeves.forEach((s) => { makeSlot(s, s.side, meshes); makeSlot(s, s.mirror, meshes); });
+  allPlacements.forEach((spot) => {
+    makeSlot(spot, spot.side, meshes);
+    if (spot.mirror) makeSlot(spot, spot.mirror, meshes);
+  });
 }
 
 /* --------------------------------------------------------------- model */
@@ -295,23 +260,19 @@ function normalise(root) {
 }
 
 /* ------------------------------------------------------ sold sponsors */
-// assets/sponsors.json: { "SF-L1": { "sponsor": "Name", "logo": "assets/sponsors/name.png" }, ... }
 function loadImage(src) {
   return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = src; });
 }
-const sponsorsReady = fetch(SPONSORS_URL, { cache: "no-store" })
-  .then((r) => (r.ok ? r.json() : {}))
-  .then((data) => Promise.all(Object.entries(data).map(async ([id, entry]) => {
-    if (!allPlacements.some((p) => p.id === id)) { console.warn("Unknown placement in sponsors.json", id); return; }
+const sponsorsReady = Promise.all(Object.entries(config.sold || {}).map(async ([id, entry]) => {
+    if (!allPlacements.some((p) => p.id === id)) { console.warn(config.copy.unknownSponsorPlacement, id); return; }
     state.sold[id] = entry;
     if (entry.logo) {
       try { state.soldImages[id] = await loadImage(entry.logo); }
-      catch { console.warn("Sponsor logo failed to load", id, entry.logo); }
+      catch { console.warn(config.copy.sponsorsLogoLoadError, id, entry.logo); }
     }
-  })))
-  .catch((err) => console.warn("sponsors.json unavailable", err));
+  }));
 
-const modelUrl = new URLSearchParams(location.search).get("model") || DEFAULT_MODEL;
+const modelUrl = new URLSearchParams(location.search).get("model") || config.model;
 const isEmbedded = window.self !== window.top || new URLSearchParams(location.search).has("embed");
 if (isEmbedded) document.documentElement.classList.add("is-embedded");
 const draco = new DRACOLoader().setDecoderPath(`${THREE_CDN}libs/draco/`);
@@ -336,11 +297,13 @@ loader.load(
     buildSlots(meshes);
     firstRender().then(() => stage.classList.add("is-ready"));
   },
-  (xhr) => { if (xhr.total) loadingEl.textContent = `Loading 3D model… ${Math.round((xhr.loaded / xhr.total) * 100)}%`; },
+  (xhr) => {
+    if (xhr.total) loadingEl.textContent = formatCopy(config.copy.modelLoadingProgress, { percent: Math.round((xhr.loaded / xhr.total) * 100) });
+  },
   (err) => {
     console.error(err);
     stage.classList.add("has-error");
-    loadingEl.textContent = "The 3D model could not be loaded. Please refresh the page.";
+    loadingEl.textContent = config.copy.modelLoadError;
     firstRender();
   }
 );
@@ -348,13 +311,13 @@ loader.load(
 function firstRender() {
   return Promise.all([sponsorsReady, bidsReady]).then(() => { selectInitial(); renderAll(); scrollSelectedIntoView(); });
 }
-// Emails deep-link to a placement as /#SF-L1; otherwise land on the first OPEN placement,
-// preferring camera-facing positions: shorts front, T-shirt front, shorts back, T-shirt back, sleeves.
-const LANDING_ORDER = [...placements.shorts.front, ...placements.shirt.front, ...placements.shorts.back, ...placements.shirt.back, ...placements.shirt.sleeves];
+const LANDING_ORDER = ["front", "back", "lateral"].flatMap((view) => garments.flatMap((garment) =>
+  garment.placements.filter((spot) => view === "lateral" ? spot.side === "left" || spot.side === "right" : spot.side === view)
+));
 function selectInitial() {
   const wanted = decodeURIComponent(location.hash.slice(1)).toUpperCase();
   const linked = allPlacements.find((p) => p.id === wanted);
-  const spot = linked || LANDING_ORDER.find((p) => !isSold(p.id)) || placements.shorts.front[0];
+  const spot = linked || LANDING_ORDER.find((p) => !isSold(p.id)) || firstPlacement;
   state.selected = spot.id;
   state.garment = garmentOf(spot.id);
   if (linked || currentSide() !== spot.side) rotateTo(SIDE_AZIMUTH[spot.side]);
@@ -369,26 +332,27 @@ function currentSide() {
 }
 function visiblePlacements() {
   const side = currentSide();
-  if (state.garment === "shorts") return placements.shorts[side] || [];
-  if (side === "front") return [...placements.shirt.front, ...placements.shirt.sleeves];
-  if (side === "back") return [...placements.shirt.back, ...placements.shirt.sleeves];
-  return placements.shirt.sleeves;
+  const garment = garmentConfig(state.garment);
+  const onSide = garment.placements.filter((spot) => spot.side === side);
+  const lateral = garment.placements.filter((spot) => spot.side === "left" || spot.side === "right");
+  return [...onSide, ...lateral.filter((spot) => !onSide.includes(spot))];
 }
 const findPlacement = () => allPlacements.find((p) => p.id === state.selected) || allPlacements[0];
 
 function renderInventory() {
   const side = currentSide();
-  const label = side === "front" ? "Front" : side === "back" ? "Back" : state.garment === "shirt" ? "Sleeves" : "Side";
-  inventoryTitle.textContent = `${state.garment === "shirt" ? "Black T-shirt" : "Fight shorts"} · ${label}`;
+  const garment = garmentConfig(state.garment);
+  const label = side === "front" ? config.copy.frontView : side === "back" ? config.copy.backView : garment.lateralLabel;
+  inventoryTitle.textContent = `${garment.label} · ${label}`;
   document.querySelectorAll("[data-view]").forEach((b) => b.classList.toggle("is-active", b.dataset.view === side));
   const items = visiblePlacements();
   inventoryList.replaceChildren();
   if (!items.length) {
     availabilityEl.innerHTML = ""; availabilityEl.classList.remove("is-full");
-    const empty = document.createElement("p"); empty.className = "inventory-empty"; empty.textContent = "Rotate to the front or back to see the placements on this garment."; inventoryList.append(empty); return;
+    const empty = document.createElement("p"); empty.className = "inventory-empty"; empty.textContent = config.copy.emptyInventory; inventoryList.append(empty); return;
   }
   const open = items.filter((s) => !isSold(s.id)).length;
-  availabilityEl.innerHTML = `<i></i> ${open} of ${items.length} available`;
+  availabilityEl.innerHTML = `<i></i> ${formatCopy(config.copy.availabilityCount, { open, total: items.length })}`;
   availabilityEl.classList.toggle("is-full", open === 0);
   items.forEach((spot, index) => {
     const sold = state.sold[spot.id];
@@ -396,8 +360,10 @@ function renderInventory() {
     const locked = !sold && (bid?.locked || bid?.closed);
     const button = document.createElement("button");
     button.className = `inventory-item${spot.id === state.selected ? " is-selected" : ""}${sold || locked ? " is-sold" : ""}`;
-    const title = sold ? sold.sponsor : locked ? bid.lockedBy || bid.company || "Locked" : spot.name;
-    const status = sold ? "SOLD" : locked ? (bid.locked ? "LOCKED" : "WON") : bid?.high ? `BID ${usd(bid.high)}` : `OPEN · ${usd(state.auction.minBid)}`;
+    const title = sold ? sold.sponsor : locked ? bid.lockedBy || bid.company || config.copy.lockedFallback : spot.name;
+    const status = sold ? config.copy.soldStatus : locked ? (bid.locked ? config.copy.lockedStatus : config.copy.wonStatus)
+      : bid?.high ? formatCopy(config.copy.statusBid, { amount: usd(bid.high) })
+        : formatCopy(config.copy.statusOpen, { amount: usd(state.auction.minBid) });
     button.innerHTML = `<span class="num">${String(index + 1).padStart(2, "0")}</span><span><strong>${escapeHtml(title)}</strong><small>${spot.id}${sold || locked ? " · " + spot.name : ""}</small></span><span class="status">${status}</span>`;
     button.setAttribute("aria-pressed", String(spot.id === state.selected));
     button.addEventListener("click", () => selectPlacement(spot.id, true));
@@ -428,16 +394,21 @@ function renderSelection() {
   const locked = !sold && (bid?.locked || bid?.closed);
   const holder = locked ? bid.lockedBy || bid.company : null;
   selectionCode.textContent = spot.id;
-  selectionStatus.textContent = sold ? "SOLD" : locked ? (bid.locked ? "LOCKED" : "WON") : bid?.high ? "BIDDING" : "AVAILABLE";
+  selectionStatus.textContent = sold ? config.copy.soldStatus : locked ? (bid.locked ? config.copy.lockedStatus : config.copy.wonStatus) : bid?.high ? config.copy.biddingStatus : config.copy.availableStatus;
   selectionCard.classList.toggle("is-sold", Boolean(sold || locked));
-  selectionName.textContent = sold ? sold.sponsor : locked ? holder || "Locked in" : spot.name;
-  selectionDescription.textContent = sold ? `${spot.name}. This placement is confirmed for ${sold.sponsor}.`
-    : locked ? `${spot.name}. ${bid.locked ? "This placement has been locked in" : "Bidding has closed and this placement was won"}${holder ? ` by ${holder}` : ""}; the invoice has been issued.`
+  selectionName.textContent = sold ? sold.sponsor : locked ? holder || config.copy.lockedInFallback : spot.name;
+  selectionDescription.textContent = sold ? formatCopy(config.copy.soldDescription, { name: spot.name, sponsor: sold.sponsor })
+    : locked ? formatCopy(config.copy.lockedDescription, {
+      name: spot.name,
+      status: bid.locked ? config.copy.placementLocked : config.copy.placementWon,
+      holder: holder ? ` by ${holder}` : "",
+      invoiceIssued: config.copy.invoiceIssued
+    })
     : spot.detail;
   if (renderSelection.lastId !== spot.id) bidSuccess.hidden = true;
   renderSelection.lastId = spot.id;
   renderBidPanel(spot, bid);
-  uploadLabel.textContent = state.logos[spot.id] ? "Replace logo preview" : "Upload logo preview";
+  uploadLabel.textContent = state.logos[spot.id] ? config.copy.replaceLogo : config.copy.uploadLogo;
   const preview = state.logos[spot.id];
   previewThumb.hidden = !preview || Boolean(sold || locked);
   if (preview) previewImg.src = preview;
@@ -445,7 +416,7 @@ function renderSelection() {
   sponsorLogoEl.hidden = !cardLogo;
   if (cardLogo) {
     sponsorLogoEl.src = cardLogo.src;
-    sponsorLogoEl.alt = `${sold ? sold.sponsor : holder || "Sponsor"} logo`;
+    sponsorLogoEl.alt = `${sold ? sold.sponsor : holder || config.copy.sponsorFallback} logo`;
     sponsorLogoEl.classList.toggle("is-dark-art", isDarkArtwork(cardLogo));
   }
   const anyOpen = allPlacements.some((p) => !isSold(p.id));
@@ -457,10 +428,10 @@ function renderBidPanel(spot, bid) {
   const floor = minimumBid(spot.id);
   if (bid?.high) {
     bidHigh.textContent = usd(bid.high);
-    bidMeta.textContent = `${bid.company ? bid.company + " · " : ""}${bid.count} bid${bid.count === 1 ? "" : "s"} · ${online ? `next ${usd(floor)}` : "bidding unavailable offline"}`;
+    bidMeta.textContent = `${bid.company ? bid.company + " · " : ""}${bid.count} ${bid.count === 1 ? config.copy.bidCountOne : config.copy.bidCountMany} · ${online ? formatCopy(config.copy.nextBid, { amount: usd(floor) }) : config.copy.offline}`;
   } else {
-    bidHigh.textContent = "No bids yet";
-    bidMeta.textContent = online ? `Opening bid ${usd(minBid)}` : "Bidding unavailable offline";
+    bidHigh.textContent = config.copy.noBids;
+    bidMeta.textContent = online ? formatCopy(config.copy.openingBid, { amount: usd(minBid) }) : config.copy.offline;
   }
   const amount = bidForm.elements.amount;
   amount.min = floor; amount.step = increment; amount.placeholder = String(floor);
@@ -469,22 +440,25 @@ function renderBidPanel(spot, bid) {
   renderBidPanel.last = spot.id;
   lockPriceEl.textContent = usd(lockPrice);
   if (!submitBid.busy) {
-    lockLabel.textContent = `Lock it now — ${usd(lockPrice)}`;
+    lockLabel.textContent = formatCopy(config.copy.lockLabel, { price: usd(lockPrice) });
     bidButton.disabled = lockButton.disabled = !online;
   }
   if (switched) bidError.hidden = true;
   if (state.auction.deadline) {
     const d = new Date(state.auction.deadline);
-    bidNote.firstChild.textContent = `Bids start at ${usd(minBid)} in ${usd(increment)} steps and close ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}. Nothing is charged on this page — lock-ins receive a Stripe invoice by email right away, and the winning bidder is invoiced when bidding closes. `;
+    bidNoteText.textContent = `${formatCopy(config.copy.bidNote, {
+      minBid: usd(minBid),
+      increment: usd(increment),
+      closingDate: d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: config.event.timeZone })
+    })} `;
   }
 }
-const garmentOf = (id) => (id.startsWith("T") ? "shirt" : "shorts");
 function renderGarments() {
   document.querySelectorAll(".garment-tab").forEach((b) => { const on = b.dataset.garment === state.garment; b.classList.toggle("is-active", on); b.setAttribute("aria-selected", String(on)); });
 }
 function renderOrientation() {
   const side = currentSide();
-  orientationLabel.textContent = side.toUpperCase();
+  orientationLabel.textContent = config.copy[`${side}View`].toUpperCase();
   const a = ((state.azimuth % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
   orientationNeedle.style.left = `${(a / (Math.PI * 2)) * 100}%`;
 }
@@ -505,12 +479,12 @@ function selectPlacement(id, focus = false) {
 function firstOpen(list) { return list.find((p) => !isSold(p.id))?.id || null; }
 function setGarment(garment) {
   state.garment = garment;
-  const g = garment === "shirt" ? placements.shirt : placements.shorts;
+  const g = garmentConfig(garment);
   const onThisSide = visiblePlacements(); // same rules as the inventory list (state.garment already updated)
-  const spot = firstOpen(onThisSide) || firstOpen([...g.front, ...(g.back || []), ...(g.sleeves || [])]) || g.front[0].id;
+  const spot = firstOpen(onThisSide) || firstOpen(g.placements) || firstOpen(allPlacements) || firstPlacement.id;
   state.selected = spot;
   const target = allPlacements.find((p) => p.id === spot);
-  if (!onThisSide.some((p) => p.id === spot)) rotateTo(SIDE_AZIMUTH[target.side]);
+  if (target && !onThisSide.some((p) => p.id === spot)) rotateTo(SIDE_AZIMUTH[target.side]);
   renderAll();
 }
 
@@ -576,8 +550,8 @@ document.getElementById("logoInput").addEventListener("change", (event) => {
   const file = event.target.files[0];
   event.target.value = "";
   if (!file || isSold(state.selected)) return;
-  if (!file.type.startsWith("image/")) { toast("Please choose a PNG, JPG, WebP or SVG image."); return; }
-  if (file.size > 5 * 1024 * 1024) { toast("Please choose a logo under 5 MB."); return; }
+  if (!file.type.startsWith("image/")) { toast(config.copy.logoUnsupported); return; }
+  if (file.size > 5 * 1024 * 1024) { toast(config.copy.logoTooLarge); return; }
   const id = state.selected;
   const old = state.logos[id];
   if (old) URL.revokeObjectURL(old);
@@ -585,7 +559,7 @@ document.getElementById("logoInput").addEventListener("change", (event) => {
   state.logos[id] = url;
   const img = new Image();
   img.onload = () => { state.logoImages[id] = img; renderSlots(); renderSelection(); };
-  img.onerror = () => { delete state.logos[id]; URL.revokeObjectURL(url); toast("That file could not be read as an image."); renderSelection(); };
+  img.onerror = () => { delete state.logos[id]; URL.revokeObjectURL(url); toast(config.copy.logoUnreadable); renderSelection(); };
   img.src = url;
 });
 removePreview.addEventListener("click", () => {
@@ -596,8 +570,7 @@ removePreview.addEventListener("click", () => {
 });
 openPlacementsBtn.addEventListener("click", () => {
   const visible = visiblePlacements().find((p) => !isSold(p.id));
-  const garmentList = state.garment === "shirt" ? [...placements.shirt.front, ...placements.shirt.back, ...placements.shirt.sleeves] : [...placements.shorts.front, ...placements.shorts.back];
-  const next = visible || garmentList.find((p) => !isSold(p.id)) || allPlacements.find((p) => !isSold(p.id));
+  const next = visible || garmentConfig(state.garment).placements.find((p) => !isSold(p.id)) || allPlacements.find((p) => !isSold(p.id));
   if (!next) return;
   selectPlacement(next.id, true);
 });
@@ -645,13 +618,21 @@ function showBidSuccess(spot, data, locked, email) {
   bidSuccessLink.hidden = !data.invoiceUrl;
   if (data.invoiceUrl) bidSuccessLink.href = data.invoiceUrl;
   if (locked) {
-    bidSuccessTitle.textContent = `${spot.id} is yours`;
+    bidSuccessTitle.textContent = formatCopy(config.copy.successLockedTitle, { id: spot.id });
     bidSuccessText.textContent = data.invoiceUrl
-      ? `Your ${usd(state.auction.lockPrice)} Stripe invoice is ready — pay it below${data.emailed ? ` or from the copy we sent to ${email}` : ""}. Michael will follow up for your artwork once it's paid.`
-      : `Michael will email your ${usd(state.auction.lockPrice)} invoice to ${email} shortly.`;
+      ? formatCopy(config.copy.successInvoiceReady, {
+        price: usd(state.auction.lockPrice),
+        emailed: data.emailed ? formatCopy(config.copy.successInvoiceEmailSuffix, { email }) : "",
+        firstName: config.athlete.firstName
+      })
+      : formatCopy(config.copy.successInvoicePending, { firstName: config.athlete.firstName, price: usd(state.auction.lockPrice), email });
   } else {
-    bidSuccessTitle.textContent = `High bid: ${usd(data.placement.high)}`;
-    bidSuccessText.textContent = `Confirmation sent to ${email}.${state.logoImages[spot.id] ? " Your logo is saved with your bid." : ""} We'll let you know if you're outbid; the winning bidder is invoiced when bidding closes.`;
+    bidSuccessTitle.textContent = formatCopy(config.copy.successHighBidTitle, { amount: usd(data.placement.high) });
+    bidSuccessText.textContent = formatCopy(config.copy.successBidConfirmation, {
+      email,
+      logo: state.logoImages[spot.id] ? ` ${config.copy.successLogoSaved}` : "",
+      successOutro: config.copy.successOutro
+    });
   }
   bidSuccess.hidden = false;
   bidSuccess.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -661,28 +642,32 @@ async function submitBid(type) {
   if (isSold(spot.id)) return;
   const f = bidForm.elements;
   const payload = { id: spot.id, type, company: f.company.value.trim(), name: f.name.value.trim(), email: f.email.value.trim(), phone: f.phone.value.trim(), amount: Number(f.amount.value), logo: logoDataUrl(spot.id) };
-  if (!payload.company || !payload.name) return showBidError("Please enter your company and contact name.");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return showBidError("Please enter a valid email address.");
-  if (type === "bid" && (!Number.isFinite(payload.amount) || payload.amount < minimumBid(spot.id))) return showBidError(`Your bid must be at least ${usd(minimumBid(spot.id))}.`);
-  if (type === "lock" && !confirm(`Lock ${spot.id} · ${spot.name} now for ${usd(state.auction.lockPrice)}? This closes bidding on the placement and a Stripe invoice for ${usd(state.auction.lockPrice)} will be emailed to ${payload.email}.`)) return;
+  if (!payload.company || !payload.name) return showBidError(config.copy.missingContact);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return showBidError(config.copy.invalidEmail);
+  if (type === "bid" && (!Number.isFinite(payload.amount) || payload.amount < minimumBid(spot.id))) return showBidError(formatCopy(config.copy.bidTooLow, { amount: usd(minimumBid(spot.id)) }));
+  if (type === "lock" && !confirm(formatCopy(config.copy.lockConfirmation, {
+    id: spot.id, name: spot.name, price: usd(state.auction.lockPrice), email: payload.email
+  }))) return;
   bidError.hidden = true;
   submitBid.busy = true;
   bidSuccess.hidden = true;
   bidButton.disabled = lockButton.disabled = true;
   const busy = type === "lock" ? lockLabel : bidButton;
-  const label = busy.textContent; busy.textContent = "Sending…";
+  const label = busy.textContent; busy.textContent = config.copy.sending;
   try {
     const res = await fetch(BIDS_URL, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
     const data = await res.json().catch(() => ({}));
     if (data.placement) { state.bids[spot.id] = data.placement; await loadBidLogos(); }
-    if (!res.ok) { showBidError(data.error || "Your request could not be saved. Please try again."); renderSlots(); renderInventory(); renderSelection(); return; }
+    if (!res.ok) { showBidError(data.error || config.copy.saveFailed); renderSlots(); renderInventory(); renderSelection(); return; }
     const locked = Boolean(data.placement?.locked);
     renderSlots(); renderInventory(); renderSelection();
     showBidSuccess(spot, data, locked, payload.email);
-    toast(locked ? `${spot.id} is locked in for ${usd(state.auction.lockPrice)}.` : `You're the high bidder on ${spot.id} at ${usd(data.placement.high)}.`);
+    toast(locked
+      ? formatCopy(config.copy.toastLocked, { id: spot.id, price: usd(state.auction.lockPrice) })
+      : formatCopy(config.copy.toastHighBid, { id: spot.id, amount: usd(data.placement.high) }));
   } catch (err) {
     console.error(err);
-    showBidError("Network error — please try again.");
+    showBidError(config.copy.networkError);
   } finally {
     submitBid.busy = false;
     busy.textContent = label;
@@ -700,9 +685,11 @@ window.addEventListener("hashchange", () => {
 
 /* ------------------------------------------------------- fight poster */
 const posterDialog = document.getElementById("posterDialog");
-document.getElementById("posterButton").addEventListener("click", () => posterDialog.showModal());
-document.getElementById("posterClose").addEventListener("click", () => posterDialog.close());
-posterDialog.addEventListener("click", (e) => { if (e.target === posterDialog) posterDialog.close(); });
+if (posterDialog) {
+  document.getElementById("posterButton").addEventListener("click", () => posterDialog.showModal());
+  document.getElementById("posterClose").addEventListener("click", () => posterDialog.close());
+  posterDialog.addEventListener("click", (e) => { if (e.target === posterDialog) posterDialog.close(); });
+}
 
 /* -------------------------------------------------------------- embed */
 const embedDialog = document.getElementById("embedDialog");
@@ -717,13 +704,13 @@ const copyButton = document.getElementById("copyEmbed");
 copyButton.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(embedCodeEl.textContent);
-    copyButton.textContent = "Copied";
+    copyButton.textContent = config.copy.embedCopied;
   } catch {
     const range = document.createRange(); range.selectNodeContents(embedCodeEl);
     const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
-    copyButton.textContent = "Press Ctrl+C to copy";
+    copyButton.textContent = config.copy.embedCopyHint;
   }
-  setTimeout(() => { copyButton.textContent = "Copy embed code"; }, 1800);
+  setTimeout(() => { copyButton.textContent = config.copy.copyEmbed; }, 1800);
 });
 
 /* ------------------------------------------------------- host sizing */

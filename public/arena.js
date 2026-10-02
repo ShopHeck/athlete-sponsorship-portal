@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 /* ---------------------------------------------------------------------------
-   BKFC-style "squared circle" ropes around the athlete: a circular rope line
+   Circular "squared circle" ropes around the athlete: a circular rope line
    on padded posts with turnbuckles, sitting on the dark stage. The stage
    backdrop stays the portal's own poster treatment. Units are metres; the
    floor is y = 0 where the athlete stands.
@@ -11,11 +11,11 @@ export const RING_RADIUS = 3.55;
 export const ROPE_RADIUS = RING_RADIUS - 0.24;
 const POST_COUNT = 8;
 const ROPE_HEIGHTS = [0.48, 0.8, 1.12, 1.44];
-const ROPE_COLORS = [0xb8241d, 0xe6e0d4, 0x1c1c1c, 0xb8241d];
 
-// Padded turnbuckle cover with the BKFC mark running vertically, repeated four
+// Padded turnbuckle cover with the configured mark running vertically, repeated four
 // times around the cylinder so it reads from every camera angle.
-function padTexture(base, ink) {
+function padTexture(base, ink, text) {
+  if (text == null) return null;
   const c = document.createElement("canvas");
   c.width = 1024; c.height = 1024;
   const ctx = c.getContext("2d");
@@ -28,7 +28,7 @@ function padTexture(base, ink) {
     ctx.translate(c.width * (i + 0.5) / 4, c.height / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.letterSpacing = "18px";
-    ctx.fillText("BKFC", 0, 0);
+    ctx.fillText(text, 0, 0);
     ctx.restore();
   }
   const tex = new THREE.CanvasTexture(c);
@@ -37,14 +37,21 @@ function padTexture(base, ink) {
   return tex;
 }
 
-export function buildArena(scene) {
+export function buildArena(scene, ringConfig) {
+  if (!ringConfig.enabled) return { update() {} };
+
+  const ropeColors = ringConfig.ropeColors;
   const group = new THREE.Group();
   group.name = "ring";
 
   const postMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.55, metalness: 0.5 });
-  const neutralPad = new THREE.MeshStandardMaterial({ map: padTexture("#111111", "#f4efe6"), roughness: 0.92 });
-  const redPad = new THREE.MeshStandardMaterial({ map: padTexture("#b8241d", "#f4efe6"), roughness: 0.92 });
-  const bluePad = new THREE.MeshStandardMaterial({ map: padTexture("#1f3f9a", "#f4efe6"), roughness: 0.92 });
+  const padMaterial = (color) => {
+    const map = padTexture(color, "#f4efe6", ringConfig.padText);
+    return new THREE.MeshStandardMaterial({ ...(map ? { map } : { color }), roughness: 0.92 });
+  };
+  const neutralPad = padMaterial(ringConfig.padColor);
+  const redPad = padMaterial(ringConfig.cornerColors[0]);
+  const bluePad = padMaterial(ringConfig.cornerColors[1]);
   const padFor = (i) => (i === 0 ? redPad : i === POST_COUNT / 2 ? bluePad : neutralPad);
   const capMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d6, roughness: 0.9 });
   const steelMat = new THREE.MeshStandardMaterial({ color: 0x9a9a9a, roughness: 0.35, metalness: 0.9 });
@@ -81,7 +88,7 @@ export function buildArena(scene) {
   ROPE_HEIGHTS.forEach((y, i) => {
     const rope = new THREE.Mesh(
       new THREE.TorusGeometry(ROPE_RADIUS, 0.032, 10, 220),
-      new THREE.MeshStandardMaterial({ color: ROPE_COLORS[i], roughness: 0.95 })
+      new THREE.MeshStandardMaterial({ color: ropeColors[i], roughness: 0.95 })
     );
     rope.rotation.x = Math.PI / 2; rope.position.y = y;
     rope.castShadow = true;
