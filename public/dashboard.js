@@ -137,19 +137,24 @@ function renderPayments() {
 function renderModel() {
   const model = summary.model || {};
   const viewsStatus = model.views?.status;
+  const buildStatus = model.build?.status;
   const badge = viewsStatus === "generating"
     ? ["warn", "Generating views"]
     : viewsStatus === "review"
       ? ["accent", "Approve your views"]
       : ["failed", "rejected"].includes(viewsStatus)
         ? ["warn", "Views need attention"]
-        : model.status === "ready"
-          ? ["ok", "Live"]
-          : model.status === "submitted"
-            ? ["warn", "In production"]
-            : model.status === "collecting"
-              ? ["warn", `${model.photoCount || 0} of 5 photos`]
-              : ["warn", "Not started"];
+        : ["building", "processing"].includes(buildStatus)
+          ? ["warn", "Building your model"]
+          : buildStatus === "ready"
+            ? ["accent", "Model ready"]
+            : model.status === "ready"
+              ? ["ok", "Live"]
+              : model.status === "submitted"
+                ? ["warn", "In production"]
+                : model.status === "collecting"
+                  ? ["warn", `${model.photoCount || 0} of 5 photos`]
+                  : ["warn", "Not started"];
   return el("section", { class: "card", "data-tour": "model" },
     el("div", { class: "card-head" }, el("h2", { text: "Your 3D likeness" }), el("span", { class: `badge badge-${badge[0]}`, text: badge[1] })),
     el("p", { class: "muted", text: "Sponsors see a 360° 3D model of you. Take 5 quick photos and we'll build it." }),
@@ -160,7 +165,9 @@ function renderModel() {
         ? "Approve your views"
         : ["failed", "rejected"].includes(viewsStatus)
           ? "Open model studio"
-          : model.status === "collecting" ? "Continue" : "Open model studio"
+          : buildStatus === "ready"
+            ? "See your model"
+            : model.status === "collecting" ? "Continue" : "Open model studio"
     }));
 }
 
@@ -610,6 +617,7 @@ let viewGenerateBusy = false;
 let viewDecisionBusy = false;
 let viewRegenerateOpen = false;
 let viewFeedback = "";
+let buildStartBusy = false;
 const REFERENCE_ANGLES = ["front", "back", "left", "right"];
 const REFERENCE_LABELS = { front: "Front", back: "Back", left: "Left", right: "Right" };
 
@@ -994,10 +1002,14 @@ function stopViewPolling() {
 
 function scheduleViewPoll() {
   stopViewPolling();
-  if (view !== "model" || modelStudio?.views?.status !== "generating") return;
+  const viewsGenerating = modelStudio?.views?.status === "generating";
+  const buildPending = ["building", "processing"].includes(modelStudio?.build?.status);
+  if (view !== "model" || (!viewsGenerating && !buildPending)) return;
   viewPollTimer = setTimeout(async () => {
     viewPollTimer = null;
-    if (view !== "model" || modelStudio?.views?.status !== "generating") return;
+    const stillPolling = modelStudio?.views?.status === "generating" ||
+      ["building", "processing"].includes(modelStudio?.build?.status);
+    if (view !== "model" || !stillPolling) return;
     try {
       const result = await api(`/api/dashboard/${encodeURIComponent(slug)}/model`);
       modelStudio = result.model;
@@ -1006,7 +1018,7 @@ function scheduleViewPoll() {
       console.warn("Reference-view polling failed.", error);
       scheduleViewPoll();
     }
-  }, 4000);
+  }, buildPending ? 5000 : 4000);
 }
 
 function renderReferenceGrid() {
@@ -1058,6 +1070,7 @@ async function submitReferenceDecision(decision) {
     viewRegenerateOpen = false;
     renderModelStudio();
     if (decision === "reject") await requestGenerateViews();
+    else await requestBuildStart();
   } catch (error) {
     toast(error.message, "error");
   } finally {
@@ -1167,6 +1180,80 @@ function renderViewsSection() {
   return section;
 }
 
+async function requestBuildStart() {
+  if (buildStartBusy) return;
+  buildStartBusy = true;
+  renderModelStudio();
+  try {
+    const result = await api(`/api/dashboard/${encodeURIComponent(slug)}/model/build/start`, { method: "POST" });
+    modelStudio = result.model;
+  } catch (error) {
+    toast(error.message, "error");
+  } finally {
+    buildStartBusy = false;
+    renderModelStudio();
+  }
+}
+
+function renderBuildSection() {
+  const build = modelStudio.build;
+  if (!build || build.status === "locked") return null;
+  const section = el("section", { class: "card model-section model-build", "aria-labelledby": "buildHeading" },
+    el("p", { class: "eyebrow", text: "06 · YOUR 3D MODEL" }),
+    el("h2", { id: "buildHeading", text: "Build your 3D model" }));
+
+  if (build.status === "not_started") {
+    section.append(
+      el("p", { text: "We turn your approved views into a full 3D model of you. Takes about 3–6 minutes." }),
+      el("button", {
+        class: "btn btn-primary",
+        type: "button",
+        disabled: buildStartBusy,
+        text: buildStartBusy ? "Starting…" : "Build my 3D model",
+        onclick: requestBuildStart
+      }));
+  } else if (build.status === "building") {
+    const progress = Math.round(build.progress || 0);
+    section.append(
+      el("div", {
+        class: "build-progress",
+        role: "progressbar",
+        "aria-valuenow": String(progress),
+        "aria-valuemin": "0",
+        "aria-valuemax": "100"
+      }, el("span", { style: `width:${progress}%` })),
+      el("p", { class: "muted", text: "Building your 3D model — usually 3–6 minutes. You can leave this page; we'll email you when it's ready." }));
+  } else if (build.status === "processing") {
+    section.append(
+      el("div", { class: "build-progress is-indeterminate", role: "progressbar", "aria-valuetext": "Optimising your model for the web" },
+        el("span")),
+      el("p", { class: "muted", text: "Optimising your model for the web…" }));
+  } else if (build.status === "ready") {
+    if (build.jobId) {
+      section.append(el("img", {
+        class: "build-thumbnail",
+        src: `/api/dashboard/${encodeURIComponent(slug)}/model/build/thumbnail?v=${encodeURIComponent(build.jobId)}`,
+        alt: "Thumbnail of your 3D model"
+      }));
+    }
+    section.append(el("p", { class: "notice notice-ok", text: "Your 3D model is built. We'll check it and set up your 360° preview with your sponsor placements next." }));
+  } else if (build.status === "failed") {
+    section.append(el("p", { class: "notice notice-error", role: "alert", text: "Something went wrong building your model." }));
+    if (build.attemptsLeft > 0) {
+      section.append(el("button", {
+        class: "btn btn-primary",
+        type: "button",
+        disabled: buildStartBusy,
+        text: buildStartBusy ? "Starting…" : "Try again",
+        onclick: requestBuildStart
+      }));
+    } else {
+      section.append(el("p", { class: "notice notice-warn", text: "Contact us and we'll finish it by hand." }));
+    }
+  }
+  return section;
+}
+
 function renderModelStudio() {
   const root = document.getElementById("modelStudio");
   if (!root || !modelStudio) return;
@@ -1187,7 +1274,8 @@ function renderModelStudio() {
     renderPhotosSection(readOnly),
     renderKitSection(readOnly),
     renderReviewSection(readOnly),
-    renderViewsSection()
+    renderViewsSection(),
+    renderBuildSection()
   ].filter(Boolean));
   scheduleViewPoll();
 }

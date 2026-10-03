@@ -7,6 +7,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { Document, NodeIO } from "@gltf-transform/core";
 
 const PORT = Number(process.env.MOCK_PORT) || 4242;
 const LOG = process.env.MOCK_LOG || path.join(".netlify", "mock-log.jsonl");
@@ -19,9 +20,68 @@ let failNextMeshy = false;
 const accounts = new Map();
 const meshTasks = new Map();
 const MOCK_PNG = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jHcQAAAAASUVORK5CYII=",
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAGElEQVR4nGP4nyD1X6rC6D8DiPj///9/AE28CfuTPnKJAAAAAElFTkSuQmCC",
   "base64"
 );
+
+async function createMockGlb() {
+  const document = new Document();
+  const buffer = document.createBuffer();
+  const faces = [
+    [[-0.25, 0, 0.15], [0.25, 0, 0.15], [0.25, 1.8, 0.15], [-0.25, 1.8, 0.15]],
+    [[0.25, 0, -0.15], [-0.25, 0, -0.15], [-0.25, 1.8, -0.15], [0.25, 1.8, -0.15]],
+    [[-0.25, 0, -0.15], [-0.25, 0, 0.15], [-0.25, 1.8, 0.15], [-0.25, 1.8, -0.15]],
+    [[0.25, 0, 0.15], [0.25, 0, -0.15], [0.25, 1.8, -0.15], [0.25, 1.8, 0.15]],
+    [[-0.25, 0, -0.15], [0.25, 0, -0.15], [0.25, 0, 0.15], [-0.25, 0, 0.15]],
+    [[-0.25, 1.8, 0.15], [0.25, 1.8, 0.15], [0.25, 1.8, -0.15], [-0.25, 1.8, -0.15]]
+  ];
+  const positions = [];
+  const texCoords = [];
+  const indices = [];
+  for (const face of faces) {
+    const base = positions.length / 3;
+    positions.push(...face.flat());
+    texCoords.push(0, 0, 1, 0, 1, 1, 0, 1);
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+
+  const positionAccessor = document.createAccessor("Mock box positions")
+    .setType("VEC3")
+    .setArray(new Float32Array(positions))
+    .setBuffer(buffer);
+  const texCoordAccessor = document.createAccessor("Mock box texture coordinates")
+    .setType("VEC2")
+    .setArray(new Float32Array(texCoords))
+    .setBuffer(buffer);
+  const indexAccessor = document.createAccessor("Mock box indices")
+    .setType("SCALAR")
+    .setArray(new Uint16Array(indices))
+    .setBuffer(buffer);
+  const texture = document.createTexture("Mock kit texture")
+    .setImage(MOCK_PNG)
+    .setMimeType("image/png");
+  const material = document.createMaterial("Mock kit")
+    .setBaseColorTexture(texture)
+    .setRoughnessFactor(0.8);
+  const primitive = document.createPrimitive()
+    .setAttribute("POSITION", positionAccessor)
+    .setAttribute("TEXCOORD_0", texCoordAccessor)
+    .setIndices(indexAccessor)
+    .setMaterial(material);
+  const mesh = document.createMesh("Mock athlete").addPrimitive(primitive);
+  document.createScene("Mock scene").addChild(document.createNode("Mock athlete").setMesh(mesh));
+  return Buffer.from(await new NodeIO().writeBinary(document));
+}
+
+const MOCK_GLB = await createMockGlb();
+
+function redactDataUris(values) {
+  return Array.isArray(values) ? values.map((value) => {
+    if (typeof value !== "string") return value;
+    const match = value.match(/^data:([^;,]+);base64,([\s\S]*)$/);
+    return match ? `data:${match[1]};base64,<${match[2].length} chars>` : value;
+  }) : values;
+}
 
 http.createServer(async (req, res) => {
   let raw = "";
@@ -43,17 +103,10 @@ http.createServer(async (req, res) => {
   }
   const body = (req.headers["content-type"] || "").includes("json") ? JSON.parse(raw || "{}") : Object.fromEntries(new URLSearchParams(raw));
   const logBody = req.method === "POST" && url.pathname === "/openapi/v1/image-to-image"
-    ? {
-      ...body,
-      reference_image_urls: Array.isArray(body.reference_image_urls)
-        ? body.reference_image_urls.map((value) => {
-          if (typeof value !== "string") return value;
-          const match = value.match(/^data:([^;,]+);base64,([\s\S]*)$/);
-          return match ? `data:${match[1]};base64,<${match[2].length} chars>` : value;
-        })
-        : body.reference_image_urls
-    }
-    : body;
+    ? { ...body, reference_image_urls: redactDataUris(body.reference_image_urls) }
+    : req.method === "POST" && url.pathname === "/openapi/v1/multi-image-to-3d"
+      ? { ...body, image_urls: redactDataUris(body.image_urls) }
+      : body;
   fs.appendFileSync(LOG, JSON.stringify({
     at: new Date().toISOString(),
     method: req.method,
@@ -73,7 +126,17 @@ http.createServer(async (req, res) => {
     }
     meshTaskCounter += 1;
     const id = `mesh_mock_${meshTaskCounter}`;
-    meshTasks.set(id, { polls: 0, fail: failNextMeshy });
+    meshTasks.set(id, { polls: 0, fail: failNextMeshy, type: "image" });
+    failNextMeshy = false;
+    return send(200, { result: id });
+  }
+  if (req.method === "POST" && url.pathname === "/openapi/v1/multi-image-to-3d") {
+    if (!/^Bearer \S+$/.test(req.headers.authorization || "")) {
+      return send(401, { message: "Mock Meshy requires a bearer token." });
+    }
+    meshTaskCounter += 1;
+    const id = `mesh3d_mock_${meshTaskCounter}`;
+    meshTasks.set(id, { polls: 0, fail: failNextMeshy, type: "model" });
     failNextMeshy = false;
     return send(200, { result: id });
   }
@@ -84,7 +147,7 @@ http.createServer(async (req, res) => {
     }
     const id = decodeURIComponent(meshTaskMatch[1]);
     const task = meshTasks.get(id);
-    if (!task) return send(404, { message: "Mock Meshy task not found." });
+    if (!task || task.type !== "image") return send(404, { message: "Mock Meshy task not found." });
     task.polls += 1;
     if (task.fail) {
       return send(200, { status: "FAILED", progress: 100, task_error: { message: "Mock failure" } });
@@ -97,6 +160,31 @@ http.createServer(async (req, res) => {
       image_urls: [`http://127.0.0.1:${PORT}/__mock/meshy/assets/${encodeURIComponent(id)}.png`]
     });
   }
+  const multiImageTaskMatch = url.pathname.match(/^\/openapi\/v1\/multi-image-to-3d\/([^/]+)$/);
+  if (req.method === "GET" && multiImageTaskMatch) {
+    if (!/^Bearer \S+$/.test(req.headers.authorization || "")) {
+      return send(401, { message: "Mock Meshy requires a bearer token." });
+    }
+    const id = decodeURIComponent(multiImageTaskMatch[1]);
+    const task = meshTasks.get(id);
+    if (!task || task.type !== "model") return send(404, { message: "Mock Meshy task not found." });
+    task.polls += 1;
+    if (task.fail) {
+      return send(200, { status: "FAILED", progress: 100, task_error: { message: "Mock failure" } });
+    }
+    if (task.polls === 1) return send(200, { status: "PENDING", progress: 0 });
+    if (task.polls === 2) return send(200, { status: "IN_PROGRESS", progress: 40 });
+    if (task.polls === 3) return send(200, { status: "IN_PROGRESS", progress: 80 });
+    return send(200, {
+      status: "SUCCEEDED",
+      progress: 100,
+      model_urls: {
+        glb: `http://127.0.0.1:${PORT}/__mock/meshy/assets/${encodeURIComponent(id)}.glb`
+      },
+      thumbnail_url: `http://127.0.0.1:${PORT}/__mock/meshy/assets/${encodeURIComponent(id)}.png`,
+      consumed_credits: 0
+    });
+  }
   const meshAssetMatch = url.pathname.match(/^\/__mock\/meshy\/assets\/([^/]+)\.png$/);
   if (req.method === "GET" && meshAssetMatch) {
     res.writeHead(200, {
@@ -104,6 +192,14 @@ http.createServer(async (req, res) => {
       "content-length": MOCK_PNG.length
     });
     return res.end(MOCK_PNG);
+  }
+  const meshModelMatch = url.pathname.match(/^\/__mock\/meshy\/assets\/([^/]+)\.glb$/);
+  if (req.method === "GET" && meshModelMatch) {
+    res.writeHead(200, {
+      "content-type": "model/gltf-binary",
+      "content-length": MOCK_GLB.length
+    });
+    return res.end(MOCK_GLB);
   }
   // Resend
   if (url.pathname === "/emails") return send(200, { id: `email_${n}` });

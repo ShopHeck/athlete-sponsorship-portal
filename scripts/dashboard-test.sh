@@ -68,6 +68,15 @@ process.stdout.write(String(rows.filter((row) => row.method === "POST" && row.pa
 NODE
 }
 
+mock_mesh_3d_post_count() {
+  node - "$MOCK_LOG" <<'NODE'
+const fs = require("fs");
+const file = process.argv[2];
+const rows = fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map(JSON.parse) : [];
+process.stdout.write(String(rows.filter((row) => row.method === "POST" && row.path === "/openapi/v1/multi-image-to-3d").length));
+NODE
+}
+
 mock_mesh_task_get_count() {
   node - "$MOCK_LOG" <<'NODE'
 const fs = require("fs");
@@ -520,6 +529,8 @@ check "Michael cannot submit an already live model" "$(curl -sS -o "$TMP_DIR/mic
   -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE")" "409"
 
 echo "7. reference views (fake Meshy only)"
+check "3D model build is locked until views are approved" "$(curl -sS -o "$TMP_DIR/build-locked.json" -w '%{http_code}' -X POST \
+  "$BASE/api/dashboard/jordan-reyes/model/build/start" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")" "409"
 MOCK_HEALTH_CODE=$(curl -sS -o "$TMP_DIR/mock-meshy-control.json" -w '%{http_code}' -X POST \
   "http://127.0.0.1:4343/__mock/meshy/fail-next")
 if [ "$MOCK_HEALTH_CODE" != "200" ]; then
@@ -695,6 +706,195 @@ APPROVED_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/views-approved-summary.json" -w '%
 check "summary includes the approved view state" "$APPROVED_SUMMARY_CODE" "200"
 json_check "summary reports approved views without provider details" "$TMP_DIR/views-approved-summary.json" \
   'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model;process.exit(m?.views?.status==="approved"&&!JSON.stringify(m.views).includes("mesh_mock")&&!JSON.stringify(m.views).includes("127.0.0.1")?0:1)'
+
+echo "8. 3D model build (fake Meshy only)"
+JORDAN_BUILD_URL="$BASE/api/dashboard/jordan-reyes/model/build"
+check "build start requires a matching session" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+  "$JORDAN_BUILD_URL/start" -H "Origin: $BASE")" "401"
+check "build start rejects a foreign tenant session" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+  "$JORDAN_BUILD_URL/start" -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE")" "401"
+check "unknown tenant build start returns 404" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+  "$BASE/api/dashboard/no-such-tenant/model/build/start" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")" "404"
+check "unknown build action returns 404" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_BUILD_URL/unknown")" "404"
+check "build start rejects GET" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_BUILD_URL/start")" "405"
+check "model asset rejects POST" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+  "$JORDAN_BUILD_URL/model.glb" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")" "405"
+check "build start rejects a foreign Origin" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+  "$JORDAN_BUILD_URL/start" -H 'Origin: https://foreign.example' -H "Cookie: asp_dash=$JORDAN_COOKIE")" "403"
+check "model asset GET requires a matching session" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  "$JORDAN_BUILD_URL/model.glb")" "401"
+check "model asset rejects a foreign tenant session" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Cookie: asp_dash=$MICHAEL_COOKIE" "$JORDAN_BUILD_URL/model.glb")" "401"
+check "unknown tenant model asset returns 404" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/no-such-tenant/model/build/model.glb")" "404"
+check "missing model asset returns 404" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_BUILD_URL/model.glb")" "404"
+
+MOCK_3D_AUTH_CODE=$(curl -sS -o "$TMP_DIR/mock-meshy-3d-auth.json" -w '%{http_code}' -X POST \
+  "http://127.0.0.1:4343/openapi/v1/multi-image-to-3d" -H 'content-type: application/json' -d '{}')
+check "fake 3D Meshy rejects a missing bearer token" "$MOCK_3D_AUTH_CODE" "401"
+if DASHBOARD_SECRET=devdashboard node --input-type=module <<'NODE'
+import { hasValidBuildSignature } from "./netlify/lib/build-signature.mjs";
+process.exit(hasValidBuildSignature({ slug: "jordan-reyes", jobId: "invalid-signature" }, "00") ? 1 : 0);
+NODE
+then
+  echo "  ok   build signature verifier rejects an invalid signature in-process"
+else
+  echo "  FAIL build signature verifier rejects an invalid signature in-process"
+  FAIL=1
+fi
+
+check "fake Meshy fail-next arms for the next 3D task" "$(curl -sS -o "$TMP_DIR/mock-build-fail-next.json" -w '%{http_code}' -X POST \
+  "http://127.0.0.1:4343/__mock/meshy/fail-next")" "200"
+MOCK_BUILD_POSTS_BEFORE=$(mock_mesh_3d_post_count)
+BUILD_START_CODE=$(curl -sS -o "$TMP_DIR/build-attempt-1-start.json" -w '%{http_code}' -X POST \
+  "$JORDAN_BUILD_URL/start" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")
+check "approved views start build attempt one" "$BUILD_START_CODE" "200"
+MOCK_BUILD_POSTS_AFTER=$(mock_mesh_3d_post_count)
+if [ "$MOCK_BUILD_POSTS_AFTER" -le "$MOCK_BUILD_POSTS_BEFORE" ]; then
+  echo "  FAIL SAFETY: no fake Meshy multi-image POST appeared in the mock log; stopping before any more provider requests."
+  echo "DASHBOARD TEST FAILED"
+  exit 1
+fi
+json_check "first build starts with a hidden-task generating state" "$TMP_DIR/build-attempt-1-start.json" \
+  'const b=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.build;process.exit(b?.status==="building"&&b.attempt===1&&b.attemptsLeft===2&&typeof b.jobId==="string"&&!JSON.stringify(b).includes("mesh3d_mock")?0:1)'
+if node - "$MOCK_LOG" "$MOCK_BUILD_POSTS_BEFORE" <<'NODE'
+const fs = require("fs");
+const [file, before] = process.argv.slice(2);
+const rows = fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map(JSON.parse);
+const posts = rows.filter((row) => row.method === "POST" && row.path === "/openapi/v1/multi-image-to-3d").slice(Number(before));
+const body = posts[0]?.body;
+process.exit(posts.length === 1 &&
+  body.ai_model === "meshy-7.1" &&
+  body.geometry_resolution === "2k" &&
+  body.should_texture === true &&
+  body.texture_resolution === "4k" &&
+  body.enable_pbr === false &&
+  body.should_remesh === true &&
+  body.topology === "triangle" &&
+  body.target_polycount === 150000 &&
+  Array.isArray(body.image_urls) &&
+  body.image_urls.length === 4 &&
+  body.image_urls.every((value) => /^data:image\/png;base64,<\d+ chars>$/.test(value))
+  ? 0 : 1);
+NODE
+then
+  echo "  ok   one multi-image task uses four private PNG views and the requested model settings"
+else
+  echo "  FAIL one multi-image task uses four private PNG views and the requested model settings"
+  FAIL=1
+fi
+BUILD_DUPLICATE_CODE=$(curl -sS -o "$TMP_DIR/build-attempt-1-repeat.json" -w '%{http_code}' -X POST \
+  "$JORDAN_BUILD_URL/start" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")
+check "duplicate build start is idempotent" "$BUILD_DUPLICATE_CODE" "200"
+check "duplicate start creates no second 3D task" "$(mock_mesh_3d_post_count)" "$MOCK_BUILD_POSTS_AFTER"
+
+poll_build_until() {
+  local wanted="$1" output="$2" code=""
+  for _ in $(seq 1 60); do
+    code=$(curl -sS -o "$output" -w '%{http_code}' -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/jordan-reyes/model")
+    [ "$code" = "200" ] || return 1
+    if node -e 'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.build?.status===process.argv[2]?0:1)' "$output" "$wanted"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+if poll_build_until failed "$TMP_DIR/build-attempt-1-failed.json"; then
+  echo "  ok   failed mock task moves the build to failed"
+else
+  echo "  FAIL failed mock task moves the build to failed"
+  FAIL=1
+fi
+json_check "failed build counts toward the three-attempt limit" "$TMP_DIR/build-attempt-1-failed.json" \
+  'const b=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.build;process.exit(b?.status==="failed"&&b.attempt===1&&b.attemptsLeft===2?0:1)'
+if grep -Eiq 'mesh3d_mock_|127[.]0[.]0[.]1|model_urls|taskId|signature' "$TMP_DIR/build-attempt-1-failed.json"; then
+  echo "  FAIL failed build response hides task IDs, URLs and provider details"
+  FAIL=1
+else
+  echo "  ok   failed build response hides task IDs, URLs and provider details"
+fi
+
+BUILD_RETRY_CODE=$(curl -sS -o "$TMP_DIR/build-attempt-2-start.json" -w '%{http_code}' -X POST \
+  "$JORDAN_BUILD_URL/start" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")
+check "retry starts build attempt two" "$BUILD_RETRY_CODE" "200"
+json_check "retry increments the build attempt" "$TMP_DIR/build-attempt-2-start.json" \
+  'const b=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.build;process.exit(b?.status==="building"&&b.attempt===2&&b.attemptsLeft===1?0:1)'
+if poll_build_until ready "$TMP_DIR/build-attempt-2-ready.json"; then
+  echo "  ok   successful mock task is processed to ready"
+else
+  echo "  FAIL successful mock task is processed to ready"
+  FAIL=1
+fi
+json_check "optimized build is ready with stats and one retry remaining" "$TMP_DIR/build-attempt-2-ready.json" \
+  'const b=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.build;process.exit(b?.status==="ready"&&b.attempt===2&&b.attemptsLeft===1&&b.model?.bytes>0&&b.model?.triangles===12&&Array.isArray(b.model?.warnings)?0:1)'
+
+MODEL_GET_CODE=$(curl -sS -o "$TMP_DIR/jordan-model.glb" -D "$TMP_DIR/jordan-model.headers" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_BUILD_URL/model.glb")
+check "authenticated model GLB is downloadable" "$MODEL_GET_CODE" "200"
+if grep -qi '^content-type: model/gltf-binary' "$TMP_DIR/jordan-model.headers" &&
+   grep -qi '^cache-control: private, max-age=86400, immutable' "$TMP_DIR/jordan-model.headers" &&
+   grep -qi '^x-content-type-options: nosniff' "$TMP_DIR/jordan-model.headers"; then
+  echo "  ok   GLB response uses the private immutable headers"
+else
+  echo "  FAIL GLB response uses the private immutable headers"
+  FAIL=1
+fi
+if node - "$TMP_DIR/jordan-model.glb" <<'NODE'
+const fs = require("fs");
+const bytes = fs.readFileSync(process.argv[2]);
+if (bytes.subarray(0, 4).toString("ascii") !== "glTF" || bytes.length < 20) process.exit(1);
+const jsonLength = bytes.readUInt32LE(12);
+const document = JSON.parse(bytes.subarray(20, 20 + jsonLength).toString("utf8").trim());
+process.exit(document.extensionsUsed?.includes("KHR_draco_mesh_compression") &&
+  document.extensionsUsed?.includes("EXT_texture_webp") ? 0 : 1);
+NODE
+then
+  echo "  ok   GLB has magic bytes and Draco/WebP extensions"
+else
+  echo "  FAIL GLB has magic bytes and Draco/WebP extensions"
+  FAIL=1
+fi
+check "model GLB rejects a foreign tenant session" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Cookie: asp_dash=$MICHAEL_COOKIE" "$JORDAN_BUILD_URL/model.glb")" "401"
+
+THUMBNAIL_CODE=$(curl -sS -o "$TMP_DIR/jordan-model-thumbnail.png" -D "$TMP_DIR/jordan-thumbnail.headers" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_BUILD_URL/thumbnail")
+check "best-effort model thumbnail is available" "$THUMBNAIL_CODE" "200"
+if grep -qi '^content-type: image/png' "$TMP_DIR/jordan-thumbnail.headers" &&
+   grep -qi '^cache-control: private, max-age=86400, immutable' "$TMP_DIR/jordan-thumbnail.headers" &&
+   grep -qi '^x-content-type-options: nosniff' "$TMP_DIR/jordan-thumbnail.headers"; then
+  echo "  ok   thumbnail response uses the private immutable headers"
+else
+  echo "  FAIL thumbnail response uses the private immutable headers"
+  FAIL=1
+fi
+
+if node - "$MOCK_LOG" <<'NODE'
+const fs = require("fs");
+const rows = fs.readFileSync(process.argv[2], "utf8").split("\n").filter(Boolean).map(JSON.parse);
+const emails = rows.filter((row) => row.path === "/emails" &&
+  row.body?.subject === "Your 3D model is ready" &&
+  row.body?.to?.includes("jordan@example.test"));
+process.exit(emails.length === 1 &&
+  emails[0].body.text?.includes("/dashboard/jordan-reyes/model") &&
+  emails[0].body.text?.includes("360° preview") ? 0 : 1);
+NODE
+then
+  echo "  ok   exactly one ready email reaches Jordan with the dashboard link"
+else
+  echo "  FAIL exactly one ready email reaches Jordan with the dashboard link"
+  FAIL=1
+fi
+JORDAN_BUILD_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/jordan-build-summary.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/jordan-reyes/summary")
+check "summary is available after the model build" "$JORDAN_BUILD_SUMMARY_CODE" "200"
+json_check "dashboard summary reflects the ready build without provider details" "$TMP_DIR/jordan-build-summary.json" \
+  'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model;process.exit(m?.build?.status==="ready"&&m.build.attempt===2&&m.build.attemptsLeft===1&&!JSON.stringify(m.build).includes("mesh3d_mock")&&!JSON.stringify(m.build).includes("127.0.0.1")?0:1)'
 
 echo "  skipped missing DASHBOARD_SECRET check (requires a server restart)"
 if [ "$FAIL" -eq 0 ]; then

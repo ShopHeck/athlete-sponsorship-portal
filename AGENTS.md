@@ -38,12 +38,14 @@ operating one. `reference/gotchas.md` first when debugging.
   Stripe webhooks use `/api/stripe/webhook`. Dashboard APIs are `/api/dashboard/login`, `/session`, `/logout`,
   `/:slug/link`, `/:slug/summary`, `/:slug/export.csv`, `/:slug/placements/:id/{sold,release}`, and
   `/:slug/connect/onboard`, `/:slug/model`, `/:slug/model/{consent,kit,submit}`,
-  `/:slug/model/photos/:angle`, and `/:slug/model/views/{generate,decision,:angle}`; they require
-  `DASHBOARD_SECRET`, and POSTs require a same-origin `Origin`. Model Studio Phase B reference generation uses
-  `MESHY_API_KEY` and optional `MESHY_API_BASE` (default `https://api.meshy.ai`); local tests must point both the
-  key and base at the fake Meshy service. Blobs records are tenant-prefixed.
+  `/:slug/model/photos/:angle`, `/:slug/model/views/{generate,decision,:angle}`, and
+  `/:slug/model/build/{start,model.glb,thumbnail}`; they require `DASHBOARD_SECRET`, and POSTs require a
+  same-origin `Origin`. Model Studio Phases B–C use `MESHY_API_KEY` and optional `MESHY_API_BASE` (default
+  `https://api.meshy.ai`); local tests must override both to use the fake Meshy service. Phase C builds only from
+  approved views and stores GLBs privately in the `model-studio` Blobs store. The
+  `model-build-background` function externalizes `sharp` and `draco3dgltf`. Blobs records are tenant-prefixed.
 - Secrets only via `netlify env:set … --secret`; never in chat, code or commits. Set `DASHBOARD_SECRET` and
-  `MESHY_API_KEY` as Netlify secrets for deployed dashboard and reference-generation APIs.
+  `MESHY_API_KEY` as Netlify secrets for deployed dashboard and Model Studio APIs.
 - Blobs deletions are destructive: confirm the placement ID and back up first.
 - Real test emails / locks need explicit confirmation and the owner's own address.
 - Address every automated PR-review comment before calling a PR mergeable.

@@ -11,7 +11,15 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@gltf-transform/core": "4.5.0",
+    "@gltf-transform/extensions": "4.5.0",
+    "@gltf-transform/functions": "4.5.0",
+    "@mediapipe/tasks-vision": "0.10.35",
     "@netlify/blobs": "^8.2.0",
-    "@mediapipe/tasks-vision": "0.10.35"
+    "draco3dgltf": "1.5.7",
+    "sharp": "0.34.5"
+  },
+  "overrides": {
+    "sharp": "0.34.5"
   }
 }

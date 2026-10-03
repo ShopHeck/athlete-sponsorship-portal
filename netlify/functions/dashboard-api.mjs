@@ -18,6 +18,12 @@ import {
   recordViewDecision,
   startViews
 } from "../lib/reference-views.mjs";
+import {
+  advanceBuild,
+  getBuildAsset,
+  loadBuild,
+  startBuild
+} from "../lib/model-build.mjs";
 import { MeshyConfigurationError } from "../lib/meshy.mjs";
 import { getTenant, listTenants } from "../lib/tenants.mjs";
 
@@ -241,7 +247,7 @@ async function loadOnboarding(slug) {
   };
 }
 
-async function loadStudio(tenant, progress = {}) {
+async function loadStudio(tenant, progress = {}, buildProgress) {
   const store = getStore({ name: "model-studio", consistency: "strong" });
   const slug = tenant.slug;
   const [consent, kit, submission, ...photoMetadata] = await Promise.all([
@@ -266,6 +272,11 @@ async function loadStudio(tenant, progress = {}) {
     ownModel: hasOwnModel,
     progress
   });
+  const build = await loadBuild(tenant, {
+    viewsStatus: views.status,
+    ownModel: hasOwnModel,
+    progress: buildProgress
+  });
   const missing = [];
   if (!consent) missing.push("consent");
   if (!kit) missing.push("kit");
@@ -281,7 +292,8 @@ async function loadStudio(tenant, progress = {}) {
     photos,
     submittedAt: submission?.submittedAt ?? null,
     missing,
-    views
+    views,
+    build
   };
 }
 
@@ -350,7 +362,8 @@ async function summary(req, slug) {
       hasOwnModel: studio.hasOwnModel,
       photoCount: Object.values(studio.photos).filter(Boolean).length,
       submittedAt: studio.submittedAt,
-      views: studio.views
+      views: studio.views,
+      build: studio.build
     }
   });
 }
@@ -561,10 +574,19 @@ async function getModel(req, slug) {
   const access = await modelAccess(req, slug);
   if (access.response) return access.response;
   let model = await loadStudio(access.tenant);
-  if (model.views.status === "generating") {
+  if (model.views.status === "generating" ||
+      ["building", "processing"].includes(model.build.status)) {
     try {
-      const progress = await advanceViews(access.tenant);
-      model = await loadStudio(access.tenant, progress);
+      let viewsProgress = {};
+      let buildProgress;
+      if (model.views.status === "generating") {
+        viewsProgress = await advanceViews(access.tenant);
+      }
+      if (["building", "processing"].includes(model.build.status)) {
+        const progress = await advanceBuild(access.tenant, { origin: platformUrl(req) });
+        buildProgress = progress.progress;
+      }
+      model = await loadStudio(access.tenant, viewsProgress, buildProgress);
     } catch (error) {
       if (error instanceof MeshyConfigurationError) return json({ error: error.message }, 503);
       throw error;
@@ -596,6 +618,28 @@ async function getModelView(req, slug, angle) {
   if (access.response) return access.response;
   const asset = await getViewAsset(access.tenant, angle);
   if (!asset) return json({ error: "Reference view not found." }, 404);
+  return new Response(asset.bytes, {
+    headers: {
+      "content-type": asset.contentType,
+      "cache-control": "private, max-age=86400, immutable",
+      "x-content-type-options": "nosniff"
+    }
+  });
+}
+
+async function startModelBuild(req, slug) {
+  const access = await modelAccess(req, slug);
+  if (access.response) return access.response;
+  const result = await startBuild(access.tenant, access.session);
+  if (result.status !== 200) return json({ error: result.error }, result.status);
+  return json({ model: await loadStudio(access.tenant) });
+}
+
+async function getModelBuildAsset(req, slug, kind) {
+  const access = await modelAccess(req, slug);
+  if (access.response) return access.response;
+  const asset = await getBuildAsset(access.tenant, kind);
+  if (!asset) return json({ error: "Model asset not found." }, 404);
   return new Response(asset.bytes, {
     headers: {
       "content-type": asset.contentType,
@@ -805,6 +849,20 @@ export default async function dashboardApi(req) {
     return getModelView(req, parts[2], action);
   }
 
+  if (parts.length === 6 && parts[0] === "api" && parts[1] === "dashboard" &&
+      parts[3] === "model" && parts[4] === "build") {
+    const action = parts[5];
+    if (action === "start") {
+      if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+      return startModelBuild(req, parts[2]);
+    }
+    if (!["model.glb", "thumbnail"].includes(action)) {
+      return json({ error: "Unknown model build action." }, 404);
+    }
+    if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
+    return getModelBuildAsset(req, parts[2], action === "model.glb" ? "model" : "thumbnail");
+  }
+
   if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" && parts[3] === "summary") {
     if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
     return summary(req, parts[2]);
@@ -845,6 +903,7 @@ export const config = {
     "/api/dashboard/:slug/model/photos/:angle",
     "/api/dashboard/:slug/model/submit",
     "/api/dashboard/:slug/model/views/:action",
+    "/api/dashboard/:slug/model/build/:action",
     "/api/dashboard/:slug/summary",
     "/api/dashboard/:slug/export.csv",
     "/api/dashboard/:slug/connect/onboard",
