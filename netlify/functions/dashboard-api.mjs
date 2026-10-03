@@ -184,17 +184,20 @@ function placementConfigs(tenant) {
   })));
 }
 
-function onboardingView(record) {
+async function loadOnboarding(slug) {
+  const store = getStore({ name: "onboarding", consistency: "strong" });
+  const [tour, checklist, previewed, shared] = await Promise.all([
+    store.get(`${slug}/tour`, { type: "json" }),
+    store.get(`${slug}/checklist`, { type: "json" }),
+    store.get(`${slug}/previewed`, { type: "json" }),
+    store.get(`${slug}/shared`, { type: "json" })
+  ]);
   return {
-    tourCompletedAt: record?.tourCompletedAt ?? null,
-    checklistDismissedAt: record?.checklistDismissedAt ?? null,
-    previewedAt: record?.previewedAt ?? null,
-    sharedAt: record?.sharedAt ?? null
+    tourCompletedAt: tour?.at ?? null,
+    checklistDismissedAt: checklist?.dismissedAt ?? null,
+    previewedAt: previewed?.at ?? null,
+    sharedAt: shared?.at ?? null
   };
-}
-
-function loadOnboarding(slug) {
-  return getStore({ name: "onboarding", consistency: "strong" }).get(slug, { type: "json" });
 }
 
 async function summary(req, slug) {
@@ -205,7 +208,7 @@ async function summary(req, slug) {
   const base = platformUrl(req);
   const portalUrl = `${base}/${tenant.slug}`;
   const services = forTenant(tenant, { portalUrl });
-  const [record, readiness, placements, onboardingRecord] = await Promise.all([
+  const [record, readiness, placements, onboarding] = await Promise.all([
     services.connect.record(),
     services.connect.readiness(),
     loadPlacementsForSummary(tenant, portalUrl),
@@ -254,7 +257,7 @@ async function summary(req, slug) {
     },
     totals,
     placements,
-    onboarding: onboardingView(onboardingRecord)
+    onboarding
   });
 }
 
@@ -432,30 +435,24 @@ async function updateOnboarding(req, slug) {
   }
 
   const store = getStore({ name: "onboarding", consistency: "strong" });
-  const record = await store.get(tenant.slug, { type: "json" }) || {
-    tourCompletedAt: null,
-    tourCompletedBy: null,
-    checklistDismissedAt: null,
-    previewedAt: null,
-    sharedAt: null,
-    updatedAt: null
-  };
   const now = new Date().toISOString();
-  if (event === "tour_completed" && !record.tourCompletedAt) {
-    record.tourCompletedAt = now;
-    record.tourCompletedBy = session.email;
-  } else if (event === "portal_previewed" && !record.previewedAt) {
-    record.previewedAt = now;
-  } else if (event === "portal_shared" && !record.sharedAt) {
-    record.sharedAt = now;
-  } else if (event === "checklist_dismissed") {
-    record.checklistDismissedAt = now;
-  } else if (event === "checklist_restored") {
-    record.checklistDismissedAt = null;
+  if (event === "tour_completed") {
+    const key = `${tenant.slug}/tour`;
+    if (!(await store.get(key, { type: "json" }))) {
+      await store.setJSON(key, { at: now, by: session.email });
+    }
+  } else if (event === "portal_previewed" || event === "portal_shared") {
+    const name = event === "portal_previewed" ? "previewed" : "shared";
+    const key = `${tenant.slug}/${name}`;
+    if (!(await store.get(key, { type: "json" }))) await store.setJSON(key, { at: now });
+  } else {
+    const key = `${tenant.slug}/checklist`;
+    await store.setJSON(key, {
+      dismissedAt: event === "checklist_dismissed" ? now : null,
+      updatedAt: now
+    });
   }
-  record.updatedAt = now;
-  await store.setJSON(tenant.slug, record);
-  return json({ onboarding: onboardingView(record) });
+  return json({ onboarding: await loadOnboarding(tenant.slug) });
 }
 
 export default async function dashboardApi(req) {

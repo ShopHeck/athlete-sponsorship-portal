@@ -311,6 +311,39 @@ else
   echo "  FAIL summary returns the shared timestamp"
   FAIL=1
 fi
+
+curl -sS -o "$TMP_DIR/concurrent-preview.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"event":"portal_previewed"}' > "$TMP_DIR/concurrent-preview.code" &
+PREVIEW_PID=$!
+curl -sS -o "$TMP_DIR/concurrent-dismiss.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"event":"checklist_dismissed"}' > "$TMP_DIR/concurrent-dismiss.code" &
+DISMISS_PID=$!
+wait "$PREVIEW_PID"
+wait "$DISMISS_PID"
+check "concurrent portal preview event is accepted" "$(cat "$TMP_DIR/concurrent-preview.code")" "200"
+check "concurrent checklist dismissal event is accepted" "$(cat "$TMP_DIR/concurrent-dismiss.code")" "200"
+JORDAN_CONCURRENT_CODE=$(curl -sS -o "$TMP_DIR/jordan-onboarding-concurrent.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/jordan-reyes/summary")
+check "summary is available after concurrent onboarding events" "$JORDAN_CONCURRENT_CODE" "200"
+json_check "concurrent onboarding fields both persist" "$TMP_DIR/jordan-onboarding-concurrent.json" \
+  'const o=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).onboarding;process.exit(typeof o?.previewedAt==="string"&&typeof o?.checklistDismissedAt==="string"?0:1)'
+RESTORE_CONCURRENT_CODE=$(curl -sS -o "$TMP_DIR/concurrent-restored.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"event":"checklist_restored"}')
+check "checklist restores after concurrent events" "$RESTORE_CONCURRENT_CODE" "200"
+JORDAN_RESTORED_CODE=$(curl -sS -o "$TMP_DIR/jordan-onboarding-restored.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/jordan-reyes/summary")
+check "summary is available after checklist restore" "$JORDAN_RESTORED_CODE" "200"
+if node -e 'const before=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).onboarding;const after=JSON.parse(require("fs").readFileSync(process.argv[2],"utf8")).onboarding;process.exit(typeof before?.previewedAt==="string"&&typeof before?.sharedAt==="string"&&typeof before?.checklistDismissedAt==="string"&&after?.checklistDismissedAt===null&&after.previewedAt===before.previewedAt&&after.sharedAt===before.sharedAt?0:1)' \
+  "$TMP_DIR/jordan-onboarding-concurrent.json" "$TMP_DIR/jordan-onboarding-restored.json"; then
+  echo "  ok   checklist restore preserves preview and share timestamps"
+else
+  echo "  FAIL checklist restore preserves preview and share timestamps"
+  FAIL=1
+fi
+
 check "Michael session cannot update Jordan onboarding" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" \
   -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE" -H 'content-type: application/json' \
   -d '{"event":"portal_previewed"}')" "401"

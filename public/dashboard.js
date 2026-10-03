@@ -148,7 +148,11 @@ async function startPayouts(button) {
 function renderShare() {
   const { tenant } = summary;
   const copy = (value, label) => async (event) => {
-    try { await navigator.clipboard.writeText(value); toast(`${label} copied`); track("portal_shared"); }
+    try {
+      await navigator.clipboard.writeText(value);
+      toast(`${label} copied`);
+      if (tenant.status === "live") track("portal_shared");
+    }
     catch { event.currentTarget.previousElementSibling?.select?.(); toast("Press Ctrl/Cmd+C to copy", "error"); }
   };
   return el("section", { class: "card", "data-tour": "share" },
@@ -302,8 +306,10 @@ async function track(event) {
     const before = JSON.stringify(summary.onboarding || {});
     summary.onboarding = res.onboarding;
     if (JSON.stringify(res.onboarding) !== before) render();
+    return true;
   } catch (err) {
     if (event === "checklist_dismissed" || event === "checklist_restored") toast(err.message, "error");
+    return false;
   }
 }
 
@@ -333,8 +339,10 @@ function setupSteps() {
       id: "share",
       done: Boolean(onboarding.sharedAt),
       title: "Share your link or embed it",
-      body: "Paste one line of code into your website, or send the link to sponsors.",
-      action: { label: "Go to embed", run: () => focusTarget("share", "#embedCode") }
+      body: tenant.status === "draft"
+        ? "Your link and embed start working once your portal is approved and goes live."
+        : "Paste one line of code into your website, or send the link to sponsors.",
+      action: tenant.status === "draft" ? null : { label: "Go to embed", run: () => focusTarget("share", "#embedCode") }
     },
     {
       id: "tour",
@@ -511,18 +519,19 @@ function startTour() {
   show(0);
 }
 
-function endTour(completed) {
+async function endTour(completed) {
   if (!tour) return;
   const { overlay, cleanup, returnFocus } = tour;
   cleanup();
   overlay.remove();
   document.body.classList.remove("touring");
   tour = null;
-  try { sessionStorage.setItem(SKIP_KEY, "1"); } catch { /* storage unavailable */ }
-  if (completed) {
+  if (!completed) {
+    try { sessionStorage.setItem(SKIP_KEY, "1"); } catch { /* storage unavailable */ }
+  } else if (await track("tour_completed")) {
+    try { sessionStorage.setItem(SKIP_KEY, "1"); } catch { /* storage unavailable */ }
     toast("You're all set");
-    track("tour_completed");
-  }
+  } else toast("Couldn't save your tour progress. Try again from Take the tour.", "error");
   if (returnFocus instanceof HTMLElement && document.contains(returnFocus)) returnFocus.focus();
 }
 
