@@ -645,10 +645,10 @@ for angle in front back left right; do
     -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_VIEWS_URL/$angle")
   check "$angle view is available as a private PNG" "$VIEW_GET_CODE" "200"
   if grep -qi '^content-type: image/png' "$TMP_DIR/view-$angle.headers" &&
-     grep -qi '^cache-control: private, no-store' "$TMP_DIR/view-$angle.headers"; then
-    echo "  ok   $angle view response headers are private"
+     grep -qi '^cache-control: private, max-age=86400, immutable' "$TMP_DIR/view-$angle.headers"; then
+    echo "  ok   $angle view response headers are private and immutable"
   else
-    echo "  FAIL $angle view response headers are private"
+    echo "  FAIL $angle view response headers are private and immutable"
     FAIL=1
   fi
 done

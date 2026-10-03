@@ -599,7 +599,7 @@ async function getModelView(req, slug, angle) {
   return new Response(asset.bytes, {
     headers: {
       "content-type": asset.contentType,
-      "cache-control": "private, no-store",
+      "cache-control": "private, max-age=86400, immutable",
       "x-content-type-options": "nosniff"
     }
   });
