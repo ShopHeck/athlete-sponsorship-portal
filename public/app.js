@@ -58,7 +58,7 @@ const lockButton = document.getElementById("lockButton");
 const bidNote = document.getElementById("bidNote");
 const bidNoteText = document.getElementById("bidNote").firstChild;
 if (isStudio) {
-  bidNoteText.data = "Preview only — bidding is disabled";
+  bidNoteText.data = "Preview only — bidding is disabled. ";
   bidForm.querySelectorAll("input,button").forEach((control) => { control.disabled = true; });
   lockButton.disabled = true;
 }
