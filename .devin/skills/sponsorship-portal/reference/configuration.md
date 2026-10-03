@@ -90,6 +90,25 @@ deadline values, notification email and sender, brand colors, ring colors and pa
 sold sponsors, and athlete/event-specific email and invoice copy. These business settings are not overridden with
 per-site environment variables.
 
+## Payments
+
+Every tenant requires a `payments` block:
+
+```json
+{ "mode": "platform" }
+```
+
+Use platform mode when invoices stay on the platform Stripe account. A Connect tenant instead configures:
+
+```json
+{ "mode": "connect", "feePercent": 10, "country": "US" }
+```
+
+`feePercent` must be greater than 0 and no more than 50. `country` is optional and defaults to `US`; when supplied,
+it must be two uppercase letters. Connect invoices are destination charges with this application fee. The required
+`copy.paymentsPending` string is shown while bidding is closed pending payout setup. Bidding becomes available only
+when Stripe reports charges enabled and the transfers capability active.
+
 Global environment variables are reserved for platform/service operation: `STRIPE_SECRET_KEY`,
 `RESEND_API_KEY`, `STRIPE_API_BASE`, `RESEND_API_BASE`, `PLATFORM_URL`, `PREVIEW_TOKEN`, and `ADMIN_TOKEN`.
 `NOTIFY_FROM` is used only when a tenant does not define `contact.notifyFrom`.

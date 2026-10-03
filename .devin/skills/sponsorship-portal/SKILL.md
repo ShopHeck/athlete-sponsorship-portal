@@ -17,8 +17,8 @@ skip what the user has already completed. Read the relevant reference before edi
 
 ## How the platform works
 
-- `tenants/<slug>.json` contains each tenant's identity, event, status, placements, pricing, ring, branding, sponsors,
-  copy, and contact details.
+- `tenants/<slug>.json` contains each tenant's identity, event, status, placements, pricing, payment mode, ring,
+  branding, sponsors, copy, and contact details.
 - `public/tenants/<slug>/` contains that tenant's model, poster, and sponsor artwork. Relative paths resolve within
   this directory.
 - `scripts/build.mjs` validates every tenant and bundles the configs and page template for Netlify Functions.
@@ -26,6 +26,8 @@ skip what the user has already completed. Read the relevant reference before edi
   closed tenants receive tenant-specific CSP and cache headers.
 - Bid and logo routes are `/api/<slug>/bids` and `/api/<slug>/logos/<id>`. Blobs stores are shared by name but keys
   are tenant-prefixed (`<slug>/<placementId>`).
+- Connect tenants use `/api/<slug>/connect/onboard` and `/api/<slug>/connect/status`; bidding stays closed until
+  charges are enabled and the transfers capability is active.
 - `netlify/lib/sponsorship.mjs` exports `forTenant(config, { portalUrl })`, which closes email, invoice, pricing,
   and placement helpers over one tenant.
 - The scheduled job processes every non-draft tenant; the admin close endpoint may process all non-draft tenants or
@@ -44,7 +46,7 @@ owner-notification inbox, and access to the client's Stripe and Resend accounts.
 3. Define every placement in `garments[].placements`. IDs must be unique within the tenant and no longer than
    eight characters; the build generates the server allowlist and email labels from this data.
 4. Add confirmed placements and their logos to the config's `sold` map.
-5. Configure athlete, event, SEO, hero, benefits, copy, contact, pricing, brand, ring, and optional poster values.
+5. Configure athlete, event, SEO, hero, benefits, copy, contact, pricing, required `payments` mode, brand, ring, and optional poster values.
    Pricing, deadlines, event names, and notification inboxes come from tenant config, not per-site overrides.
 6. Run `npm run build`. Preview `/<slug>?preview=$PREVIEW_TOKEN`; the page sends the token in `x-preview-token`
    on bid API requests and in the query string on logo image requests. After review, switch the tenant to `"live"`
@@ -68,6 +70,7 @@ RESEND_API_KEY=re_mock RESEND_API_BASE=http://127.0.0.1:4343 \
 npx netlify dev --offline --port 8890
 scripts/smoke-test.sh http://localhost:8890 <slug> <OPEN-ID-A> <OPEN-ID-B>
 scripts/tenant-test.sh http://localhost:8890
+scripts/connect-test.sh http://localhost:8890
 ```
 
 Reset the local Blobs sandbox before each test run with `rm -rf .netlify/blobs-serve`. Never run test locks or real
@@ -76,8 +79,9 @@ emails against production without the owner's explicit confirmation.
 ## Phase 3 — Launch
 
 Follow `reference/launch-checklist.md` for the tenant's Netlify site, production credentials, domain, frame origins,
-and host embed. Confirm the draft preview, switch to live only after approval, then smoke-test the live page and
-tenant API.
+and host embed. For Connect tenants, onboard the athlete through the admin endpoint and confirm status is ready
+before accepting bids. Confirm the draft preview, switch to live only after approval, then smoke-test the live page
+and tenant API.
 
 ## Phase 4 — Operate
 

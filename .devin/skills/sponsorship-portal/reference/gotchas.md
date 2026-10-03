@@ -29,6 +29,13 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
   that generated registry.
 
 ## Bidding / invoicing
+- **Connect invoice finalization failed.** Destination charges cannot be finalized until the connected account's
+  `transfers` capability is `active`. The bid API gates bidding on charges-enabled plus active transfers, and the
+  close-auction job refreshes cached account status before processing invoices.
+- **Athlete's Stripe onboarding link expired.** Account links are temporary; use its signed refresh URL to issue a
+  fresh Stripe-hosted link or call the admin onboarding endpoint again.
+- **Platform fees did not cover payment risk.** With destination charges, the platform pays Stripe processing fees
+  and carries refund/chargeback exposure. Set `feePercent` high enough to cover those costs and risks.
 - **Every successful lock showed "Network error" in the UI even though the server saved it.** `busy.textContent =
   "Sending…"` wiped the `<span>` inside the lock button that `renderBidPanel()` writes to, so a re-render threw
   inside the `try`. Fixed with a dedicated `#lockLabel` span and a `submitBid.busy` guard.

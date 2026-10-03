@@ -18,6 +18,20 @@
 - [ ] Set a tenant's `contact.notifyFrom` and `contact.notifyEmail`. `NOTIFY_FROM` is only a global fallback sender.
 - [ ] Confirm Stripe and Resend service API bases are production defaults; use mock API bases only in local tests.
 
+## Stripe Connect onboarding
+
+For each tenant with `payments.mode: "connect"`:
+
+- [ ] Confirm `feePercent` is appropriate for Stripe processing costs and the platform's refund/chargeback exposure.
+- [ ] Set the live `PLATFORM_URL` to the public **HTTPS** origin before onboarding.
+- [ ] Start onboarding with `POST /api/<slug>/connect/onboard` and
+      `Authorization: Bearer $ADMIN_TOKEN`.
+- [ ] Send the returned Stripe-hosted `url` to the athlete so they can complete account setup.
+- [ ] Account links expire. If an athlete returns to an expired link, use the signed `refresh_url` from the link or
+      start onboarding again through the admin endpoint to create a fresh link.
+- [ ] Check `GET /api/<slug>/connect/status` with the admin token. Bidding is enabled only when charges are enabled
+      and `capabilities.transfers` is `active`; otherwise it remains closed with `copy.paymentsPending`.
+
 ## Preview and verify
 
 - [ ] Deploy the tenant while it remains draft and open `/<slug>?preview=<PREVIEW_TOKEN>`.
@@ -27,6 +41,7 @@
 - [ ] Confirm the tenant-specific CSP includes every required `embedOrigins` value.
 - [ ] Verify front/back placement projection, labels, sold logos, poster, model, ring, mobile layout, and embed sizing.
 - [ ] Run `scripts/smoke-test.sh <base> <slug> <OPEN-ID-A> <OPEN-ID-B>` with two available IDs.
+- [ ] Run `scripts/connect-test.sh <base>` against mock Stripe and Resend before accepting Connect bids.
 - [ ] Confirm the tenant-scoped bid and logo endpoints use `/api/<slug>/...` and do not expose other tenants' records.
 - [ ] Verify a test bid, notification email, Stripe invoice, recipient, sender, amount, and hosted payment link with
       approved test credentials before accepting real bids.

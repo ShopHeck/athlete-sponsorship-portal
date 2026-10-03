@@ -9,8 +9,8 @@ A multi-tenant platform for embeddable 360° athlete sponsorship portals. Each t
 1. Add a uniquely named `tenants/<slug>.json` file. The filename must match its lowercase slug.
 2. Add tenant-specific assets under `public/tenants/<slug>/`. Relative model, poster, and sold-logo paths resolve
    from that directory. Root-relative and HTTP URLs can be used for shared or externally hosted assets.
-3. Set `"status": "draft"` and add the tenant's embed origins, athlete/event details, placements, pricing, ring,
-   branding, benefits, contact details, and copy.
+3. Set `"status": "draft"` and add the tenant's embed origins, athlete/event details, placements, pricing, payment
+   mode, ring, branding, benefits, contact details, and copy.
 4. Run `npm run build`, then preview at `/<slug>?preview=$PREVIEW_TOKEN`. After review, change status to `"live"`
    and rebuild.
 
@@ -22,6 +22,14 @@ test recipients; draft tenants remain excluded from the scheduled close job.
 Placement IDs and labels are defined in `garments[].placements`; IDs must be unique per tenant and no longer than
 eight characters. Confirmed sponsors live in the config's `sold` map. Pricing, deadline, event, and owner inbox
 values are tenant-configured rather than selected with per-site environment overrides.
+
+## Payments
+
+Every tenant config sets `payments.mode` to `"platform"` or `"connect"`. Michael uses the platform account; Connect
+tenants must finish Stripe-hosted onboarding and have charges enabled with the transfers capability active before
+bids are accepted. Connect invoices are destination charges with the configured `feePercent` application fee.
+Use `POST /api/<slug>/connect/onboard` with the admin Bearer token to create an onboarding link, send the returned
+URL to the athlete, then verify readiness with `GET /api/<slug>/connect/status`.
 
 ## Build and local development
 
@@ -57,6 +65,7 @@ Reset only this checkout's Blobs sandbox with `rm -rf .netlify/blobs-serve` befo
 ```bash
 scripts/smoke-test.sh http://localhost:8890 michael-heckert SB-R1 TF-12
 scripts/tenant-test.sh http://localhost:8890
+scripts/connect-test.sh http://localhost:8890
 ```
 
 The smoke-test signature is `[base-url] [slug] [open-placement-A] [open-placement-B]`. Choose two IDs defined
@@ -71,6 +80,8 @@ in the tenant config, absent from its `sold` map, and with no existing local bid
   controls which sites may frame its portal.
 - `GET` and `POST /api/<slug>/bids` expose tenant-scoped bid data. Logo images are served from
   `/api/<slug>/logos/<id>`. Blobs stores remain named `bids` and `logos`, with keys prefixed by `<slug>/`.
+- `POST /api/<slug>/connect/onboard` and `GET /api/<slug>/connect/status` require the admin token. Connect tenants
+  cannot accept bids until their account is payout-ready.
 - `POST /api/close-auction` is admin-only. It processes every non-draft tenant, or one tenant when passed
   `?tenant=<slug>`. The scheduled daily job processes all non-draft tenants.
 - Stripe creates invoice links; the portal does not charge cards. Resend sends bid confirmations, outbid notices,
@@ -88,7 +99,7 @@ in the tenant config, absent from its `sold` map, and with no existing local bid
 | `STRIPE_API_BASE`, `RESEND_API_BASE` | Optional service API bases, typically pointed at the mock server in tests. |
 | `PLATFORM_URL` | Platform origin used to construct tenant page and API links. |
 | `PREVIEW_TOKEN` | Allows draft page preview through `?preview=<token>` and draft API access via `x-preview-token` (logo URLs may use the query token). |
-| `ADMIN_TOKEN` | Bearer token required for `POST /api/close-auction`. |
+| `ADMIN_TOKEN` | Bearer token required for admin auction and Connect onboarding/status endpoints. |
 | `NOTIFY_FROM` | Global fallback sender when a tenant does not define `contact.notifyFrom`. |
 
 ## Skill and agent references
