@@ -26,6 +26,7 @@ skip what the user has already completed. Read the relevant reference before edi
   closed tenants receive tenant-specific CSP and cache headers.
 - Bid and logo routes are `/api/<slug>/bids` and `/api/<slug>/logos/<id>`. Blobs stores are shared by name but keys
   are tenant-prefixed (`<slug>/<placementId>`).
+- Stripe events arrive at `/api/stripe/webhook`; signed events update Connect readiness and invoice payment state.
 - Connect tenants use `/api/<slug>/connect/onboard` and `/api/<slug>/connect/status`; their direct-charge invoices
   are created on the athlete's Stripe account. Bidding stays closed until charges are enabled and the
   `card_payments` capability is active. Account creation requests both `card_payments` and `transfers` because
@@ -68,15 +69,17 @@ Use only mock Stripe and Resend credentials:
 MOCK_PORT=4343 node scripts/mock-services.mjs
 PREVIEW_TOKEN=devpreview ADMIN_TOKEN=devtoken PLATFORM_URL=http://localhost:8890 \
 STRIPE_SECRET_KEY=sk_test_mock STRIPE_API_BASE=http://127.0.0.1:4343 \
+STRIPE_WEBHOOK_SECRET=whsec_platform_test STRIPE_CONNECT_WEBHOOK_SECRET=whsec_connect_test \
 RESEND_API_KEY=re_mock RESEND_API_BASE=http://127.0.0.1:4343 \
 npx netlify dev --offline --port 8890
 scripts/smoke-test.sh http://localhost:8890 <slug> <OPEN-ID-A> <OPEN-ID-B>
 scripts/tenant-test.sh http://localhost:8890
 scripts/connect-test.sh http://localhost:8890
+scripts/webhook-test.sh http://localhost:8890
 ```
 
-Reset the local Blobs sandbox before each test run with `rm -rf .netlify/blobs-serve`. Never run test locks or real
-emails against production without the owner's explicit confirmation.
+Reset the local Blobs sandbox and restart the mock service before each test run with `rm -rf .netlify/blobs-serve`.
+Never run test locks or real emails against production without the owner's explicit confirmation.
 
 ## Phase 3 — Launch
 

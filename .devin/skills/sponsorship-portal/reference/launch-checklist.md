@@ -18,6 +18,15 @@
 - [ ] Set a tenant's `contact.notifyFrom` and `contact.notifyEmail`. `NOTIFY_FROM` is only a global fallback sender.
 - [ ] Confirm Stripe and Resend service API bases are production defaults; use mock API bases only in local tests.
 
+## Stripe webhooks
+
+- [ ] Create two Stripe endpoints at `<PLATFORM_URL>/api/stripe/webhook`.
+- [ ] The platform-account endpoint subscribes to `invoice.paid`.
+- [ ] The Connect endpoint listens to connected-account events (`connect=true`) and subscribes to
+      `account.updated`, `account.application.deauthorized`, and `invoice.paid`.
+- [ ] Store the endpoint signing secrets as Netlify secrets `STRIPE_WEBHOOK_SECRET` and
+      `STRIPE_CONNECT_WEBHOOK_SECRET`.
+
 ## Stripe Connect onboarding
 
 For each tenant with `payments.mode: "connect"`:
