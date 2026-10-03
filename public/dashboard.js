@@ -141,13 +141,15 @@ function renderModel() {
     ? ["warn", "Generating views"]
     : viewsStatus === "review"
       ? ["accent", "Approve your views"]
-      : model.status === "ready"
-        ? ["ok", "Live"]
-        : model.status === "submitted"
-          ? ["warn", "In production"]
-          : model.status === "collecting"
-            ? ["warn", `${model.photoCount || 0} of 5 photos`]
-            : ["warn", "Not started"];
+      : ["failed", "rejected"].includes(viewsStatus)
+        ? ["warn", "Views need attention"]
+        : model.status === "ready"
+          ? ["ok", "Live"]
+          : model.status === "submitted"
+            ? ["warn", "In production"]
+            : model.status === "collecting"
+              ? ["warn", `${model.photoCount || 0} of 5 photos`]
+              : ["warn", "Not started"];
   return el("section", { class: "card", "data-tour": "model" },
     el("div", { class: "card-head" }, el("h2", { text: "Your 3D likeness" }), el("span", { class: `badge badge-${badge[0]}`, text: badge[1] })),
     el("p", { class: "muted", text: "Sponsors see a 360° 3D model of you. Take 5 quick photos and we'll build it." }),
@@ -156,7 +158,9 @@ function renderModel() {
       href: `/dashboard/${encodeURIComponent(summary.tenant.slug)}/model`,
       text: viewsStatus === "review"
         ? "Approve your views"
-        : model.status === "collecting" ? "Continue" : "Open model studio"
+        : ["failed", "rejected"].includes(viewsStatus)
+          ? "Open model studio"
+          : model.status === "collecting" ? "Continue" : "Open model studio"
     }));
 }
 
@@ -1112,8 +1116,8 @@ function renderViewsSection() {
           })
           : null),
       views.attemptsLeft > 0
-        ? el("p", { class: "muted small", text: `${views.attemptsLeft} regenerations left` })
-        : el("p", { class: "notice notice-warn", text: "You've used all 3 generations — contact us and we'll fix it by hand." }));
+        ? el("p", { class: "muted small", text: `${views.attemptsLeft} ${views.attemptsLeft === 1 ? "regeneration" : "regenerations"} left` })
+        : el("p", { class: "notice notice-warn", text: "No regenerations left — if something's off, contact us and we'll fix it by hand." }));
     if (viewRegenerateOpen && views.attemptsLeft > 0) {
       const feedback = el("textarea", {
         rows: "3",

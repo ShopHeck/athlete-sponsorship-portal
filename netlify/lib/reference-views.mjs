@@ -11,6 +11,7 @@ import {
 
 const ANGLES = ["front", "back", "left", "right"];
 const MAX_ATTEMPTS = 3;
+const TASK_CREATION_TIMEOUT_MS = 5 * 60 * 1000;
 const VIEW_TIMEOUT_MS = 30 * 60 * 1000;
 const PROMPT_VERSION = "2026-10-03";
 const PALETTE = [
@@ -118,8 +119,10 @@ export async function loadViews(tenant, {
     ]);
     if (image) return [angle, { status: "ready", progress: 100, at: image.metadata?.at ?? null }];
     if (error) return [angle, { status: "failed", progress: 100, at: error.at ?? null }];
-    const timedOut = Number.isFinite(Date.parse(job.startedAt)) &&
-      Date.now() - Date.parse(job.startedAt) > VIEW_TIMEOUT_MS;
+    const taskId = job.tasks?.[angle];
+    const startedAt = Date.parse(job.startedAt);
+    const timedOut = (taskId === null || taskId === undefined) &&
+      Number.isFinite(startedAt) && Date.now() - startedAt > TASK_CREATION_TIMEOUT_MS;
     if (timedOut) return [angle, { status: "failed", progress: 100, at: null }];
     const currentProgress = progress[angle];
     return [angle, {
@@ -251,6 +254,8 @@ export async function advanceViews(tenant) {
     try {
       const task = await getImageToImage(taskId);
       const status = String(task?.status || "").toUpperCase();
+      const startedAt = Date.parse(job.startedAt);
+      const timedOut = Number.isFinite(startedAt) && Date.now() - startedAt > VIEW_TIMEOUT_MS;
       if (status === "SUCCEEDED") {
         const assetUrl = Array.isArray(task.image_urls) ? task.image_urls[0] : null;
         if (!assetUrl) throw new Error("Meshy completed without an image URL.");
@@ -263,6 +268,8 @@ export async function advanceViews(tenant) {
           message: task.task_error?.message || `Meshy task ${status.toLowerCase()}.`,
           at: new Date().toISOString()
         });
+      } else if (timedOut) {
+        await store.setJSON(failureKey, { message: "Meshy task timed out.", at: new Date().toISOString() });
       } else {
         const current = Number(task?.progress);
         progress[angle] = Number.isFinite(current) ? Math.max(0, Math.min(100, current)) : 0;
