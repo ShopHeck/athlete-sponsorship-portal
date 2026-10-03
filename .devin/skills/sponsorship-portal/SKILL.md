@@ -33,12 +33,17 @@ skip what the user has already completed. Read the relevant reference before edi
   `/api/dashboard/:slug/onboarding`, `/api/dashboard/:slug/model`, `/api/dashboard/:slug/model/consent`,
   `/api/dashboard/:slug/model/kit`, `/api/dashboard/:slug/model/photos/:angle` (GET/POST), and
   `/api/dashboard/:slug/model/submit`, `/api/dashboard/:slug/model/views/generate`, `/api/dashboard/:slug/model/views/decision`,
-  and `/api/dashboard/:slug/model/views/:angle`. Onboarding progress is stored per tenant in the `onboarding` Blobs store.
-  Model Studio Phase A collects consent, kit colours and photos for later 3D production; it does not call Meshy.
+  `/api/dashboard/:slug/model/views/:angle`, and `/api/dashboard/:slug/model/build/{start,model.glb,thumbnail}`.
+  Onboarding progress is stored per tenant in the `onboarding` Blobs store. Model Studio Phase A collects consent,
+  kit colours and photos; Phase B generates reference views for athlete approval; Phase C builds and optimizes a
+  private GLB only from approved views. Phase C stops at `ready`; the 360° preview and publishing remain Phase D.
   The strong-consistency `model-studio` Blobs store uses `<slug>/consent`, `<slug>/kit`,
   `<slug>/photo/<angle>`, `<slug>/submission`, `<slug>/views/job`, `<slug>/views/<job-id>/<angle>`,
-  `<slug>/views/<job-id>/errors/<angle>`, and `<slug>/views/decision`. Reference view generation and review
-  use the `MESHY_API_KEY` secret and `MESHY_API_BASE`; automated tests must set both to the local fake Meshy service.
+  `<slug>/views/<job-id>/errors/<angle>`, `<slug>/views/decision`, `<slug>/build/job`,
+  `<slug>/build/<job-id>/processing`, `<slug>/build/<job-id>/model.glb`, `<slug>/build/<job-id>/thumbnail`,
+  and `<slug>/build/<job-id>/error`. Reference generation and 3D builds use `MESHY_API_KEY` and `MESHY_API_BASE`;
+  automated tests must override both to the local fake Meshy service. The `model-build-background` function
+  externalizes `sharp` and `draco3dgltf`.
   Authenticated summaries and exports also work for draft tenants; all routes require `DASHBOARD_SECRET`,
   and POST requests require a same-origin `Origin`.
 - Connect tenants use `/api/<slug>/connect/onboard` and `/api/<slug>/connect/status`; their direct-charge invoices

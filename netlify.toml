@@ -6,6 +6,9 @@
 [functions]
   node_bundler = "esbuild"
 
+[functions."model-build-background"]
+  external_node_modules = ["sharp", "draco3dgltf"]
+
 # Tenant pages version their CSS and JavaScript URLs at render time.
 [[headers]]
   for = "/*.css"

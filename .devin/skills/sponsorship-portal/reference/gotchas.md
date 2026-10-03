@@ -77,6 +77,10 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
 - **Automated Model Studio tests could call real Meshy.** The shell may inherit the production
   `MESHY_API_KEY`; always launch Netlify Dev with `MESHY_API_KEY=mock_key` and
   `MESHY_API_BASE=http://127.0.0.1:4343` so reference generation can reach only the local mock.
+- **Local GLB optimization fails to bundle or load codecs.** `model-build-background` externalizes `sharp` and
+  `draco3dgltf` in `netlify.toml`; keep both exact-pinned dependencies installed. Automated Phase C tests use the
+  fake Meshy, whose textured GLB fixture is generated at mock startup with `@gltf-transform/core`; never use the
+  production Meshy key for integration tests.
 
 ## Frontend
 - **Visitors landed on a SOLD placement ("0 of 6 available").** Default was "first shorts-front slot". Landing
