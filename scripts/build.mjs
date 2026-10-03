@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { renderPortal } from "../netlify/lib/render.mjs";
@@ -8,6 +8,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const tenantsDirectory = path.join(root, "tenants");
 const template = readFileSync(path.join(root, "src/index.template.html"), "utf8");
 const generatedPlatform = path.join(root, "netlify/lib/platform.generated.json");
+const mediapipeSource = path.join(root, "node_modules/@mediapipe/tasks-vision");
+const mediapipeTarget = path.join(root, "public/vendor/mediapipe");
 const tenantFiles = readdirSync(tenantsDirectory)
   .filter((filename) => filename.endsWith(".json"))
   .sort();
@@ -38,4 +40,7 @@ const platform = {
   tenants: Object.fromEntries(tenants.map((config) => [config.slug, config]))
 };
 writeFileSync(generatedPlatform, `${JSON.stringify(platform, null, 2)}\n`);
+mkdirSync(mediapipeTarget, { recursive: true });
+copyFileSync(path.join(mediapipeSource, "vision_bundle.mjs"), path.join(mediapipeTarget, "vision_bundle.mjs"));
+cpSync(path.join(mediapipeSource, "wasm"), path.join(mediapipeTarget, "wasm"), { recursive: true });
 console.log(`Built tenant registry with ${tenants.length} tenants (version ${version}).`);

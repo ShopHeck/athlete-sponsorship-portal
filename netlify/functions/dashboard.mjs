@@ -18,7 +18,11 @@ const CSP = [
   "frame-ancestors 'none'"
 ].join("; ");
 
-function page({ title, body, accent = "#ff6a1a", bodyAttrs = "", script = false }) {
+const MODEL_CSP = CSP
+  .replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'")
+  .replace("img-src 'self' data:", "img-src 'self' data: blob:");
+
+function page({ title, body, accent = "#ff6a1a", bodyAttrs = "", script = false, csp = CSP }) {
   const version = escapeHtml(platform.version);
   const html = `<!doctype html>
 <html lang="en">
@@ -44,7 +48,7 @@ ${script ? `<script type="module" src="/dashboard.js?v=${version}"></script>` : 
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
-      "content-security-policy": CSP,
+      "content-security-policy": csp,
       "referrer-policy": "same-origin",
       "x-content-type-options": "nosniff"
     }
@@ -115,6 +119,27 @@ function dashboardPage(tenant) {
   });
 }
 
+function modelStudioPage(tenant) {
+  const name = tenant.athlete?.displayName || tenant.slug;
+  return page({
+    title: `${name} · Model studio`,
+    accent: tenant.brand?.accent,
+    script: true,
+    csp: MODEL_CSP,
+    bodyAttrs: `data-view="model" data-slug="${escapeHtml(tenant.slug)}"`,
+    body: `<header class="topbar">
+  <div class="brand"><span class="brand-mark">${escapeHtml(tenant.athlete?.brandMark || "")}</span>
+    <span class="brand-copy"><strong>${escapeHtml(name)}</strong><small>MODEL STUDIO</small></span></div>
+  <nav class="top-actions">
+    <a class="btn btn-ghost" href="/dashboard/${escapeHtml(tenant.slug)}">Back to dashboard</a>
+  </nav>
+</header>
+<main class="dash model-studio" id="modelStudio" aria-busy="true">
+  <p class="loading" id="modelLoading">Loading your model studio…</p>
+</main>`
+  });
+}
+
 export default async function dashboard(req, context) {
   if (req.method !== "GET") return new Response("Method not allowed", { status: 405 });
   const url = new URL(req.url);
@@ -131,7 +156,10 @@ export default async function dashboard(req, context) {
   const slug = context.params?.slug || "";
   const tenant = await getTenant(slug);
   if (!tenant || !session || session.slug !== slug) return redirect("/dashboard");
+  if (path === `/dashboard/${encodeURIComponent(slug)}/model`) return modelStudioPage(tenant);
   return dashboardPage(tenant);
 }
 
-export const config = { path: ["/dashboard", "/dashboard/", "/dashboard/auth", "/dashboard/:slug", "/dashboard/:slug/"] };
+export const config = {
+  path: ["/dashboard", "/dashboard/", "/dashboard/auth", "/dashboard/:slug", "/dashboard/:slug/", "/dashboard/:slug/model"]
+};

@@ -134,6 +134,25 @@ function renderPayments() {
     el("p", { class: "muted", text }), button);
 }
 
+function renderModel() {
+  const model = summary.model || {};
+  const badge = model.status === "ready"
+    ? ["ok", "Live"]
+    : model.status === "submitted"
+      ? ["warn", "In production"]
+      : model.status === "collecting"
+        ? ["warn", `${model.photoCount || 0} of 5 photos`]
+        : ["warn", "Not started"];
+  return el("section", { class: "card", "data-tour": "model" },
+    el("div", { class: "card-head" }, el("h2", { text: "Your 3D likeness" }), el("span", { class: `badge badge-${badge[0]}`, text: badge[1] })),
+    el("p", { class: "muted", text: "Sponsors see a 360° 3D model of you. Take 5 quick photos and we'll build it." }),
+    el("a", {
+      class: "btn btn-primary",
+      href: `/dashboard/${encodeURIComponent(summary.tenant.slug)}/model`,
+      text: model.status === "collecting" ? "Continue" : "Open model studio"
+    }));
+}
+
 async function startPayouts(button) {
   if (button) button.disabled = true;
   try {
@@ -244,7 +263,7 @@ function render() {
         el("button", { class: "btn btn-ghost", type: "button", text: "Refresh", onclick: load }))),
     checklist,
     renderStats(),
-    el("div", { class: "grid" }, renderPayments(), renderShare()),
+    el("div", { class: "grid" }, renderPayments(), renderModel(), renderShare()),
     renderPlacements());
 }
 
@@ -314,8 +333,9 @@ async function track(event) {
 }
 
 function setupSteps() {
-  const { payments, onboarding = {}, totals, tenant } = summary;
+  const { payments, onboarding = {}, totals, tenant, model = {} } = summary;
   const connect = payments.mode === "connect";
+  const modelDone = model.status === "ready" || model.status === "submitted";
   return [
     {
       id: "payouts",
@@ -325,6 +345,15 @@ function setupSteps() {
         ? "Sponsors pay you directly. Bidding opens as soon as Stripe enables your account."
         : "Sponsor invoices are created and sent automatically when a placement is won.",
       action: connect && !payments.ready ? { label: payments.accountId ? "Continue setup" : "Set up payouts", run: (b) => startPayouts(b) } : null
+    },
+    {
+      id: "model",
+      done: modelDone,
+      title: "Create your 3D likeness",
+      body: modelDone
+        ? model.status === "ready" ? "Your 3D likeness is live on your portal." : "Your photos are submitted and your 3D model is in production."
+        : "Take 5 guided photos on your phone — we turn them into your 3D model.",
+      action: { label: "Open model studio", run: () => { window.location.assign(`/dashboard/${encodeURIComponent(tenant.slug)}/model`); } }
     },
     {
       id: "preview",
@@ -436,6 +465,7 @@ function tourSteps() {
         ? `Sponsors pay your own Stripe account, so the money is yours from the start${fee != null ? ` and our ${fee}% fee is taken automatically` : ""}. Bidding stays paused until Stripe can accept payments for you.`
         : "When a placement is won or locked, the sponsor gets a Stripe invoice automatically and you get an email when it's paid."
     },
+    { target: "model", title: "Your 3D likeness", body: "Snap 5 guided photos and we'll build the hyper-realistic 3D model sponsors spin on your portal. Each photo is checked instantly so you only shoot once." },
     { target: "share", title: "Embed it anywhere", body: "Copy your link for sponsors and DMs, or paste the embed code into your website. The full 3D portal works on phones and desktops." },
     { target: "placements", title: "Every placement, every bidder", body: "Each logo spot on your kit runs its own auction. Open a row to see the high bidder's contact details, bid history, their uploaded logo and invoice status." },
     { target: "filters", title: "Closed a deal yourself?", body: "Filter to Open and choose \"Mark as sold offline\". The spot shows as taken on your portal right away and stops taking bids. You can release it later." },
@@ -535,8 +565,454 @@ async function endTour(completed) {
   if (returnFocus instanceof HTMLElement && document.contains(returnFocus)) returnFocus.focus();
 }
 
+/* -------------------------------------------------------- model studio */
+const PHOTO_ANGLES = {
+  front: { title: "Front", instruction: "Face the camera, arms slightly away from your body." },
+  back: { title: "Back", instruction: "Turn around, arms slightly away from your body." },
+  left: { title: "Left side", instruction: "Turn left and show your full side." },
+  right: { title: "Right side", instruction: "Turn right and show your full side." },
+  face: { title: "Face close-up", instruction: "Take a clear, straight-on photo of your face." }
+};
+const PHOTO_WARNING_COPY = {
+  blurry: "Looks blurry — hold still or tap to focus.",
+  dark: "Too dark — move to brighter, even light.",
+  bright: "Overexposed — avoid direct sun or a bright window behind you.",
+  landscape: "Turn your phone upright.",
+  no_person: "We couldn't find a person in this photo.",
+  multiple_people: "Only you should be in the photo.",
+  not_full_body: "Get your whole body in frame, head to feet."
+};
+const MODEL_MISSING_COPY = {
+  consent: "Likeness consent",
+  kit: "Kit colours",
+  "photo:front": "Front photo",
+  "photo:back": "Back photo",
+  "photo:left": "Left-side photo",
+  "photo:right": "Right-side photo"
+};
+let modelStudio = null;
+let modelStudioSummary = null;
+const modelPhotoDrafts = {};
+let poseLandmarkerPromise = null;
+
+function modelDate(value) {
+  return value ? new Date(value).toLocaleDateString() : "";
+}
+
+function svgEl(tag, attrs = {}, ...children) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [key, value] of Object.entries(attrs)) if (value) node.setAttribute(key, value);
+  node.append(...children);
+  return node;
+}
+
+function poseIcon(angle) {
+  const common = { fill: "none", stroke: "currentColor", "stroke-width": "2.5", "stroke-linecap": "round", "stroke-linejoin": "round" };
+  if (angle === "face") {
+    return svgEl("svg", { ...common, class: "pose-icon", viewBox: "0 0 48 48", "aria-hidden": "true" },
+      svgEl("circle", { cx: "24", cy: "23", r: "17" }),
+      svgEl("path", { d: "M18 21h.1M30 21h.1M19 30c3 3 7 3 10 0" }));
+  }
+  if (angle === "left" || angle === "right") {
+    const flip = angle === "right" ? "translate(48 0) scale(-1 1)" : "";
+    return svgEl("svg", { ...common, class: "pose-icon", viewBox: "0 0 48 72", "aria-hidden": "true" },
+      svgEl("g", { transform: flip },
+        svgEl("circle", { cx: "21", cy: "10", r: "5" }),
+        svgEl("path", { d: "M21 16l4 25m-3-18-8 7m8-7 8 5m-6 13-8 20m8-20 11 19" })));
+  }
+  if (angle === "back") {
+    return svgEl("svg", { ...common, class: "pose-icon", viewBox: "0 0 48 72", "aria-hidden": "true" },
+      svgEl("circle", { cx: "24", cy: "10", r: "5" }),
+      svgEl("path", { d: "M24 16v25M13 24h22M24 41 15 62m9-21 9 21M17 26l7 5 7-5M18 31l6 4 6-4" }));
+  }
+  return svgEl("svg", { ...common, class: "pose-icon", viewBox: "0 0 48 72", "aria-hidden": "true" },
+    svgEl("circle", { cx: "24", cy: "10", r: "5" }),
+    svgEl("path", { d: "M24 16v25M13 24h22M24 41 15 62m9-21 9 21" }));
+}
+
+function photoMetrics(canvas) {
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+  const gray = new Float32Array(canvas.width * canvas.height);
+  let brightness = 0;
+  for (let pixel = 0; pixel < gray.length; pixel++) {
+    const i = pixel * 4;
+    const luma = data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722;
+    gray[pixel] = luma;
+    brightness += luma;
+  }
+  let laplacian = 0;
+  let laplacianSquared = 0;
+  let count = 0;
+  for (let y = 1; y < canvas.height - 1; y++) {
+    for (let x = 1; x < canvas.width - 1; x++) {
+      const i = y * canvas.width + x;
+      const value = gray[i - canvas.width - 1] + gray[i - canvas.width] + gray[i - canvas.width + 1] +
+        gray[i - 1] + gray[i + 1] + gray[i + canvas.width - 1] + gray[i + canvas.width] +
+        gray[i + canvas.width + 1] - 8 * gray[i];
+      laplacian += value;
+      laplacianSquared += value * value;
+      count++;
+    }
+  }
+  const mean = laplacian / Math.max(1, count);
+  return {
+    brightness: brightness / Math.max(1, gray.length),
+    blurVariance: laplacianSquared / Math.max(1, count) - mean * mean
+  };
+}
+
+async function getPoseLandmarker() {
+  if (!poseLandmarkerPromise) {
+    poseLandmarkerPromise = (async () => {
+      try {
+        const { FilesetResolver, PoseLandmarker } = await import("/vendor/mediapipe/vision_bundle.mjs");
+        const fileset = await FilesetResolver.forVisionTasks("/vendor/mediapipe/wasm");
+        return await PoseLandmarker.createFromOptions(fileset, {
+          baseOptions: { modelAssetPath: "/models/pose_landmarker_lite.task", delegate: "CPU" },
+          runningMode: "IMAGE",
+          numPoses: 2
+        });
+      } catch (error) {
+        console.warn("MediaPipe pose checks unavailable; skipping pose checks.", error);
+        return null;
+      }
+    })();
+  }
+  return poseLandmarkerPromise;
+}
+
+async function poseWarning(canvas, angle) {
+  const landmarker = await getPoseLandmarker();
+  if (!landmarker) return null;
+  try {
+    const poses = landmarker.detect(canvas).landmarks || [];
+    if (!poses.length) return "no_person";
+    if (poses.length > 1) return "multiple_people";
+    const points = poses[0];
+    const required = angle === "back" ? [11, 12, 27, 28] : [0, 27, 28];
+    const fullBody = required.every((index) => {
+      const point = points[index];
+      return point && point.visibility >= 0.5 && point.y >= 0.02 && point.y <= 0.98;
+    });
+    return fullBody ? null : "not_full_body";
+  } catch (error) {
+    console.warn("MediaPipe pose checks unavailable; skipping pose checks.", error);
+    return null;
+  }
+}
+
+function blobDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function prepareModelPhoto(angle, file) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    return { error: "We couldn't read this photo. Use a JPG or PNG (iPhone: Settings → Camera → Formats → Most Compatible)." };
+  }
+  const shortEdge = Math.min(bitmap.width, bitmap.height);
+  if (shortEdge < 720) {
+    bitmap.close();
+    return { error: "Photo is too small — retake it closer or at a higher resolution." };
+  }
+  const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+  const jpeg = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  if (!jpeg) return { error: "We couldn't read this photo. Try another JPG or PNG." };
+
+  const checkCanvas = document.createElement("canvas");
+  const checkScale = 512 / Math.max(width, height);
+  checkCanvas.width = Math.max(1, Math.round(width * checkScale));
+  checkCanvas.height = Math.max(1, Math.round(height * checkScale));
+  checkCanvas.getContext("2d").drawImage(canvas, 0, 0, checkCanvas.width, checkCanvas.height);
+  const metrics = photoMetrics(checkCanvas);
+  const warnings = [];
+  if (metrics.blurVariance < 60) warnings.push("blurry");
+  if (metrics.brightness < 40) warnings.push("dark");
+  if (metrics.brightness > 215) warnings.push("bright");
+  if (angle !== "face") {
+    if (width >= height) warnings.push("landscape");
+    const pose = await poseWarning(checkCanvas, angle);
+    if (pose) warnings.push(pose);
+  }
+  return { blob: jpeg, dataUrl: await blobDataUrl(jpeg), previewUrl: URL.createObjectURL(jpeg), warnings };
+}
+
+async function uploadModelPhoto(angle, draft) {
+  draft.uploading = true;
+  draft.error = "";
+  renderModelStudio();
+  try {
+    const result = await api(`/api/dashboard/${encodeURIComponent(slug)}/model/photos/${angle}`, {
+      method: "POST",
+      body: { image: draft.dataUrl, warnings: draft.warnings }
+    });
+    modelStudio = result.model;
+    URL.revokeObjectURL(draft.previewUrl);
+    delete modelPhotoDrafts[angle];
+    renderModelStudio();
+  } catch (error) {
+    draft.uploading = false;
+    draft.error = error.message;
+    toast(error.message, "error");
+    renderModelStudio();
+  }
+}
+
+async function chooseModelPhoto(angle, file) {
+  const previous = modelPhotoDrafts[angle];
+  if (previous?.previewUrl) URL.revokeObjectURL(previous.previewUrl);
+  const result = await prepareModelPhoto(angle, file);
+  if (result.error) {
+    modelPhotoDrafts[angle] = { error: result.error, warnings: [] };
+    renderModelStudio();
+    return;
+  }
+  modelPhotoDrafts[angle] = result;
+  renderModelStudio();
+  if (!result.warnings.length) uploadModelPhoto(angle, result);
+}
+
+function renderPhotoTile(angle, disabled) {
+  const info = PHOTO_ANGLES[angle];
+  const photo = modelStudio.photos?.[angle];
+  const draft = modelPhotoDrafts[angle];
+  const tile = el("article", { class: "photo-tile" });
+  const input = el("input", {
+    id: `photo-${angle}-input`,
+    class: "visually-hidden",
+    type: "file",
+    accept: "image/*",
+    disabled,
+    "aria-label": `Choose ${info.title.toLowerCase()} photo`
+  });
+  const picker = el("button", {
+    class: "btn",
+    type: "button",
+    disabled,
+    text: photo ? "Replace" : "Take or choose photo",
+    onclick: () => input.click()
+  });
+  input.addEventListener("change", (event) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (file) chooseModelPhoto(angle, file);
+  });
+  const imageUrl = draft?.previewUrl || (photo
+    ? `/api/dashboard/${encodeURIComponent(slug)}/model/photos/${angle}?v=${encodeURIComponent(photo.at || "")}`
+    : "");
+  tile.append(...[
+    el("div", { class: "photo-tile-head" }, poseIcon(angle), el("div", {}, el("h3", { text: info.title }), el("p", { class: "muted small", text: info.instruction }))),
+    imageUrl ? el("img", { class: "photo-thumbnail", src: imageUrl, alt: `${info.title} photo` }) : null,
+    photo && !draft ? el("p", { class: "photo-result", text: photo.warnings?.length ? `! ${photo.warnings.length} warning${photo.warnings.length === 1 ? "" : "s"}` : "✓ Photo ready" }) : null,
+    draft?.error ? el("p", { class: "notice notice-error photo-message", role: "alert", text: draft.error }) : null,
+    draft?.warnings?.length ? el("ul", { class: "photo-warnings" }, draft.warnings.map((warning) => el("li", { text: PHOTO_WARNING_COPY[warning] }))) : null,
+    input,
+    el("div", { class: "photo-actions" },
+      draft?.warnings?.length && !draft.uploading
+        ? el("button", { class: "btn", type: "button", disabled, text: "Retake", onclick: () => input.click() })
+        : null,
+      draft?.warnings?.length && !draft.uploading
+        ? el("button", { class: "btn btn-primary", type: "button", disabled, text: "Use this photo anyway", onclick: () => uploadModelPhoto(angle, draft) })
+        : null,
+      draft?.error && draft.dataUrl && !draft.warnings?.length && !draft.uploading
+        ? el("button", { class: "btn btn-primary", type: "button", disabled, text: "Retry upload", onclick: () => uploadModelPhoto(angle, draft) })
+        : null,
+      draft?.uploading
+        ? el("button", { class: "btn btn-primary", type: "button", disabled: true, text: "Uploading…" })
+        : (!draft?.warnings?.length || !draft.dataUrl) && !draft?.uploading ? picker : null)
+  ].filter(Boolean));
+  return tile;
+}
+
+function renderConsentSection(readOnly) {
+  const section = el("section", { class: "card model-section", "aria-labelledby": "consentHeading" },
+    el("p", { class: "eyebrow", text: "01 · CONSENT" }),
+    el("h2", { id: "consentHeading", text: "Likeness consent" }));
+  if (modelStudio.consent) {
+    section.append(el("p", { class: "notice notice-ok", text: `Consent recorded ${modelDate(modelStudio.consent.acceptedAt)}` }));
+    return section;
+  }
+  const checkbox = el("input", { type: "checkbox", required: true, disabled: readOnly });
+  const button = el("button", { class: "btn btn-primary", type: "submit", disabled: true, text: "Save and continue" });
+  const form = el("form", { class: "consent-form" },
+    el("label", { class: "consent-label" }, checkbox,
+      el("span", { text: "I'm the athlete in these photos (or authorised to act for them). I consent to these photos being used to create a 3D likeness of me that will appear on my public sponsorship portal. I can ask for it to be removed at any time." })),
+    button);
+  checkbox.addEventListener("change", () => { button.disabled = !checkbox.checked || readOnly; });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!checkbox.checked) return;
+    button.disabled = true;
+    try {
+      const result = await api(`/api/dashboard/${encodeURIComponent(slug)}/model/consent`, {
+        method: "POST",
+        body: { accept: true, version: "2026-10-03" }
+      });
+      modelStudio = result.model;
+      renderModelStudio();
+    } catch (error) {
+      button.disabled = false;
+      toast(error.message, "error");
+    }
+  });
+  section.append(form);
+  return section;
+}
+
+function renderPhotosSection(readOnly) {
+  const enabled = Boolean(modelStudio.consent) && !readOnly;
+  return el("section", { class: `card model-section${enabled ? "" : " is-disabled"}`, "aria-labelledby": "photosHeading" },
+    el("p", { class: "eyebrow", text: "02 · PHOTOS" }),
+    el("h2", { id: "photosHeading", text: "Five guided photos" }),
+    el("p", { class: "model-tips", text: "Stand 2–3 m from the camera, phone at chest height. Plain background, even light, no hat. Wear your fight kit or fitted clothes. Arms slightly away from your body." }),
+    !modelStudio.consent ? el("p", { class: "muted", text: "Save your likeness consent to unlock photo uploads." }) : null,
+    el("div", { class: "photo-grid" }, Object.keys(PHOTO_ANGLES).map((angle) => renderPhotoTile(angle, !enabled))));
+}
+
+function renderKitSection(readOnly) {
+  const saved = modelStudio.kit || {};
+  const shirt = el("input", { type: "color", name: "shirt", value: saved.shirt || "#111111", disabled: readOnly });
+  const shorts = el("input", { type: "color", name: "shorts", value: saved.shorts || "#111111", disabled: readOnly });
+  const waistband = el("input", { type: "color", name: "waistband", value: saved.waistband || "#ffffff", disabled: readOnly });
+  const notes = el("textarea", {
+    name: "notes",
+    rows: "3",
+    maxlength: "500",
+    placeholder: "Anything we should know (e.g. tattoos, hairstyle on fight night)",
+    disabled: readOnly
+  }, saved.notes || "");
+  const form = el("form", { class: "kit-form" },
+    el("div", { class: "kit-colors" },
+      ...[[shirt, "Shirt"], [shorts, "Shorts"], [waistband, "Waistband"]].map(([input, label]) =>
+        el("label", { class: "kit-color" }, el("span", { text: label }), input)),
+    ),
+    el("div", { class: "kit-swatch-row" },
+      el("span", { class: "muted small", text: "Quick swatch" }),
+      el("button", {
+        class: "kit-swatch",
+        type: "button",
+        style: `--swatch:${modelStudioSummary?.tenant?.accent || "#ff6a1a"}`,
+        disabled: readOnly,
+        onclick: () => { shirt.value = modelStudioSummary?.tenant?.accent || "#ff6a1a"; }
+      }, el("span", { class: "kit-swatch-dot" }), el("span", { text: "Use portal accent for shirt" }))),
+    el("label", { for: "kitNotes", text: "Notes" }),
+    notes,
+    el("button", { class: "btn btn-primary", type: "submit", disabled: readOnly, text: "Save kit colours" }));
+  notes.id = "kitNotes";
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = form.querySelector("[type=submit]");
+    button.disabled = true;
+    try {
+      const result = await api(`/api/dashboard/${encodeURIComponent(slug)}/model/kit`, {
+        method: "POST",
+        body: { shirt: shirt.value, shorts: shorts.value, waistband: waistband.value, notes: notes.value }
+      });
+      modelStudio = result.model;
+      renderModelStudio();
+    } catch (error) {
+      toast(error.message, "error");
+      button.disabled = false;
+    }
+  });
+  return el("section", { class: "card model-section", "aria-labelledby": "kitHeading" },
+    el("p", { class: "eyebrow", text: "03 · KIT COLOURS" }),
+    el("h2", { id: "kitHeading", text: "Match your fight kit" }),
+    form);
+}
+
+function renderReviewSection(readOnly) {
+  const missing = modelStudio.missing || [];
+  const button = el("button", {
+    class: "btn btn-primary",
+    type: "button",
+    disabled: readOnly || missing.length > 0,
+    text: "Submit for 3D build",
+    onclick: async (event) => {
+      event.currentTarget.disabled = true;
+      event.currentTarget.textContent = "Submitting…";
+      try {
+        const result = await api(`/api/dashboard/${encodeURIComponent(slug)}/model/submit`, { method: "POST" });
+        modelStudio = result.model;
+        renderModelStudio();
+      } catch (error) {
+        toast(error.message, "error");
+        renderModelStudio();
+      }
+    }
+  });
+  return el("section", { class: "card model-section", "aria-labelledby": "reviewHeading" },
+    el("p", { class: "eyebrow", text: "04 · REVIEW & SUBMIT" }),
+    el("h2", { id: "reviewHeading", text: "Ready for your 3D build?" }),
+    readOnly
+      ? el("p", { class: "notice notice-ok", text: `Submitted ${modelDate(modelStudio.submittedAt)}. We'll build your 3D model and email you when it's ready to preview — usually within 1–2 days.` })
+      : missing.length
+        ? el("ul", { class: "missing-list" }, missing.map((item) => el("li", { text: MODEL_MISSING_COPY[item] || item })))
+        : el("p", { class: "notice notice-ok", text: "Everything is ready to submit." }),
+    readOnly ? null : button);
+}
+
+function renderModelStudio() {
+  const root = document.getElementById("modelStudio");
+  if (!root || !modelStudio) return;
+  root.setAttribute("aria-busy", "false");
+  if (modelStudio.status === "ready") {
+    root.replaceChildren(el("section", { class: "card model-ready" },
+      el("p", { class: "model-ready-copy", text: "Your 3D model is live on your portal." }),
+      el("a", { class: "btn btn-primary", href: `/${encodeURIComponent(slug)}`, text: "View portal" })));
+    return;
+  }
+  const readOnly = Boolean(modelStudio.submittedAt);
+  root.replaceChildren(
+    el("div", { class: "dash-head model-heading" }, el("div", {},
+      el("p", { class: "eyebrow", text: "3D MODEL STUDIO" }),
+      el("h1", { text: "Build your 3D likeness" }))),
+    renderConsentSection(readOnly),
+    renderPhotosSection(readOnly),
+    renderKitSection(readOnly),
+    renderReviewSection(readOnly));
+}
+
+async function loadModelStudio() {
+  const root = document.getElementById("modelStudio");
+  if (!root) return;
+  try {
+    const [result, dashboard] = await Promise.all([
+      api(`/api/dashboard/${encodeURIComponent(slug)}/model`),
+      api(`/api/dashboard/${encodeURIComponent(slug)}/summary`)
+    ]);
+    modelStudio = result.model;
+    modelStudioSummary = dashboard;
+    renderModelStudio();
+  } catch (error) {
+    if (error.message === "Sign in required") return;
+    root.replaceChildren(el("p", { class: "notice notice-error", role: "alert", text: `Couldn't load the model studio: ${error.message}` }),
+      el("button", { class: "btn", type: "button", text: "Try again", onclick: loadModelStudio }));
+  } finally {
+    root.setAttribute("aria-busy", "false");
+  }
+}
+
 if (view === "dashboard") {
   document.getElementById("tourBtn")?.addEventListener("click", () => summary && startTour());
   document.getElementById("viewPortal")?.addEventListener("click", () => summary?.tenant.status === "live" && track("portal_previewed"));
   load();
+} else if (view === "model") {
+  loadModelStudio();
 }
