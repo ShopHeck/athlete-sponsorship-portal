@@ -29,7 +29,8 @@ skip what the user has already completed. Read the relevant reference before edi
 - Stripe events arrive at `/api/stripe/webhook`; signed events update Connect readiness and invoice payment state.
 - Dashboard APIs are `/api/dashboard/login`, `/api/dashboard/session`, `/api/dashboard/logout`,
   `/api/dashboard/:slug/link`, `/api/dashboard/:slug/summary`, `/api/dashboard/:slug/export.csv`,
-  `/api/dashboard/:slug/placements/:id/{sold,release}`, and `/api/dashboard/:slug/connect/onboard`.
+  `/api/dashboard/:slug/placements/:id/{sold,release}`, `/api/dashboard/:slug/connect/onboard`, and
+  `/api/dashboard/:slug/onboarding`. Onboarding progress is stored per tenant in the `onboarding` Blobs store.
   Authenticated summaries and exports also work for draft tenants; all routes require `DASHBOARD_SECRET`,
   and POST requests require a same-origin `Origin`.
 - Connect tenants use `/api/<slug>/connect/onboard` and `/api/<slug>/connect/status`; their direct-charge invoices

@@ -89,6 +89,7 @@ async function load() {
     const formatter = new Intl.NumberFormat("en-US", { style: "currency", currency: (summary.tenant.currency || "usd").toUpperCase(), maximumFractionDigits: 0 });
     money = (amount) => formatter.format(Math.round(amount || 0));
     render();
+    maybeWelcome();
   } catch (err) {
     if (err.message === "Sign in required") return;
     dash.replaceChildren(el("p", { class: "notice notice-error", role: "alert", text: `Couldn't load your dashboard: ${err.message}` }),
@@ -106,7 +107,7 @@ function renderStats() {
   const { totals, pricing } = summary;
   const deadline = new Date(pricing.deadline);
   const closed = Date.now() > deadline.getTime();
-  return el("section", { class: "stats", "aria-label": "Totals" },
+  return el("section", { class: "stats", "aria-label": "Totals", "data-tour": "stats" },
     stat("Committed", money(totals.committed), `${money(totals.paid)} paid`),
     stat("Sold", `${totals.sold} / ${totals.placements}`, `${totals.open} open`),
     stat("Live bidding", String(totals.bidding), `from ${money(pricing.minBid)} · +${money(pricing.increment)}`),
@@ -116,7 +117,7 @@ function renderStats() {
 function renderPayments() {
   const p = summary.payments;
   if (p.mode !== "connect") {
-    return el("section", { class: "card" }, el("h2", { text: "Payouts" }),
+    return el("section", { class: "card", "data-tour": "payouts" }, el("h2", { text: "Payouts" }),
       el("p", { class: "muted", text: "Sponsor invoices are issued by the platform's Stripe account." }));
   }
   let badge, text;
@@ -126,26 +127,35 @@ function renderPayments() {
   else { badge = ["warn", "Not started"]; text = "Set up Stripe payouts so sponsors can bid and pay you directly."; }
   const button = p.ready ? null : el("button", {
     class: "btn btn-primary", type: "button", text: p.accountId ? "Continue Stripe setup" : "Set up payouts",
-    onclick: async (event) => {
-      event.currentTarget.disabled = true;
-      try {
-        const { url } = await api(`/api/dashboard/${encodeURIComponent(slug)}/connect/onboard`, { method: "POST" });
-        window.location.assign(url);
-      } catch (err) { toast(err.message, "error"); event.currentTarget.disabled = false; }
-    }
+    onclick: (event) => startPayouts(event.currentTarget)
   });
-  return el("section", { class: "card" },
+  return el("section", { class: "card", "data-tour": "payouts" },
     el("div", { class: "card-head" }, el("h2", { text: "Payouts" }), el("span", { class: `badge badge-${badge[0]}`, text: badge[1] })),
     el("p", { class: "muted", text }), button);
+}
+
+async function startPayouts(button) {
+  if (button) button.disabled = true;
+  try {
+    const { url } = await api(`/api/dashboard/${encodeURIComponent(slug)}/connect/onboard`, { method: "POST" });
+    window.location.assign(url);
+  } catch (err) {
+    toast(err.message, "error");
+    if (button) button.disabled = false;
+  }
 }
 
 function renderShare() {
   const { tenant } = summary;
   const copy = (value, label) => async (event) => {
-    try { await navigator.clipboard.writeText(value); toast(`${label} copied`); }
+    try {
+      await navigator.clipboard.writeText(value);
+      toast(`${label} copied`);
+      if (tenant.status === "live") track("portal_shared");
+    }
     catch { event.currentTarget.previousElementSibling?.select?.(); toast("Press Ctrl/Cmd+C to copy", "error"); }
   };
-  return el("section", { class: "card" },
+  return el("section", { class: "card", "data-tour": "share" },
     el("div", { class: "card-head" }, el("h2", { text: "Share & embed" }),
       tenant.status !== "live" ? el("span", { class: "badge badge-warn", text: tenant.status === "draft" ? "Draft — not public yet" : "Closed" }) : el("span", { class: "badge badge-ok", text: "Live" })),
     el("label", { for: "portalLink", text: "Portal link" }),
@@ -206,9 +216,9 @@ function renderPlacements() {
     if (!groups.has(p.garmentLabel)) groups.set(p.garmentLabel, []);
     groups.get(p.garmentLabel).push(p);
   }
-  return el("section", { class: "card card-wide" },
+  return el("section", { class: "card card-wide", "data-tour": "placements" },
     el("div", { class: "card-head" }, el("h2", { text: "Placements" }),
-      el("div", { class: "filters", role: "tablist", "aria-label": "Filter placements" }, tabs.map((key) => el("button", {
+      el("div", { class: "filters", "data-tour": "filters", role: "tablist", "aria-label": "Filter placements" }, tabs.map((key) => el("button", {
         type: "button", role: "tab", class: `chip${filter === key ? " is-active" : ""}`, "aria-selected": String(filter === key),
         text: `${key === "all" ? "All" : STATE_LABELS[key]} ${counts[key]}`, onclick: () => { filter = key; render(); }
       })))),
@@ -225,9 +235,14 @@ function renderPlacements() {
 }
 
 function render() {
+  const checklist = renderChecklist();
+  const showGuide = !checklist && summary.onboarding?.checklistDismissedAt && !setupComplete();
   dash.replaceChildren(
     el("div", { class: "dash-head" }, el("div", {}, el("p", { class: "eyebrow", text: summary.tenant.eventName }), el("h1", { text: "Sponsorship dashboard" })),
-      el("button", { class: "btn btn-ghost", type: "button", text: "Refresh", onclick: load })),
+      el("div", { class: "head-actions" },
+        showGuide ? el("button", { class: "btn btn-ghost", type: "button", text: "Show setup guide", onclick: () => track("checklist_restored") }) : null,
+        el("button", { class: "btn btn-ghost", type: "button", text: "Refresh", onclick: load }))),
+    checklist,
     renderStats(),
     el("div", { class: "grid" }, renderPayments(), renderShare()),
     renderPlacements());
@@ -281,4 +296,247 @@ async function release(p) {
   } catch (err) { toast(err.message, "error"); }
 }
 
-if (view === "dashboard") load();
+/* ---------------------------------------------------------- onboarding */
+const SKIP_KEY = `asp-tour-skipped:${slug}`;
+let welcomed = false;
+
+async function track(event) {
+  try {
+    const res = await api(`/api/dashboard/${encodeURIComponent(slug)}/onboarding`, { method: "POST", body: { event } });
+    const before = JSON.stringify(summary.onboarding || {});
+    summary.onboarding = res.onboarding;
+    if (JSON.stringify(res.onboarding) !== before) render();
+    return true;
+  } catch (err) {
+    if (event === "checklist_dismissed" || event === "checklist_restored") toast(err.message, "error");
+    return false;
+  }
+}
+
+function setupSteps() {
+  const { payments, onboarding = {}, totals, tenant } = summary;
+  const connect = payments.mode === "connect";
+  return [
+    {
+      id: "payouts",
+      done: connect ? payments.ready : true,
+      title: connect ? "Connect your Stripe account" : "Payments are handled for you",
+      body: connect
+        ? "Sponsors pay you directly. Bidding opens as soon as Stripe enables your account."
+        : "Sponsor invoices are created and sent automatically when a placement is won.",
+      action: connect && !payments.ready ? { label: payments.accountId ? "Continue setup" : "Set up payouts", run: (b) => startPayouts(b) } : null
+    },
+    {
+      id: "preview",
+      done: Boolean(onboarding.previewedAt),
+      title: "See your 3D portal",
+      body: tenant.status === "draft"
+        ? "Your 360° portal goes public once it's approved. You can preview it from the link we sent you."
+        : "Spin the 360° model and preview a logo on your kit the way sponsors will.",
+      action: tenant.status === "draft" ? null : { label: "Open portal", run: () => { window.open(tenant.portalUrl, "_blank", "noopener"); track("portal_previewed"); } }
+    },
+    {
+      id: "share",
+      done: Boolean(onboarding.sharedAt),
+      title: "Share your link or embed it",
+      body: tenant.status === "draft"
+        ? "Your link and embed start working once your portal is approved and goes live."
+        : "Paste one line of code into your website, or send the link to sponsors.",
+      action: tenant.status === "draft" ? null : { label: "Go to embed", run: () => focusTarget("share", "#embedCode") }
+    },
+    {
+      id: "tour",
+      done: Boolean(onboarding.tourCompletedAt),
+      title: "Take the 1-minute tour",
+      body: "See what every part of the dashboard does.",
+      action: { label: "Start tour", run: () => startTour() }
+    },
+    {
+      id: "sponsor",
+      done: totals.bidding + totals.sold > 0,
+      title: "Land your first sponsor",
+      body: "The first bid or sale shows up here instantly, with the sponsor's contact details.",
+      action: null
+    }
+  ];
+}
+
+const setupComplete = () => setupSteps().every((step) => step.done);
+
+function renderChecklist() {
+  if (summary.onboarding?.checklistDismissedAt) return null;
+  const steps = setupSteps();
+  const done = steps.filter((step) => step.done).length;
+  if (done === steps.length) return null;
+  const pct = Math.round((done / steps.length) * 100);
+  return el("section", { class: "card checklist", "aria-labelledby": "setupTitle", "data-tour": "checklist" },
+    el("div", { class: "card-head" },
+      el("div", {}, el("h2", { id: "setupTitle", text: "Get set up" }), el("p", { class: "muted small", text: `${done} of ${steps.length} done` })),
+      el("button", { class: "btn btn-ghost", type: "button", text: "Hide", "aria-label": "Hide setup guide", onclick: () => track("checklist_dismissed") })),
+    el("div", { class: "progress", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(pct), "aria-label": "Setup progress" },
+      el("span", { style: `width:${pct}%` })),
+    el("ol", { class: "steps" }, steps.map((step) => el("li", { class: `step${step.done ? " is-done" : ""}` },
+      el("span", { class: "step-mark", "aria-hidden": "true", text: step.done ? "✓" : "" }),
+      el("div", { class: "step-copy" },
+        el("strong", {}, step.title, step.done ? el("span", { class: "visually-hidden", text: " (done)" }) : null),
+        el("span", { class: "muted small", text: step.body })),
+      !step.done && step.action ? el("button", { class: "btn", type: "button", text: step.action.label, onclick: (event) => step.action.run(event.currentTarget) }) : null))));
+}
+
+function focusTarget(name, selector) {
+  const target = document.querySelector(`[data-tour="${name}"]`);
+  target?.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "center" });
+  const field = selector ? document.querySelector(selector) : null;
+  if (field) setTimeout(() => { field.focus(); field.select?.(); }, 350);
+}
+
+const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const FEATURES = [
+  ["360° 3D portal", "Sponsors spin a 3D model of you in your fight kit and preview their logo on the exact spot before they bid."],
+  ["Live auction + Lock It Now", "Every placement runs its own auction with a reserve and increments. Sponsors who don't want to wait can buy it outright."],
+  ["Money goes straight to you", "Sponsors pay your own Stripe account. Invoices go out automatically when a placement is won."],
+  ["Embed anywhere", "One line of code puts the full portal on your website, link-in-bio or press kit."]
+];
+
+function maybeWelcome() {
+  if (welcomed || summary.onboarding?.tourCompletedAt) return;
+  try { if (sessionStorage.getItem(SKIP_KEY)) return; } catch { /* storage unavailable */ }
+  welcomed = true;
+  const first = summary.tenant.displayName ? summary.tenant.displayName.split(/\s+/)[0] : "";
+  const name = first ? first.charAt(0) + first.slice(1).toLowerCase() : "";
+  const dialog = el("dialog", { class: "modal welcome", "aria-labelledby": "welcomeTitle" });
+  const skip = () => {
+    try { sessionStorage.setItem(SKIP_KEY, "1"); } catch { /* storage unavailable */ }
+    dialog.close();
+  };
+  dialog.append(
+    el("p", { class: "eyebrow", text: "Welcome" }),
+    el("h2", { id: "welcomeTitle", text: name ? `Welcome to your sponsorship dashboard, ${name}` : "Welcome to your sponsorship dashboard" }),
+    el("p", { class: "muted", text: "This is where you track every bid, every sponsor and every payment for your portal. Here's what sets it apart:" }),
+    el("ul", { class: "features" }, FEATURES.map(([title, body]) => el("li", {}, el("strong", { text: title }), el("span", { text: body })))),
+    el("div", { class: "actions" },
+      el("button", { class: "btn btn-ghost", type: "button", text: "Skip for now", onclick: skip }),
+      el("button", { class: "btn btn-primary", type: "button", text: "Show me around", onclick: () => { dialog.close(); startTour(); } })));
+  dialog.addEventListener("cancel", (event) => { event.preventDefault(); skip(); });
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.querySelector(".btn-primary").focus();
+}
+
+function tourSteps() {
+  const connect = summary.payments.mode === "connect";
+  const fee = summary.payments.feePercent;
+  return [
+    { target: "stats", title: "Your numbers, live", body: "Committed revenue, placements sold, active auctions and your bidding deadline. They update the moment a sponsor bids or pays." },
+    {
+      target: "payouts", title: connect ? "Paid directly, not through us" : "Invoicing on autopilot",
+      body: connect
+        ? `Sponsors pay your own Stripe account, so the money is yours from the start${fee != null ? ` and our ${fee}% fee is taken automatically` : ""}. Bidding stays paused until Stripe can accept payments for you.`
+        : "When a placement is won or locked, the sponsor gets a Stripe invoice automatically and you get an email when it's paid."
+    },
+    { target: "share", title: "Embed it anywhere", body: "Copy your link for sponsors and DMs, or paste the embed code into your website. The full 3D portal works on phones and desktops." },
+    { target: "placements", title: "Every placement, every bidder", body: "Each logo spot on your kit runs its own auction. Open a row to see the high bidder's contact details, bid history, their uploaded logo and invoice status." },
+    { target: "filters", title: "Closed a deal yourself?", body: "Filter to Open and choose \"Mark as sold offline\". The spot shows as taken on your portal right away and stops taking bids. You can release it later." },
+    { target: "portal", title: "See what sponsors see", body: "Open your portal to spin the 360° model and try a logo on any placement, exactly as sponsors do." },
+    { target: "export", title: "Your sponsor list, yours to keep", body: "Download every bid and sponsor contact as a spreadsheet for follow-ups, thank-yous and next fight's pitch." },
+    { target: "tour", title: "That's it", body: "Replay this tour any time from here. Good luck with sponsors!" }
+  ].filter((step) => document.querySelector(`[data-tour="${step.target}"]`));
+}
+
+let tour = null;
+
+function startTour() {
+  if (tour) return;
+  const steps = tourSteps();
+  if (!steps.length) return;
+  const returnFocus = document.activeElement;
+  const overlay = el("div", { class: "tour", "data-tour-overlay": "" });
+  const hole = el("div", { class: "tour-hole", "aria-hidden": "true" });
+  const pop = el("div", { class: "tour-pop", role: "dialog", "aria-modal": "true", "aria-labelledby": "tourTitle", "aria-describedby": "tourBody" });
+  overlay.append(hole, pop);
+  document.body.append(overlay);
+  document.body.classList.add("touring");
+  tour = { index: 0, steps, overlay, hole, pop, returnFocus };
+
+  const place = () => {
+    if (!tour) return;
+    const target = document.querySelector(`[data-tour="${tour.steps[tour.index].target}"]`);
+    if (!target) return;
+    const r = target.getBoundingClientRect();
+    const pad = 8;
+    Object.assign(hole.style, { top: `${r.top - pad}px`, left: `${r.left - pad}px`, width: `${r.width + pad * 2}px`, height: `${r.height + pad * 2}px` });
+    const vw = document.documentElement.clientWidth;
+    const vh = window.innerHeight;
+    const pw = pop.offsetWidth;
+    const ph = pop.offsetHeight;
+    let top = r.bottom + pad + 12;
+    if (top + ph > vh - 12) top = r.top - pad - 12 - ph;
+    if (top < 12) top = Math.max(12, Math.min(vh - ph - 12, r.top + 12));
+    const left = Math.max(12, Math.min(vw - pw - 12, r.left + r.width / 2 - pw / 2));
+    Object.assign(pop.style, { top: `${top}px`, left: `${left}px` });
+  };
+
+  const show = (index) => {
+    tour.index = index;
+    const step = tour.steps[index];
+    const last = index === tour.steps.length - 1;
+    pop.replaceChildren(
+      el("p", { class: "tour-count", text: `${index + 1} of ${tour.steps.length}` }),
+      el("h2", { id: "tourTitle", text: step.title }),
+      el("p", { id: "tourBody", text: step.body }),
+      el("div", { class: "actions" },
+        last ? null : el("button", { class: "btn btn-ghost tour-skip", type: "button", text: "Skip tour", onclick: () => endTour(false) }),
+        index ? el("button", { class: "btn", type: "button", text: "Back", onclick: () => show(index - 1) }) : null,
+        el("button", { class: "btn btn-primary", type: "button", text: last ? "Finish" : "Next", onclick: () => last ? endTour(true) : show(index + 1) })));
+    const target = document.querySelector(`[data-tour="${step.target}"]`);
+    target.scrollIntoView({ behavior: "auto", block: "center", inline: "nearest" });
+    place();
+    pop.querySelector(".btn-primary").focus();
+  };
+
+  const onKey = (event) => {
+    if (!tour) return;
+    if (event.key === "Escape") { event.preventDefault(); endTour(false); }
+    else if (event.key === "ArrowRight" && tour.index < tour.steps.length - 1) show(tour.index + 1);
+    else if (event.key === "ArrowLeft" && tour.index > 0) show(tour.index - 1);
+    else if (event.key === "Tab") {
+      const buttons = [...pop.querySelectorAll("button")];
+      const at = buttons.indexOf(document.activeElement);
+      event.preventDefault();
+      buttons[(at + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length].focus();
+    }
+  };
+  tour.cleanup = () => {
+    window.removeEventListener("resize", place);
+    window.removeEventListener("scroll", place, true);
+    document.removeEventListener("keydown", onKey, true);
+  };
+  window.addEventListener("resize", place);
+  window.addEventListener("scroll", place, true);
+  document.addEventListener("keydown", onKey, true);
+  show(0);
+}
+
+async function endTour(completed) {
+  if (!tour) return;
+  const { overlay, cleanup, returnFocus } = tour;
+  cleanup();
+  overlay.remove();
+  document.body.classList.remove("touring");
+  tour = null;
+  if (!completed) {
+    try { sessionStorage.setItem(SKIP_KEY, "1"); } catch { /* storage unavailable */ }
+  } else if (await track("tour_completed")) {
+    try { sessionStorage.setItem(SKIP_KEY, "1"); } catch { /* storage unavailable */ }
+    toast("You're all set");
+  } else toast("Couldn't save your tour progress. Try again from Take the tour.", "error");
+  if (returnFocus instanceof HTMLElement && document.contains(returnFocus)) returnFocus.focus();
+}
+
+if (view === "dashboard") {
+  document.getElementById("tourBtn")?.addEventListener("click", () => summary && startTour());
+  document.getElementById("viewPortal")?.addEventListener("click", () => summary?.tenant.status === "live" && track("portal_previewed"));
+  load();
+}
