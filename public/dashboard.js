@@ -136,20 +136,31 @@ function renderPayments() {
 
 function renderModel() {
   const model = summary.model || {};
-  const badge = model.status === "ready"
-    ? ["ok", "Live"]
-    : model.status === "submitted"
-      ? ["warn", "In production"]
-      : model.status === "collecting"
-        ? ["warn", `${model.photoCount || 0} of 5 photos`]
-        : ["warn", "Not started"];
+  const viewsStatus = model.views?.status;
+  const badge = viewsStatus === "generating"
+    ? ["warn", "Generating views"]
+    : viewsStatus === "review"
+      ? ["accent", "Approve your views"]
+      : ["failed", "rejected"].includes(viewsStatus)
+        ? ["warn", "Views need attention"]
+        : model.status === "ready"
+          ? ["ok", "Live"]
+          : model.status === "submitted"
+            ? ["warn", "In production"]
+            : model.status === "collecting"
+              ? ["warn", `${model.photoCount || 0} of 5 photos`]
+              : ["warn", "Not started"];
   return el("section", { class: "card", "data-tour": "model" },
     el("div", { class: "card-head" }, el("h2", { text: "Your 3D likeness" }), el("span", { class: `badge badge-${badge[0]}`, text: badge[1] })),
     el("p", { class: "muted", text: "Sponsors see a 360° 3D model of you. Take 5 quick photos and we'll build it." }),
     el("a", {
       class: "btn btn-primary",
       href: `/dashboard/${encodeURIComponent(summary.tenant.slug)}/model`,
-      text: model.status === "collecting" ? "Continue" : "Open model studio"
+      text: viewsStatus === "review"
+        ? "Approve your views"
+        : ["failed", "rejected"].includes(viewsStatus)
+          ? "Open model studio"
+          : model.status === "collecting" ? "Continue" : "Open model studio"
     }));
 }
 
@@ -594,6 +605,13 @@ let modelStudio = null;
 let modelStudioSummary = null;
 const modelPhotoDrafts = {};
 let poseLandmarkerPromise = null;
+let viewPollTimer = null;
+let viewGenerateBusy = false;
+let viewDecisionBusy = false;
+let viewRegenerateOpen = false;
+let viewFeedback = "";
+const REFERENCE_ANGLES = ["front", "back", "left", "right"];
+const REFERENCE_LABELS = { front: "Front", back: "Back", left: "Left", right: "Right" };
 
 function modelDate(value) {
   return value ? new Date(value).toLocaleDateString() : "";
@@ -951,6 +969,7 @@ function renderReviewSection(readOnly) {
         const result = await api(`/api/dashboard/${encodeURIComponent(slug)}/model/submit`, { method: "POST" });
         modelStudio = result.model;
         renderModelStudio();
+        if (modelStudio.views?.status === "not_started") await requestGenerateViews();
       } catch (error) {
         toast(error.message, "error");
         renderModelStudio();
@@ -968,25 +987,209 @@ function renderReviewSection(readOnly) {
     readOnly ? null : button);
 }
 
+function stopViewPolling() {
+  if (viewPollTimer) clearTimeout(viewPollTimer);
+  viewPollTimer = null;
+}
+
+function scheduleViewPoll() {
+  stopViewPolling();
+  if (view !== "model" || modelStudio?.views?.status !== "generating") return;
+  viewPollTimer = setTimeout(async () => {
+    viewPollTimer = null;
+    if (view !== "model" || modelStudio?.views?.status !== "generating") return;
+    try {
+      const result = await api(`/api/dashboard/${encodeURIComponent(slug)}/model`);
+      modelStudio = result.model;
+      renderModelStudio();
+    } catch (error) {
+      console.warn("Reference-view polling failed.", error);
+      scheduleViewPoll();
+    }
+  }, 4000);
+}
+
+function renderReferenceGrid() {
+  return el("div", { class: "view-grid" }, REFERENCE_ANGLES.map((angle) => {
+    const src = `/api/dashboard/${encodeURIComponent(slug)}/model/views/${angle}?v=${encodeURIComponent(modelStudio.views.jobId || "")}`;
+    return el("article", { class: "view-card" },
+      el("h3", { text: REFERENCE_LABELS[angle] }),
+      el("a", {
+        class: "view-image-link",
+        href: src,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        "aria-label": `Open full-size ${REFERENCE_LABELS[angle].toLowerCase()} reference view`
+      }, el("img", { class: "view-image", src, alt: `${REFERENCE_LABELS[angle]} reference view` })));
+  }));
+}
+
+async function requestGenerateViews() {
+  if (viewGenerateBusy) return;
+  viewGenerateBusy = true;
+  renderModelStudio();
+  try {
+    const result = await api(`/api/dashboard/${encodeURIComponent(slug)}/model/views/generate`, { method: "POST" });
+    modelStudio = result.model;
+    viewRegenerateOpen = false;
+    viewFeedback = "";
+  } catch (error) {
+    toast(error.message, "error");
+  } finally {
+    viewGenerateBusy = false;
+    renderModelStudio();
+  }
+}
+
+async function submitReferenceDecision(decision) {
+  if (viewDecisionBusy) return;
+  viewDecisionBusy = true;
+  renderModelStudio();
+  try {
+    const result = await api(`/api/dashboard/${encodeURIComponent(slug)}/model/views/decision`, {
+      method: "POST",
+      body: {
+        jobId: modelStudio.views.jobId,
+        decision,
+        feedback: decision === "reject" ? viewFeedback : ""
+      }
+    });
+    modelStudio = result.model;
+    viewRegenerateOpen = false;
+    renderModelStudio();
+    if (decision === "reject") await requestGenerateViews();
+  } catch (error) {
+    toast(error.message, "error");
+  } finally {
+    viewDecisionBusy = false;
+    renderModelStudio();
+  }
+}
+
+function renderViewsSection() {
+  const views = modelStudio.views;
+  if (!views || views.status === "locked") return null;
+  const section = el("section", { class: "card model-section reference-views", "aria-labelledby": "viewsHeading" },
+    el("p", { class: "eyebrow", text: "05 · APPROVE YOUR VIEWS" }),
+    el("h2", { id: "viewsHeading", text: "Check your reference views" }));
+
+  if (views.status === "not_started") {
+    section.append(
+      el("p", { text: "We turn your photos into clean front, back and side views in your kit colours. Takes about a minute." }),
+      el("button", {
+        class: "btn btn-primary",
+        type: "button",
+        disabled: viewGenerateBusy,
+        text: viewGenerateBusy ? "Generating…" : "Generate my views",
+        onclick: requestGenerateViews
+      }));
+  } else if (views.status === "generating") {
+    section.append(
+      el("p", { class: "muted", text: "You can leave this page — we'll keep working on them." }),
+      el("div", { class: "view-grid" }, REFERENCE_ANGLES.map((angle) => {
+        const state = views.angles?.[angle] || { progress: 0, status: "pending" };
+        const progress = Math.round(state.progress || 0);
+        return el("article", { class: "view-placeholder" },
+          el("h3", { text: REFERENCE_LABELS[angle] }),
+          el("div", { class: "view-progress", role: "progressbar", "aria-valuenow": String(progress), "aria-valuemin": "0", "aria-valuemax": "100" },
+            el("span", { style: `width:${progress}%` })),
+          el("p", { class: "muted small", text: state.status === "failed" ? "Could not generate" : `${progress}%` }));
+      })));
+  } else if (views.status === "review") {
+    section.append(renderReferenceGrid(),
+      el("p", { class: "view-checklist", text: "Your face · Your tattoos · Your build · Kit colours" }),
+      el("div", { class: "view-actions" },
+        el("button", {
+          class: "btn btn-primary",
+          type: "button",
+          disabled: viewDecisionBusy,
+          text: viewDecisionBusy ? "Saving…" : "Approve these views",
+          onclick: () => submitReferenceDecision("approve")
+        }),
+        views.attemptsLeft > 0
+          ? el("button", {
+            class: "btn",
+            type: "button",
+            disabled: viewDecisionBusy,
+            text: "Something's off — regenerate",
+            onclick: () => { viewRegenerateOpen = true; renderModelStudio(); }
+          })
+          : null),
+      views.attemptsLeft > 0
+        ? el("p", { class: "muted small", text: `${views.attemptsLeft} ${views.attemptsLeft === 1 ? "regeneration" : "regenerations"} left` })
+        : el("p", { class: "notice notice-warn", text: "No regenerations left — if something's off, contact us and we'll fix it by hand." }));
+    if (viewRegenerateOpen && views.attemptsLeft > 0) {
+      const feedback = el("textarea", {
+        rows: "3",
+        maxlength: "500",
+        placeholder: "What should we fix? (optional)"
+      }, viewFeedback);
+      feedback.addEventListener("input", () => { viewFeedback = feedback.value; });
+      section.append(el("label", { class: "view-feedback-label" }, "Tell us what's off", feedback),
+        el("button", {
+          class: "btn btn-primary",
+          type: "button",
+          disabled: viewDecisionBusy || viewGenerateBusy,
+          text: viewDecisionBusy || viewGenerateBusy ? "Regenerating…" : "Reject & regenerate",
+          onclick: () => submitReferenceDecision("reject")
+        }));
+    }
+  } else if (views.status === "approved") {
+    section.append(renderReferenceGrid(),
+      el("p", { class: "notice notice-ok", text: "Approved. Next we build your 3D model." }));
+  } else if (views.status === "failed") {
+    section.append(el("p", { class: "notice notice-error", role: "alert", text: "We couldn't create all your views this time. Please try again." }));
+    if (views.attemptsLeft > 0) {
+      section.append(el("button", {
+        class: "btn btn-primary",
+        type: "button",
+        disabled: viewGenerateBusy,
+        text: viewGenerateBusy ? "Generating…" : "Try again",
+        onclick: requestGenerateViews
+      }));
+    } else {
+      section.append(el("p", { class: "notice notice-warn", text: "You've used all 3 generations — contact us and we'll fix it by hand." }));
+    }
+  } else if (views.status === "rejected") {
+    section.append(el("p", { class: "notice notice-warn", text: "These views were rejected." }));
+    if (views.attemptsLeft > 0) {
+      section.append(el("button", {
+        class: "btn btn-primary",
+        type: "button",
+        disabled: viewGenerateBusy,
+        text: viewGenerateBusy ? "Generating…" : "Generate my views",
+        onclick: requestGenerateViews
+      }));
+    } else {
+      section.append(el("p", { class: "notice notice-warn", text: "You've used all 3 generations — contact us and we'll fix it by hand." }));
+    }
+  }
+  return section;
+}
+
 function renderModelStudio() {
   const root = document.getElementById("modelStudio");
   if (!root || !modelStudio) return;
   root.setAttribute("aria-busy", "false");
   if (modelStudio.status === "ready") {
+    stopViewPolling();
     root.replaceChildren(el("section", { class: "card model-ready" },
       el("p", { class: "model-ready-copy", text: "Your 3D model is live on your portal." }),
       el("a", { class: "btn btn-primary", href: `/${encodeURIComponent(slug)}`, text: "View portal" })));
     return;
   }
   const readOnly = Boolean(modelStudio.submittedAt);
-  root.replaceChildren(
+  root.replaceChildren(...[
     el("div", { class: "dash-head model-heading" }, el("div", {},
       el("p", { class: "eyebrow", text: "3D MODEL STUDIO" }),
       el("h1", { text: "Build your 3D likeness" }))),
     renderConsentSection(readOnly),
     renderPhotosSection(readOnly),
     renderKitSection(readOnly),
-    renderReviewSection(readOnly));
+    renderReviewSection(readOnly),
+    renderViewsSection()
+  ].filter(Boolean));
+  scheduleViewPoll();
 }
 
 async function loadModelStudio() {
@@ -1014,5 +1217,6 @@ if (view === "dashboard") {
   document.getElementById("viewPortal")?.addEventListener("click", () => summary?.tenant.status === "live" && track("portal_previewed"));
   load();
 } else if (view === "model") {
+  window.addEventListener("pagehide", stopViewPolling);
   loadModelStudio();
 }

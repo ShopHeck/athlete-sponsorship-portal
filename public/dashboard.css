@@ -48,7 +48,7 @@ textarea{resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace
 .card>p{margin:10px 0 0}.card>.btn{margin-top:16px}
 .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid currentColor;white-space:nowrap}
-.badge-ok{color:var(--ok)}.badge-warn{color:var(--warn)}.badge-bad{color:var(--bad)}
+.badge-ok{color:var(--ok)}.badge-warn{color:var(--warn)}.badge-bad{color:var(--bad)}.badge-accent{color:var(--accent)}
 .copy-row{display:flex;gap:8px;align-items:stretch}.copy-row input,.copy-row textarea{flex:1;min-width:0}
 /* placements */
 .filters{display:flex;gap:6px;flex-wrap:wrap}
@@ -170,8 +170,23 @@ summary:hover,details[open] summary{background:var(--panel-2)}
 .missing-list{margin:14px 0;padding-left:22px;color:var(--muted)}
 .model-ready{display:grid;justify-items:start;gap:16px}
 .model-ready-copy{margin:0;font:700 24px/1.2 var(--display);text-transform:uppercase}
+.view-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0}
+.view-card,.view-placeholder{display:grid;gap:8px;min-width:0;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2)}
+.view-card h3,.view-placeholder h3{margin:0}
+.view-image-link{display:block;border-radius:7px;background:#111}
+.view-image{display:block;width:100%;aspect-ratio:9/16;object-fit:contain;border-radius:7px}
+.view-placeholder{align-content:start;min-height:130px}
+.view-progress{height:8px;overflow:hidden;border-radius:999px;background:#292929}
+.view-progress span{display:block;height:100%;border-radius:inherit;background:var(--accent);transition:width .3s ease}
+.view-placeholder p{margin:0}
+.view-checklist{margin:12px 0;color:var(--accent);font-weight:700}
+.view-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.view-feedback-label{display:grid;gap:8px;margin:14px 0 8px}
+.reference-views>.btn{justify-self:start}
+.notice-warn{border-color:color-mix(in srgb,var(--warn) 50%,var(--line));color:var(--warn)}
 @media (min-width:640px){
   .kit-colors{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .view-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
   .photo-tile{grid-template-columns:minmax(0,1fr) auto;align-items:center}
   .photo-tile-head,.photo-warnings,.photo-message,.photo-result,.photo-actions{grid-column:1}
   .photo-thumbnail{grid-column:2;grid-row:1 / span 4;width:150px;height:190px}

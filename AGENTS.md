@@ -15,8 +15,8 @@ operating one. `reference/gotchas.md` first when debugging.
   `MOCK_PORT=4343 node scripts/mock-services.mjs &` then `netlify dev` with
   `STRIPE_API_BASE`/`RESEND_API_BASE=http://127.0.0.1:4343`, `PLATFORM_URL=http://localhost:8890`,
   `PREVIEW_TOKEN=devpreview`, `ADMIN_TOKEN=devtoken`, `STRIPE_WEBHOOK_SECRET=whsec_platform_test`, and
-  `STRIPE_CONNECT_WEBHOOK_SECRET=whsec_connect_test`, `DASHBOARD_SECRET=devdashboard` (see
-  `scripts/smoke-test.sh` header), then
+  `STRIPE_CONNECT_WEBHOOK_SECRET=whsec_connect_test`, `DASHBOARD_SECRET=devdashboard`,
+  `MESHY_API_KEY=mock_key`, and `MESHY_API_BASE=http://127.0.0.1:4343` (see `scripts/smoke-test.sh` header), then
   `scripts/smoke-test.sh http://localhost:8890 michael-heckert <OPEN-ID-A> <OPEN-ID-B>` and
   `scripts/tenant-test.sh http://localhost:8890` and
   `scripts/connect-test.sh http://localhost:8890` and
@@ -37,10 +37,13 @@ operating one. `reference/gotchas.md` first when debugging.
 - Tenant API routes are `/api/<slug>/bids`, `/api/<slug>/logos/<id>`, and `/api/<slug>/connect/{onboard,status}`;
   Stripe webhooks use `/api/stripe/webhook`. Dashboard APIs are `/api/dashboard/login`, `/session`, `/logout`,
   `/:slug/link`, `/:slug/summary`, `/:slug/export.csv`, `/:slug/placements/:id/{sold,release}`, and
-  `/:slug/connect/onboard`; they require `DASHBOARD_SECRET`, and POSTs require a same-origin `Origin`.
-  Blobs records are tenant-prefixed.
-- Secrets only via `netlify env:set … --secret`; never in chat, code or commits. Set `DASHBOARD_SECRET` as a
-  Netlify secret for deployed dashboard APIs.
+  `/:slug/connect/onboard`, `/:slug/model`, `/:slug/model/{consent,kit,submit}`,
+  `/:slug/model/photos/:angle`, and `/:slug/model/views/{generate,decision,:angle}`; they require
+  `DASHBOARD_SECRET`, and POSTs require a same-origin `Origin`. Model Studio Phase B reference generation uses
+  `MESHY_API_KEY` and optional `MESHY_API_BASE` (default `https://api.meshy.ai`); local tests must point both the
+  key and base at the fake Meshy service. Blobs records are tenant-prefixed.
+- Secrets only via `netlify env:set … --secret`; never in chat, code or commits. Set `DASHBOARD_SECRET` and
+  `MESHY_API_KEY` as Netlify secrets for deployed dashboard and reference-generation APIs.
 - Blobs deletions are destructive: confirm the placement ID and back up first.
 - Real test emails / locks need explicit confirmation and the owner's own address.
 - Address every automated PR-review comment before calling a PR mergeable.

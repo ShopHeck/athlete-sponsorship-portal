@@ -20,7 +20,8 @@ check() {
 
 json_check() {
   local label="$1" file="$2" script="$3"
-  if node -e "$script" "$file"; then
+  shift 3
+  if node -e "$script" "$file" "$@"; then
     echo "  ok   $label"
   else
     echo "  FAIL $label"
@@ -55,6 +56,24 @@ const body = `${email?.body?.text || ""}\n${email?.body?.html || ""}`;
 const token = body.match(/\/dashboard\/auth\?token=([a-f0-9]{64})/)?.[1];
 if (!token) process.exit(1);
 process.stdout.write(token);
+NODE
+}
+
+mock_mesh_post_count() {
+  node - "$MOCK_LOG" <<'NODE'
+const fs = require("fs");
+const file = process.argv[2];
+const rows = fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map(JSON.parse) : [];
+process.stdout.write(String(rows.filter((row) => row.method === "POST" && row.path === "/openapi/v1/image-to-image").length));
+NODE
+}
+
+mock_mesh_task_get_count() {
+  node - "$MOCK_LOG" <<'NODE'
+const fs = require("fs");
+const file = process.argv[2];
+const rows = fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map(JSON.parse) : [];
+process.stdout.write(String(rows.filter((row) => row.method === "GET" && /^\/openapi\/v1\/image-to-image\/[^/]+$/.test(row.path)).length));
 NODE
 }
 
@@ -467,6 +486,9 @@ for angle in back left right; do
     --data-binary "@$TMP_DIR/photo-ok-clean.json")" "200"
 done
 
+check "reference generation is locked before Phase A submission" "$(curl -sS -o "$TMP_DIR/views-locked.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/views/generate" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")" "409"
+
 SUBMIT_CODE=$(curl -sS -o "$TMP_DIR/submit.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/submit" \
   -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")
 check "complete model materials can be submitted" "$SUBMIT_CODE" "200"
@@ -496,6 +518,183 @@ json_check "Michael summary identifies the live tenant model" "$TMP_DIR/michael-
   'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model;process.exit(m?.status==="ready"&&m.hasOwnModel===true?0:1)'
 check "Michael cannot submit an already live model" "$(curl -sS -o "$TMP_DIR/michael-submit.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/michael-heckert/model/submit" \
   -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE")" "409"
+
+echo "7. reference views (fake Meshy only)"
+MOCK_HEALTH_CODE=$(curl -sS -o "$TMP_DIR/mock-meshy-control.json" -w '%{http_code}' -X POST \
+  "http://127.0.0.1:4343/__mock/meshy/fail-next")
+if [ "$MOCK_HEALTH_CODE" != "200" ]; then
+  echo "  FAIL SAFETY: fake Meshy is unavailable; skipping all reference-generation requests."
+  echo "DASHBOARD TEST FAILED"
+  exit 1
+fi
+MOCK_AUTH_CODE=$(curl -sS -o "$TMP_DIR/mock-meshy-auth.json" -w '%{http_code}' -X POST \
+  "http://127.0.0.1:4343/openapi/v1/image-to-image" -H 'content-type: application/json' -d '{}')
+check "fake Meshy rejects a missing bearer token" "$MOCK_AUTH_CODE" "401"
+MOCK_POSTS_BEFORE=$(mock_mesh_post_count)
+JORDAN_VIEWS_URL="$JORDAN_MODEL_URL/views"
+GENERATE_ONE_CODE=$(curl -sS -o "$TMP_DIR/views-attempt-1-start.json" -w '%{http_code}' -X POST \
+  "$JORDAN_VIEWS_URL/generate" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")
+check "failed reference generation starts attempt one" "$GENERATE_ONE_CODE" "200"
+MOCK_POSTS_AFTER=$(mock_mesh_post_count)
+if [ "$MOCK_POSTS_AFTER" -le "$MOCK_POSTS_BEFORE" ]; then
+  echo "  FAIL SAFETY: no fake Meshy image-to-image POST appeared in the mock log; stopping before any more provider requests."
+  echo "DASHBOARD TEST FAILED"
+  exit 1
+fi
+json_check "first reference job is generating at attempt one" "$TMP_DIR/views-attempt-1-start.json" \
+  'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.views;process.exit(v?.status==="generating"&&v.attempt===1&&v.attemptsLeft===2&&typeof v.jobId==="string"?0:1)'
+if node - "$MOCK_LOG" "$MOCK_POSTS_BEFORE" <<'NODE'
+const fs = require("fs");
+const [file, before] = process.argv.slice(2);
+const rows = fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map(JSON.parse);
+const posts = rows.filter((row) => row.method === "POST" && row.path === "/openapi/v1/image-to-image").slice(Number(before));
+process.exit(posts.length === 4 && posts.every(({ body }) =>
+  body.ai_model === "nano-banana-pro" &&
+  body.aspect_ratio === "9:16" &&
+  body.remove_background === true &&
+  ["#aabbcc", "#112233", "#ffffff"].every((hex) => body.prompt?.includes(hex)) &&
+  !body.prompt?.includes("tattoos and hairstyle") &&
+  Array.isArray(body.reference_image_urls) &&
+  body.reference_image_urls.length >= 1 &&
+  body.reference_image_urls.every((value) => /^data:image\/jpeg;base64,<\d+ chars>$/.test(value))
+) && posts.map(({ body }) => body.reference_image_urls.length).sort().join(",") === "1,2,2,2" ? 0 : 1);
+NODE
+then
+  echo "  ok   four fake Meshy calls use private JPEG references and kit-colour prompts"
+else
+  echo "  FAIL four fake Meshy calls use private JPEG references and kit-colour prompts"
+  FAIL=1
+fi
+
+check "view image GET requires a matching session" "$(curl -sS -o /dev/null -w '%{http_code}' "$JORDAN_VIEWS_URL/front")" "401"
+check "view image GET rejects a foreign tenant session" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Cookie: asp_dash=$MICHAEL_COOKIE" "$JORDAN_VIEWS_URL/front")" "401"
+check "unknown tenant view GET returns 404" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/no-such-tenant/model/views/front")" "404"
+check "unknown tenant generate POST returns 404" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+  "$BASE/api/dashboard/no-such-tenant/model/views/generate" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")" "404"
+check "Michael cannot generate views for his existing model" "$(curl -sS -o "$TMP_DIR/michael-views-generate.json" -w '%{http_code}' -X POST \
+  "$BASE/api/dashboard/michael-heckert/model/views/generate" -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE")" "409"
+check "unknown view action returns 404" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+  "$JORDAN_VIEWS_URL/unknown" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")" "404"
+check "unknown view angle returns 404" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_VIEWS_URL/diagonal")" "404"
+check "view generation rejects GET" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_VIEWS_URL/generate")" "405"
+check "view image rejects POST" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+  "$JORDAN_VIEWS_URL/front" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")" "405"
+
+GENERATE_POSTS_AFTER_ONE=$(mock_mesh_post_count)
+SECOND_GENERATE_CODE=$(curl -sS -o "$TMP_DIR/views-attempt-1-repeat.json" -w '%{http_code}' -X POST \
+  "$JORDAN_VIEWS_URL/generate" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")
+check "generating start is idempotent" "$SECOND_GENERATE_CODE" "200"
+json_check "idempotent generate returns the same job" "$TMP_DIR/views-attempt-1-repeat.json" \
+  'const a=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.views;const b=JSON.parse(require("fs").readFileSync(process.argv[2],"utf8")).model?.views;process.exit(a?.jobId===b?.jobId&&b.attempt===1?0:1)' \
+  "$TMP_DIR/views-attempt-1-start.json"
+check "idempotent start creates no extra Meshy tasks" "$(mock_mesh_post_count)" "$GENERATE_POSTS_AFTER_ONE"
+
+TASK_GETS_BEFORE_SUMMARY=$(mock_mesh_task_get_count)
+ATTEMPT_ONE_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/views-attempt-1-summary.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/jordan-reyes/summary")
+check "summary reads reference state without polling Meshy" "$ATTEMPT_ONE_SUMMARY_CODE" "200"
+check "summary does not advance provider tasks" "$(mock_mesh_task_get_count)" "$TASK_GETS_BEFORE_SUMMARY"
+json_check "summary reports the stored generating state" "$TMP_DIR/views-attempt-1-summary.json" \
+  'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.views?.status==="generating"?0:1)'
+
+poll_views_until() {
+  local wanted="$1" output="$2" code=""
+  for _ in 1 2 3 4 5 6 7 8; do
+    code=$(curl -sS -o "$output" -w '%{http_code}' -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_MODEL_URL")
+    [ "$code" = "200" ] || return 1
+    if node -e 'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.views?.status===process.argv[2]?0:1)' "$output" "$wanted"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+if poll_views_until failed "$TMP_DIR/views-attempt-1-final.json"; then
+  echo "  ok   per-angle mock failure is isolated and the first job reaches failed"
+else
+  echo "  FAIL per-angle mock failure is isolated and the first job reaches failed"
+  FAIL=1
+fi
+json_check "failed job preserves its attempt and retry count" "$TMP_DIR/views-attempt-1-final.json" \
+  'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.views;process.exit(v?.status==="failed"&&v.attempt===1&&v.attemptsLeft===2&&Object.values(v.angles||{}).filter((a)=>a.status==="failed").length===1?0:1)'
+if grep -Eiq 'mesh_mock_|127[.]0[.]0[.]1' "$TMP_DIR/views-attempt-1-final.json"; then
+  echo "  FAIL failed view response hides Meshy task IDs and URLs"
+  FAIL=1
+else
+  echo "  ok   failed view response hides Meshy task IDs and URLs"
+fi
+
+GENERATE_TWO_CODE=$(curl -sS -o "$TMP_DIR/views-attempt-2-start.json" -w '%{http_code}' -X POST \
+  "$JORDAN_VIEWS_URL/generate" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")
+check "retry starts reference generation attempt two" "$GENERATE_TWO_CODE" "200"
+json_check "second reference job increments the attempt" "$TMP_DIR/views-attempt-2-start.json" \
+  'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.views;process.exit(v?.status==="generating"&&v.attempt===2&&v.attemptsLeft===1?0:1)'
+if poll_views_until review "$TMP_DIR/views-attempt-2-review.json"; then
+  echo "  ok   successful mock tasks reach athlete review"
+else
+  echo "  FAIL successful mock tasks reach athlete review"
+  FAIL=1
+fi
+VIEW_JOB_TWO=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model.views.jobId)' "$TMP_DIR/views-attempt-2-review.json")
+for angle in front back left right; do
+  VIEW_GET_CODE=$(curl -sS -o "$TMP_DIR/view-$angle.png" -D "$TMP_DIR/view-$angle.headers" -w '%{http_code}' \
+    -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_VIEWS_URL/$angle")
+  check "$angle view is available as a private PNG" "$VIEW_GET_CODE" "200"
+  if grep -qi '^content-type: image/png' "$TMP_DIR/view-$angle.headers" &&
+     grep -qi '^cache-control: private, max-age=86400, immutable' "$TMP_DIR/view-$angle.headers"; then
+    echo "  ok   $angle view response headers are private and immutable"
+  else
+    echo "  FAIL $angle view response headers are private and immutable"
+    FAIL=1
+  fi
+done
+check "private reference view rejects a foreign tenant session" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Cookie: asp_dash=$MICHAEL_COOKIE" "$JORDAN_VIEWS_URL/front")" "401"
+check "wrong job ID cannot decide the current views" "$(curl -sS -o "$TMP_DIR/views-wrong-job.json" -w '%{http_code}' -X POST \
+  "$JORDAN_VIEWS_URL/decision" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"jobId":"wrong-job","decision":"approve"}')" "409"
+check "invalid view decision is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+  "$JORDAN_VIEWS_URL/decision" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"jobId":"valid-shape","decision":"maybe"}')" "400"
+REJECT_CODE=$(curl -sS -o "$TMP_DIR/views-rejected.json" -w '%{http_code}' -X POST \
+  "$JORDAN_VIEWS_URL/decision" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d "{\"jobId\":\"$VIEW_JOB_TWO\",\"decision\":\"reject\",\"feedback\":\"  The shirt colour is wrong.  \"}")
+check "athlete can reject views with feedback" "$REJECT_CODE" "200"
+json_check "rejection feedback is trimmed and retained" "$TMP_DIR/views-rejected.json" \
+  'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.views;process.exit(v?.status==="rejected"&&v.decision?.feedback==="The shirt colour is wrong."?0:1)'
+
+GENERATE_THREE_CODE=$(curl -sS -o "$TMP_DIR/views-attempt-3-start.json" -w '%{http_code}' -X POST \
+  "$JORDAN_VIEWS_URL/generate" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")
+check "regeneration starts the third and final attempt" "$GENERATE_THREE_CODE" "200"
+if poll_views_until review "$TMP_DIR/views-attempt-3-review.json"; then
+  echo "  ok   third attempt reaches review"
+else
+  echo "  FAIL third attempt reaches review"
+  FAIL=1
+fi
+json_check "third attempt has no regenerations left" "$TMP_DIR/views-attempt-3-review.json" \
+  'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.views;process.exit(v?.status==="review"&&v.attempt===3&&v.attemptsLeft===0?0:1)'
+VIEW_JOB_THREE=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model.views.jobId)' "$TMP_DIR/views-attempt-3-review.json")
+APPROVE_CODE=$(curl -sS -o "$TMP_DIR/views-approved.json" -w '%{http_code}' -X POST \
+  "$JORDAN_VIEWS_URL/decision" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d "{\"jobId\":\"$VIEW_JOB_THREE\",\"decision\":\"approve\"}")
+check "athlete can approve the current views" "$APPROVE_CODE" "200"
+json_check "approved views are final" "$TMP_DIR/views-approved.json" \
+  'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.views;process.exit(v?.status==="approved"&&v.decision?.decision==="approve"&&v.attemptsLeft===0?0:1)'
+check "approved views cannot be regenerated" "$(curl -sS -o "$TMP_DIR/views-approved-generate.json" -w '%{http_code}' -X POST \
+  "$JORDAN_VIEWS_URL/generate" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")" "409"
+check "approved decision cannot be changed" "$(curl -sS -o "$TMP_DIR/views-approved-decision.json" -w '%{http_code}' -X POST \
+  "$JORDAN_VIEWS_URL/decision" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d "{\"jobId\":\"$VIEW_JOB_THREE\",\"decision\":\"reject\"}")" "409"
+APPROVED_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/views-approved-summary.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/jordan-reyes/summary")
+check "summary includes the approved view state" "$APPROVED_SUMMARY_CODE" "200"
+json_check "summary reports approved views without provider details" "$TMP_DIR/views-approved-summary.json" \
+  'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model;process.exit(m?.views?.status==="approved"&&!JSON.stringify(m.views).includes("mesh_mock")&&!JSON.stringify(m.views).includes("127.0.0.1")?0:1)'
 
 echo "  skipped missing DASHBOARD_SECRET check (requires a server restart)"
 if [ "$FAIL" -eq 0 ]; then
