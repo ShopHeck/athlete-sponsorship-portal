@@ -74,6 +74,9 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
 - **Mock email or invoice shows the wrong athlete.** Use dummy Stripe/Resend keys and point both
   `STRIPE_API_BASE` and `RESEND_API_BASE` at the same local mock service. Inspect `.netlify/mock-log.jsonl` for
   tenant copy, sender, and invoice amounts; do not open mock invoice URLs expecting real checkout.
+- **Automated Model Studio tests could call real Meshy.** The shell may inherit the production
+  `MESHY_API_KEY`; always launch Netlify Dev with `MESHY_API_KEY=mock_key` and
+  `MESHY_API_BASE=http://127.0.0.1:4343` so reference generation can reach only the local mock.
 
 ## Frontend
 - **Visitors landed on a SOLD placement ("0 of 6 available").** Default was "first shorts-front slot". Landing

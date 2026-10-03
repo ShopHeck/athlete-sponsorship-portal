@@ -1,5 +1,4 @@
-// Local stand-in for Stripe + Resend so the bidding flow can be exercised end to end
-// without creating real invoices or sending real email.
+// Local stand-in for Stripe + Resend + Meshy so flows can be tested without real side effects.
 //
 //   node scripts/mock-services.mjs                # listens on :4242, logs to .netlify/mock-log.jsonl
 //   FAIL_INVOICE=1 node scripts/mock-services.mjs # every invoice creation fails (tests the retry path)
@@ -15,7 +14,14 @@ const FAIL_INVOICE = process.env.FAIL_INVOICE === "1";
 fs.mkdirSync(path.dirname(LOG), { recursive: true });
 fs.writeFileSync(LOG, "");
 let n = 0;
+let meshTaskCounter = 0;
+let failNextMeshy = false;
 const accounts = new Map();
+const meshTasks = new Map();
+const MOCK_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jHcQAAAAASUVORK5CYII=",
+  "base64"
+);
 
 http.createServer(async (req, res) => {
   let raw = "";
@@ -36,15 +42,69 @@ http.createServer(async (req, res) => {
     return send(200, account);
   }
   const body = (req.headers["content-type"] || "").includes("json") ? JSON.parse(raw || "{}") : Object.fromEntries(new URLSearchParams(raw));
+  const logBody = req.method === "POST" && url.pathname === "/openapi/v1/image-to-image"
+    ? {
+      ...body,
+      reference_image_urls: Array.isArray(body.reference_image_urls)
+        ? body.reference_image_urls.map((value) => {
+          if (typeof value !== "string") return value;
+          const match = value.match(/^data:([^;,]+);base64,([\s\S]*)$/);
+          return match ? `data:${match[1]};base64,<${match[2].length} chars>` : value;
+        })
+        : body.reference_image_urls
+    }
+    : body;
   fs.appendFileSync(LOG, JSON.stringify({
     at: new Date().toISOString(),
     method: req.method,
     path: url.pathname,
     idempotency: req.headers["idempotency-key"] || null,
     stripeAccount: req.headers["stripe-account"] || null,
-    body
+    body: logBody
   }) + "\n");
   n += 1;
+  if (req.method === "POST" && url.pathname === "/__mock/meshy/fail-next") {
+    failNextMeshy = true;
+    return send(200, { ok: true });
+  }
+  if (req.method === "POST" && url.pathname === "/openapi/v1/image-to-image") {
+    if (!/^Bearer \S+$/.test(req.headers.authorization || "")) {
+      return send(401, { message: "Mock Meshy requires a bearer token." });
+    }
+    meshTaskCounter += 1;
+    const id = `mesh_mock_${meshTaskCounter}`;
+    meshTasks.set(id, { polls: 0, fail: failNextMeshy });
+    failNextMeshy = false;
+    return send(200, { result: id });
+  }
+  const meshTaskMatch = url.pathname.match(/^\/openapi\/v1\/image-to-image\/([^/]+)$/);
+  if (req.method === "GET" && meshTaskMatch) {
+    if (!/^Bearer \S+$/.test(req.headers.authorization || "")) {
+      return send(401, { message: "Mock Meshy requires a bearer token." });
+    }
+    const id = decodeURIComponent(meshTaskMatch[1]);
+    const task = meshTasks.get(id);
+    if (!task) return send(404, { message: "Mock Meshy task not found." });
+    task.polls += 1;
+    if (task.fail) {
+      return send(200, { status: "FAILED", progress: 100, task_error: { message: "Mock failure" } });
+    }
+    if (task.polls === 1) return send(200, { status: "PENDING", progress: 0 });
+    if (task.polls === 2) return send(200, { status: "IN_PROGRESS", progress: 50 });
+    return send(200, {
+      status: "SUCCEEDED",
+      progress: 100,
+      image_urls: [`http://127.0.0.1:${PORT}/__mock/meshy/assets/${encodeURIComponent(id)}.png`]
+    });
+  }
+  const meshAssetMatch = url.pathname.match(/^\/__mock\/meshy\/assets\/([^/]+)\.png$/);
+  if (req.method === "GET" && meshAssetMatch) {
+    res.writeHead(200, {
+      "content-type": "image/png",
+      "content-length": MOCK_PNG.length
+    });
+    return res.end(MOCK_PNG);
+  }
   // Resend
   if (url.pathname === "/emails") return send(200, { id: `email_${n}` });
   // Stripe
@@ -75,4 +135,4 @@ http.createServer(async (req, res) => {
   const finalize = url.pathname.match(/^\/v1\/invoices\/(in_\d+)\/finalize$/);
   if (finalize) return send(200, { id: finalize[1], number: `MOCK-${String(n).padStart(4, "0")}`, status: "open", hosted_invoice_url: `https://invoice.stripe.com/i/mock/${finalize[1]}`, invoice_pdf: `https://pay.stripe.com/invoice/mock/${finalize[1]}/pdf` });
   send(404, { error: { message: `mock: unknown ${req.method} ${url.pathname}` } });
-}).listen(PORT, () => console.log(`mock Stripe + Resend listening on :${PORT} — log: ${LOG}`));
+}).listen(PORT, () => console.log(`mock Stripe + Resend + Meshy listening on :${PORT} — log: ${LOG}`));

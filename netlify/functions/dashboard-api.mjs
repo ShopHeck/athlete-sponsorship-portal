@@ -11,6 +11,14 @@ import {
   sessionFor
 } from "../lib/dashboard-auth.mjs";
 import { resolveTenantAssets } from "../lib/render.mjs";
+import {
+  advanceViews,
+  getViewAsset,
+  loadViews,
+  recordViewDecision,
+  startViews
+} from "../lib/reference-views.mjs";
+import { MeshyConfigurationError } from "../lib/meshy.mjs";
 import { getTenant, listTenants } from "../lib/tenants.mjs";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -233,7 +241,7 @@ async function loadOnboarding(slug) {
   };
 }
 
-async function loadStudio(tenant) {
+async function loadStudio(tenant, progress = {}) {
   const store = getStore({ name: "model-studio", consistency: "strong" });
   const slug = tenant.slug;
   const [consent, kit, submission, ...photoMetadata] = await Promise.all([
@@ -253,6 +261,11 @@ async function loadStudio(tenant) {
     } : null];
   }));
   const hasOwnModel = resolveTenantAssets(tenant).model?.startsWith(`/tenants/${slug}/`) === true;
+  const views = await loadViews(tenant, {
+    submitted: Boolean(submission),
+    ownModel: hasOwnModel,
+    progress
+  });
   const missing = [];
   if (!consent) missing.push("consent");
   if (!kit) missing.push("kit");
@@ -267,7 +280,8 @@ async function loadStudio(tenant) {
     kit: kit ? { shirt: kit.shirt, shorts: kit.shorts, waistband: kit.waistband, notes: kit.notes } : null,
     photos,
     submittedAt: submission?.submittedAt ?? null,
-    missing
+    missing,
+    views
   };
 }
 
@@ -335,7 +349,8 @@ async function summary(req, slug) {
       status: studio.status,
       hasOwnModel: studio.hasOwnModel,
       photoCount: Object.values(studio.photos).filter(Boolean).length,
-      submittedAt: studio.submittedAt
+      submittedAt: studio.submittedAt,
+      views: studio.views
     }
   });
 }
@@ -545,7 +560,48 @@ async function modelAccess(req, slug) {
 async function getModel(req, slug) {
   const access = await modelAccess(req, slug);
   if (access.response) return access.response;
+  let model = await loadStudio(access.tenant);
+  if (model.views.status === "generating") {
+    try {
+      const progress = await advanceViews(access.tenant);
+      model = await loadStudio(access.tenant, progress);
+    } catch (error) {
+      if (error instanceof MeshyConfigurationError) return json({ error: error.message }, 503);
+      throw error;
+    }
+  }
+  return json({ model });
+}
+
+async function startModelViews(req, slug) {
+  const access = await modelAccess(req, slug);
+  if (access.response) return access.response;
+  const result = await startViews(access.tenant, access.session);
+  if (result.status !== 200) return json({ error: result.error }, result.status);
   return json({ model: await loadStudio(access.tenant) });
+}
+
+async function decideModelViews(req, slug) {
+  const access = await modelAccess(req, slug);
+  if (access.response) return access.response;
+  let body;
+  try { body = await req.json(); } catch { body = null; }
+  const result = await recordViewDecision(access.tenant, access.session, body);
+  if (result.status !== 200) return json({ error: result.error }, result.status);
+  return json({ model: await loadStudio(access.tenant) });
+}
+
+async function getModelView(req, slug, angle) {
+  const access = await modelAccess(req, slug);
+  if (access.response) return access.response;
+  const asset = await getViewAsset(access.tenant, angle);
+  if (!asset) return json({ error: "Reference view not found." }, 404);
+  return new Response(asset.bytes, {
+    headers: {
+      "content-type": asset.contentType,
+      "cache-control": "private, no-store"
+    }
+  });
 }
 
 async function saveModelConsent(req, slug) {
@@ -730,6 +786,24 @@ export default async function dashboardApi(req) {
     return json({ error: "Method not allowed" }, 405);
   }
 
+  if (parts.length === 6 && parts[0] === "api" && parts[1] === "dashboard" &&
+      parts[3] === "model" && parts[4] === "views") {
+    const action = parts[5];
+    if (action === "generate") {
+      if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+      return startModelViews(req, parts[2]);
+    }
+    if (action === "decision") {
+      if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+      return decideModelViews(req, parts[2]);
+    }
+    if (!["front", "back", "left", "right"].includes(action)) {
+      return json({ error: "Unknown reference view." }, 404);
+    }
+    if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
+    return getModelView(req, parts[2], action);
+  }
+
   if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" && parts[3] === "summary") {
     if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
     return summary(req, parts[2]);
@@ -769,6 +843,7 @@ export const config = {
     "/api/dashboard/:slug/model/kit",
     "/api/dashboard/:slug/model/photos/:angle",
     "/api/dashboard/:slug/model/submit",
+    "/api/dashboard/:slug/model/views/:action",
     "/api/dashboard/:slug/summary",
     "/api/dashboard/:slug/export.csv",
     "/api/dashboard/:slug/connect/onboard",

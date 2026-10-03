@@ -32,10 +32,13 @@ skip what the user has already completed. Read the relevant reference before edi
   `/api/dashboard/:slug/placements/:id/{sold,release}`, `/api/dashboard/:slug/connect/onboard`, and
   `/api/dashboard/:slug/onboarding`, `/api/dashboard/:slug/model`, `/api/dashboard/:slug/model/consent`,
   `/api/dashboard/:slug/model/kit`, `/api/dashboard/:slug/model/photos/:angle` (GET/POST), and
-  `/api/dashboard/:slug/model/submit`. Onboarding progress is stored per tenant in the `onboarding` Blobs store.
+  `/api/dashboard/:slug/model/submit`, `/api/dashboard/:slug/model/views/generate`, `/api/dashboard/:slug/model/views/decision`,
+  and `/api/dashboard/:slug/model/views/:angle`. Onboarding progress is stored per tenant in the `onboarding` Blobs store.
   Model Studio Phase A collects consent, kit colours and photos for later 3D production; it does not call Meshy.
   The strong-consistency `model-studio` Blobs store uses `<slug>/consent`, `<slug>/kit`,
-  `<slug>/photo/<angle>`, and `<slug>/submission`.
+  `<slug>/photo/<angle>`, `<slug>/submission`, `<slug>/views/job`, `<slug>/views/<job-id>/<angle>`,
+  `<slug>/views/<job-id>/errors/<angle>`, and `<slug>/views/decision`. Reference view generation and review
+  use the `MESHY_API_KEY` secret and `MESHY_API_BASE`; automated tests must set both to the local fake Meshy service.
   Authenticated summaries and exports also work for draft tenants; all routes require `DASHBOARD_SECRET`,
   and POST requests require a same-origin `Origin`.
 - Connect tenants use `/api/<slug>/connect/onboard` and `/api/<slug>/connect/status`; their direct-charge invoices
