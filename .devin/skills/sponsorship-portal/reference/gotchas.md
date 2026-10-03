@@ -29,6 +29,14 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
   that generated registry.
 
 ## Bidding / invoicing
+- **Webhook signature verification fails after parsing JSON.** Stripe signs the exact request bytes. Verify
+  `stripe-signature` against the raw body before parsing the event; configure both platform and Connect endpoint
+  secrets.
+- **Webhook event is ignored despite a valid signature.** The livemode guard accepts only events whose `livemode`
+  matches whether `STRIPE_SECRET_KEY` contains `_live_`; test-key deployments ignore live events and vice versa.
+- **Paid invoice was re-created by the close job.** `invoice.status === "sent"` remains the invoice retry guard.
+  Record payment separately in `invoice.paidAt` (and `amountPaid`) when handling `invoice.paid`; never replace
+  `"sent"` with a paid status.
 - **Connect invoice finalization failed.** Direct-charge invoices and their customers must be created on the
   connected athlete account using Stripe's `Stripe-Account` header. The bid API gates bidding on charges being
   enabled plus `card_payments` being `active`.

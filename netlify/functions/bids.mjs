@@ -27,6 +27,7 @@ const publicView = (slug, id, rec) => ({
   locked: Boolean(rec.locked),
   lockedBy: rec.locked ? rec.lockedBy?.company || null : null,
   closed: Boolean(rec.closed),
+  paid: Boolean(rec.invoice?.paidAt),
   logo: rec.logo ? `/api/${slug}/logos/${id}?v=${encodeURIComponent(rec.logo.at)}` : null
 });
 

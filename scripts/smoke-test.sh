@@ -5,6 +5,7 @@
 #   Build the tenant registry first: npm run build
 #   Terminal 1:  MOCK_PORT=4343 node scripts/mock-services.mjs
 #   Terminal 2:  STRIPE_SECRET_KEY=sk_test_mock STRIPE_API_BASE=http://127.0.0.1:4343 \
+#                STRIPE_WEBHOOK_SECRET=whsec_platform_test STRIPE_CONNECT_WEBHOOK_SECRET=whsec_connect_test \
 #                RESEND_API_KEY=re_mock RESEND_API_BASE=http://127.0.0.1:4343 \
 #                PLATFORM_URL=http://localhost:8890 ADMIN_TOKEN=devtoken PREVIEW_TOKEN=devpreview \
 #                npx netlify dev --offline --port 8890

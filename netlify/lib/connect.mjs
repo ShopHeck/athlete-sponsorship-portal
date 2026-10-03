@@ -85,14 +85,25 @@ export function connectForTenant(config, { stripe, portalUrl }) {
     return updated;
   }
 
+  async function markDeauthorized() {
+    const existing = await record();
+    if (!existing?.accountId) return null;
+    const updated = { ...existing, deauthorizedAt: new Date().toISOString() };
+    await store().setJSON(slug, updated);
+    return updated;
+  }
+
   async function readiness({ maxAgeMs = 60_000 } = {}) {
     if (mode === "platform") return { mode, ready: true };
-    if (!process.env.STRIPE_SECRET_KEY) {
-      return { mode, ready: false, accountId: null, status: null };
-    }
     let current;
     try {
       current = await record();
+      if (current?.deauthorizedAt) {
+        return { mode, ready: false, accountId: current.accountId || null, status: current.status || null };
+      }
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return { mode, ready: false, accountId: current?.accountId || null, status: current?.status || null };
+      }
       if (!current?.accountId) return { mode, ready: false, accountId: null, status: null };
       if (isConnectReady(current.status)) {
         return { mode, ready: true, accountId: current.accountId, status: current.status };
@@ -115,5 +126,5 @@ export function connectForTenant(config, { stripe, portalUrl }) {
   }
 
   const feeAmount = (cents) => mode === "connect" ? Math.round(cents * payments.feePercent / 100) : 0;
-  return { mode, feeAmount, record, ensureAccount, onboardingLink, refreshStatus, readiness, sign, verify };
+  return { mode, feeAmount, record, ensureAccount, onboardingLink, refreshStatus, markDeauthorized, readiness, sign, verify };
 }
