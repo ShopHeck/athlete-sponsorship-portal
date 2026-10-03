@@ -28,7 +28,7 @@ operating one. `reference/gotchas.md` first when debugging.
 - Base PRs on `main`; never stack. Verify the Netlify build is live after merging.
 - Placement IDs and labels live only in `tenants/<slug>.json` under `garments[].placements`; the build generates the server allowlist and labels from these configs.
 - Add a tenant with `tenants/<slug>.json` and `public/tenants/<slug>/` assets. Set `status` to `draft`, preview with `?preview=$PREVIEW_TOKEN`, and change it to `live` after approval. Draft preview pages pass the token to bid APIs; preview bids are real records scoped to that tenant.
-- Every tenant config requires `payments.mode` (`platform` or `connect`); Connect mode also sets `feePercent` and optional two-letter country. Bidding stays closed until charges are enabled and transfers are active.
+- Every tenant config requires `payments.mode` (`platform` or `connect`); Connect mode also sets `feePercent` and optional two-letter country. Connect uses direct charges on the athlete's account; bidding stays closed until charges are enabled and `card_payments` is active.
 - Tenant API routes are `/api/<slug>/bids`, `/api/<slug>/logos/<id>`, and `/api/<slug>/connect/{onboard,status}`; Blobs records are tenant-prefixed.
 - Secrets only via `netlify env:set … --secret`; never in chat, code or commits.
 - Blobs deletions are destructive: confirm the placement ID and back up first.

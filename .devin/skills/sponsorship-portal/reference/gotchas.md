@@ -29,13 +29,22 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
   that generated registry.
 
 ## Bidding / invoicing
-- **Connect invoice finalization failed.** Destination charges cannot be finalized until the connected account's
-  `transfers` capability is `active`. The bid API gates bidding on charges-enabled plus active transfers, and the
-  close-auction job refreshes cached account status before processing invoices.
+- **Connect invoice finalization failed.** Direct-charge invoices and their customers must be created on the
+  connected athlete account using Stripe's `Stripe-Account` header. The bid API gates bidding on charges being
+  enabled plus `card_payments` being `active`.
 - **Athlete's Stripe onboarding link expired.** Account links are temporary; use its signed refresh URL to issue a
   fresh Stripe-hosted link or call the admin onboarding endpoint again.
-- **Platform fees did not cover payment risk.** With destination charges, the platform pays Stripe processing fees
-  and carries refund/chargeback exposure. Set `feePercent` high enough to cover those costs and risks.
+- **Who pays fees or bears payment losses?** Direct charges make the athlete the merchant of record: Stripe fees,
+  refunds, and chargebacks affect the athlete's balance. With `controller.losses.payments=stripe`, Stripe is liable
+  for unrecoverable negative balances. Connect athletes receive the full Stripe Dashboard.
+- **Connect account has incompatible controller settings.** Stripe Dashboard type is immutable. Accounts created
+  with other controller settings must be replaced with a new account; do not reuse a destination-charge/Express
+  account for direct charges.
+- **Stripe rejected the card-payments capability request.** Test mode returned “Accounts do not currently support
+  `card_payments` without `transfers`” for this controller combination. Account creation omits capability requests;
+  readiness still requires `card_payments` to become active, so confirm it is active before opening bids. Stripe
+  cached the rejected request parameters under its idempotency key, so the fallback uses a new key for the revised
+  account-creation parameters.
 - **Every successful lock showed "Network error" in the UI even though the server saved it.** `busy.textContent =
   "Sending…"` wiped the `<span>` inside the lock button that `renderBidPanel()` writes to, so a re-render threw
   inside the `try`. Fixed with a dedicated `#lockLabel` span and a `submitBid.busy` guard.

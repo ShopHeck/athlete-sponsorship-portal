@@ -105,9 +105,11 @@ Use platform mode when invoices stay on the platform Stripe account. A Connect t
 ```
 
 `feePercent` must be greater than 0 and no more than 50. `country` is optional and defaults to `US`; when supplied,
-it must be two uppercase letters. Connect invoices are destination charges with this application fee. The required
+it must be two uppercase letters. Connect invoices are direct charges on the athlete's Stripe account and include
+this application fee. The connected account pays Stripe fees and bears refunds and chargebacks; Stripe is liable
+for unrecoverable negative balances. The athlete receives the full Stripe Dashboard. The required
 `copy.paymentsPending` string is shown while bidding is closed pending payout setup. Bidding becomes available only
-when Stripe reports charges enabled and the transfers capability active.
+when Stripe reports charges enabled and the `card_payments` capability active.
 
 Global environment variables are reserved for platform/service operation: `STRIPE_SECRET_KEY`,
 `RESEND_API_KEY`, `STRIPE_API_BASE`, `RESEND_API_BASE`, `PLATFORM_URL`, `PREVIEW_TOKEN`, and `ADMIN_TOKEN`.

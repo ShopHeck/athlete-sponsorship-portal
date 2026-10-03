@@ -22,7 +22,8 @@
 
 For each tenant with `payments.mode: "connect"`:
 
-- [ ] Confirm `feePercent` is appropriate for Stripe processing costs and the platform's refund/chargeback exposure.
+- [ ] Confirm the application fee and athlete agreement account for the athlete paying Stripe fees and bearing
+      refunds and chargebacks; Stripe is liable for unrecoverable negative balances.
 - [ ] Set the live `PLATFORM_URL` to the public **HTTPS** origin before onboarding.
 - [ ] Start onboarding with `POST /api/<slug>/connect/onboard` and
       `Authorization: Bearer $ADMIN_TOKEN`.
@@ -30,7 +31,9 @@ For each tenant with `payments.mode: "connect"`:
 - [ ] Account links expire. If an athlete returns to an expired link, use the signed `refresh_url` from the link or
       start onboarding again through the admin endpoint to create a fresh link.
 - [ ] Check `GET /api/<slug>/connect/status` with the admin token. Bidding is enabled only when charges are enabled
-      and `capabilities.transfers` is `active`; otherwise it remains closed with `copy.paymentsPending`.
+      and `capabilities.card_payments` is `active`; otherwise it remains closed with `copy.paymentsPending`.
+- [ ] Confirm invoices and customers are created on the connected athlete account with Stripe's `Stripe-Account`
+      header. The athlete uses the full Stripe Dashboard.
 
 ## Preview and verify
 

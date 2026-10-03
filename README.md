@@ -26,8 +26,10 @@ values are tenant-configured rather than selected with per-site environment over
 ## Payments
 
 Every tenant config sets `payments.mode` to `"platform"` or `"connect"`. Michael uses the platform account; Connect
-tenants must finish Stripe-hosted onboarding and have charges enabled with the transfers capability active before
-bids are accepted. Connect invoices are destination charges with the configured `feePercent` application fee.
+tenants must finish Stripe-hosted onboarding and have charges enabled with `card_payments` active before bids are
+accepted. Connect invoices are direct charges on the athlete's Stripe account with the configured `feePercent`
+application fee. The athlete pays Stripe fees and bears refunds and chargebacks; Stripe is liable for unrecoverable
+negative balances. Connect athletes receive the full Stripe Dashboard.
 Use `POST /api/<slug>/connect/onboard` with the admin Bearer token to create an onboarding link, send the returned
 URL to the athlete, then verify readiness with `GET /api/<slug>/connect/status`.
 
@@ -81,7 +83,8 @@ in the tenant config, absent from its `sold` map, and with no existing local bid
 - `GET` and `POST /api/<slug>/bids` expose tenant-scoped bid data. Logo images are served from
   `/api/<slug>/logos/<id>`. Blobs stores remain named `bids` and `logos`, with keys prefixed by `<slug>/`.
 - `POST /api/<slug>/connect/onboard` and `GET /api/<slug>/connect/status` require the admin token. Connect tenants
-  cannot accept bids until their account is payout-ready.
+  cannot accept bids until charges are enabled and `card_payments` is active. Their customers and invoices live on
+  the connected account and are accessed with Stripe's `Stripe-Account` header.
 - `POST /api/close-auction` is admin-only. It processes every non-draft tenant, or one tenant when passed
   `?tenant=<slug>`. The scheduled daily job processes all non-draft tenants.
 - Stripe creates invoice links; the portal does not charge cards. Resend sends bid confirmations, outbid notices,

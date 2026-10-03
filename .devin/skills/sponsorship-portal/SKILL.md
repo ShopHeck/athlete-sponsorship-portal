@@ -26,8 +26,9 @@ skip what the user has already completed. Read the relevant reference before edi
   closed tenants receive tenant-specific CSP and cache headers.
 - Bid and logo routes are `/api/<slug>/bids` and `/api/<slug>/logos/<id>`. Blobs stores are shared by name but keys
   are tenant-prefixed (`<slug>/<placementId>`).
-- Connect tenants use `/api/<slug>/connect/onboard` and `/api/<slug>/connect/status`; bidding stays closed until
-  charges are enabled and the transfers capability is active.
+- Connect tenants use `/api/<slug>/connect/onboard` and `/api/<slug>/connect/status`; their direct-charge invoices
+  are created on the athlete's Stripe account. Bidding stays closed until charges are enabled and the
+  `card_payments` capability is active.
 - `netlify/lib/sponsorship.mjs` exports `forTenant(config, { portalUrl })`, which closes email, invoice, pricing,
   and placement helpers over one tenant.
 - The scheduled job processes every non-draft tenant; the admin close endpoint may process all non-draft tenants or
@@ -80,8 +81,9 @@ emails against production without the owner's explicit confirmation.
 
 Follow `reference/launch-checklist.md` for the tenant's Netlify site, production credentials, domain, frame origins,
 and host embed. For Connect tenants, onboard the athlete through the admin endpoint and confirm status is ready
-before accepting bids. Confirm the draft preview, switch to live only after approval, then smoke-test the live page
-and tenant API.
+before accepting bids. Connect customers and invoices are scoped to the athlete's account; the athlete pays Stripe
+fees and bears refund and chargeback exposure. Confirm the draft preview, switch to live only after approval, then
+smoke-test the live page and tenant API.
 
 ## Phase 4 — Operate
 
