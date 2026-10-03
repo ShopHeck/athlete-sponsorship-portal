@@ -16,6 +16,30 @@ export function validateConfig(config, filename) {
   if (!["live", "draft", "closed"].includes(config.status)) {
     throw new Error(`tenant ${config.slug} status must be live, draft, or closed`);
   }
+  if (!config.payments || typeof config.payments !== "object" || Array.isArray(config.payments)) {
+    throw new Error(`tenant ${config.slug} payments must be an object`);
+  }
+  if (config.payments.mode === "platform") {
+    if ("feePercent" in config.payments || "country" in config.payments) {
+      throw new Error(`tenant ${config.slug} platform payments must only specify mode`);
+    }
+  } else if (config.payments.mode === "connect") {
+    if (typeof config.payments.feePercent !== "number" ||
+        !Number.isFinite(config.payments.feePercent) ||
+        config.payments.feePercent <= 0 ||
+        config.payments.feePercent > 50) {
+      throw new Error(`tenant ${config.slug} payments.feePercent must be greater than 0 and no more than 50`);
+    }
+    if (config.payments.country === undefined) config.payments.country = "US";
+    if (typeof config.payments.country !== "string" || !/^[A-Z]{2}$/.test(config.payments.country)) {
+      throw new Error(`tenant ${config.slug} payments.country must be two uppercase letters`);
+    }
+  } else {
+    throw new Error(`tenant ${config.slug} payments.mode must be platform or connect`);
+  }
+  if (typeof config.copy?.paymentsPending !== "string" || !config.copy.paymentsPending.trim()) {
+    throw new Error(`tenant ${config.slug} copy.paymentsPending must be a non-empty string`);
+  }
   if (!Array.isArray(config.embedOrigins) || config.embedOrigins.some((origin) => typeof origin !== "string")) {
     throw new Error(`tenant ${config.slug} embedOrigins must be an array of strings`);
   }
