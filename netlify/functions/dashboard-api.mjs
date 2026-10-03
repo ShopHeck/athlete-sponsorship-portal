@@ -2,6 +2,7 @@ import { getStore } from "@netlify/blobs";
 import { forTenant, json } from "../lib/sponsorship.mjs";
 import {
   allowLoginEmail,
+  readAdminSession,
   clearSessionCookie,
   consumeLoginToken,
   createLoginToken,
@@ -24,6 +25,7 @@ import {
   loadBuild,
   startBuild
 } from "../lib/model-build.mjs";
+import { getLivePointer, loadReview, saveAthleteReview } from "../lib/model-review.mjs";
 import { MeshyConfigurationError } from "../lib/meshy.mjs";
 import { getTenant, listTenants } from "../lib/tenants.mjs";
 
@@ -264,9 +266,10 @@ async function loadStudio(tenant, progress = {}, buildProgress) {
       size: metadata.size,
       warnings: metadata.warnings || [],
       at: metadata.at
-    } : null];
+      } : null];
   }));
-  const hasOwnModel = resolveTenantAssets(tenant).model?.startsWith(`/tenants/${slug}/`) === true;
+  const live = await getLivePointer(tenant);
+  const hasOwnModel = resolveTenantAssets(tenant).model?.startsWith(`/tenants/${slug}/`) === true || Boolean(live);
   const views = await loadViews(tenant, {
     submitted: Boolean(submission),
     ownModel: hasOwnModel,
@@ -275,8 +278,10 @@ async function loadStudio(tenant, progress = {}, buildProgress) {
   const build = await loadBuild(tenant, {
     viewsStatus: views.status,
     ownModel: hasOwnModel,
+    liveJobId: live?.jobId ?? null,
     progress: buildProgress
   });
+  const review = await loadReview(tenant, build);
   const missing = [];
   if (!consent) missing.push("consent");
   if (!kit) missing.push("kit");
@@ -293,7 +298,8 @@ async function loadStudio(tenant, progress = {}, buildProgress) {
     submittedAt: submission?.submittedAt ?? null,
     missing,
     views,
-    build
+    build,
+    review
   };
 }
 
@@ -363,7 +369,8 @@ async function summary(req, slug) {
       photoCount: Object.values(studio.photos).filter(Boolean).length,
       submittedAt: studio.submittedAt,
       views: studio.views,
-      build: studio.build
+      build: studio.build,
+      review: studio.review
     }
   });
 }
@@ -562,11 +569,13 @@ async function updateOnboarding(req, slug) {
   return json({ onboarding: await loadOnboarding(tenant.slug) });
 }
 
-async function modelAccess(req, slug) {
+async function modelAccess(req, slug, { allowAdmin = false } = {}) {
   const tenant = await getTenant(slug);
   if (!tenant) return { response: json({ error: "Tenant not found." }, 404) };
   const session = sessionFor(req, slug);
-  if (!session) return { response: json({ error: "Sign in required" }, 401) };
+  if (!session && !(allowAdmin && readAdminSession(req))) {
+    return { response: json({ error: "Sign in required" }, 401) };
+  }
   return { tenant, session };
 }
 
@@ -636,7 +645,7 @@ async function startModelBuild(req, slug) {
 }
 
 async function getModelBuildAsset(req, slug, kind) {
-  const access = await modelAccess(req, slug);
+  const access = await modelAccess(req, slug, { allowAdmin: true });
   if (access.response) return access.response;
   const asset = await getBuildAsset(access.tenant, kind);
   if (!asset) return json({ error: "Model asset not found." }, 404);
@@ -647,6 +656,60 @@ async function getModelBuildAsset(req, slug, kind) {
       "x-content-type-options": "nosniff"
     }
   });
+}
+
+async function reviewModel(req, slug) {
+  const access = await modelAccess(req, slug);
+  if (access.response) return access.response;
+  let body;
+  try { body = await req.json(); } catch { body = null; }
+  const note = body?.note === undefined
+    ? ""
+    : typeof body.note === "string"
+      ? body.note.trim()
+      : null;
+  if (note === null || note.length > 500) {
+    return json({ error: "Notes must be 500 characters or fewer." }, 400);
+  }
+  if (!["approve", "rebuild"].includes(body?.decision) || typeof body.jobId !== "string") {
+    return json({ error: "Choose approve or rebuild for the current model." }, 400);
+  }
+
+  const model = await loadStudio(access.tenant);
+  if (body.jobId !== model.build.jobId) {
+    return json({ error: "That model is no longer current." }, 409);
+  }
+  if (body.decision === "approve") {
+    if (!["athlete_review", "sent_back"].includes(model.review.status)) {
+      return json({ error: "This model is not waiting for your approval." }, 409);
+    }
+    const at = new Date().toISOString();
+    await saveAthleteReview(access.tenant, {
+      jobId: body.jobId,
+      decision: "approved",
+      note,
+      at,
+      by: access.session.email
+    });
+    const operatorEmail = process.env.OPERATOR_EMAIL?.trim();
+    if (operatorEmail) {
+      const base = platformUrl(req);
+      const services = forTenant(access.tenant, { portalUrl: `${base}/${slug}` });
+      await services.tryEmail({
+        to: operatorEmail,
+        subject: `Model ready for sign-off: ${access.tenant.athlete.displayName}`,
+        text: `The model for ${access.tenant.athlete.displayName} is ready for sign-off.\n${base}/admin/${encodeURIComponent(slug)}/studio${note ? `\n\nAthlete note: ${note}` : ""}`
+      });
+    }
+    return json({ model: await loadStudio(access.tenant) });
+  }
+
+  if (model.review.status === "live" || model.build.status !== "ready" || model.build.attemptsLeft === 0) {
+    return json({ error: "This model cannot be rebuilt right now." }, 409);
+  }
+  const result = await startBuild(access.tenant, access.session, { allowReady: true, note });
+  if (result.status !== 200) return json({ error: result.error }, result.status);
+  return json({ model: await loadStudio(access.tenant) });
 }
 
 async function saveModelConsent(req, slug) {
@@ -822,6 +885,10 @@ export default async function dashboardApi(req) {
       if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
       return submitModel(req, parts[2]);
     }
+    if (parts[4] === "review") {
+      if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+      return reviewModel(req, parts[2]);
+    }
   }
 
   if (parts.length === 6 && parts[0] === "api" && parts[1] === "dashboard" &&
@@ -902,6 +969,7 @@ export const config = {
     "/api/dashboard/:slug/model/kit",
     "/api/dashboard/:slug/model/photos/:angle",
     "/api/dashboard/:slug/model/submit",
+    "/api/dashboard/:slug/model/review",
     "/api/dashboard/:slug/model/views/:action",
     "/api/dashboard/:slug/model/build/:action",
     "/api/dashboard/:slug/summary",

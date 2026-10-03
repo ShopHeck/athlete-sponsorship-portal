@@ -1,5 +1,6 @@
 import platform from "../lib/platform.generated.json";
 import { readSession } from "../lib/dashboard-auth.mjs";
+import { renderStudioPage } from "../lib/studio-page.mjs";
 import { getTenant } from "../lib/tenants.mjs";
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
@@ -22,7 +23,7 @@ const MODEL_CSP = CSP
   .replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'")
   .replace("img-src 'self' data:", "img-src 'self' data: blob:");
 
-function page({ title, body, accent = "#ff6a1a", bodyAttrs = "", script = false, csp = CSP }) {
+export function page({ title, body, accent = "#ff6a1a", bodyAttrs = "", script = false, scriptPath = "/dashboard.js", csp = CSP }) {
   const version = escapeHtml(platform.version);
   const html = `<!doctype html>
 <html lang="en">
@@ -41,7 +42,7 @@ function page({ title, body, accent = "#ff6a1a", bodyAttrs = "", script = false,
 </head>
 <body ${bodyAttrs}>
 ${body}
-${script ? `<script type="module" src="/dashboard.js?v=${version}"></script>` : ""}
+${script ? `<script type="module" src="${escapeHtml(scriptPath)}?v=${version}"></script>` : ""}
 </body>
 </html>`;
   return new Response(html, {
@@ -156,10 +157,21 @@ export default async function dashboard(req, context) {
   const slug = context.params?.slug || "";
   const tenant = await getTenant(slug);
   if (!tenant || !session || session.slug !== slug) return redirect("/dashboard");
+  if (path === `/dashboard/${encodeURIComponent(slug)}/model/studio`) {
+    return renderStudioPage(req, tenant, "athlete");
+  }
   if (path === `/dashboard/${encodeURIComponent(slug)}/model`) return modelStudioPage(tenant);
   return dashboardPage(tenant);
 }
 
 export const config = {
-  path: ["/dashboard", "/dashboard/", "/dashboard/auth", "/dashboard/:slug", "/dashboard/:slug/", "/dashboard/:slug/model"]
+  path: [
+    "/dashboard",
+    "/dashboard/",
+    "/dashboard/auth",
+    "/dashboard/:slug",
+    "/dashboard/:slug/",
+    "/dashboard/:slug/model",
+    "/dashboard/:slug/model/studio"
+  ]
 };

@@ -77,6 +77,9 @@ export function renderPortal(config, { template, version, portalUrl }) {
   </dialog>`
     : "";
   const configJson = JSON.stringify(tenant).replace(/</g, "\\u003c");
+  const studioAssets = ["athlete", "operator"].includes(tenant.studio?.mode)
+    ? `<link rel="stylesheet" href="/studio.css?v=${escapeHtml(version)}"><script type="module" src="/studio.js?v=${escapeHtml(version)}"></script>`
+    : "";
   const context = {
     ...tenant,
     firstPlacement,
@@ -88,6 +91,7 @@ export function renderPortal(config, { template, version, portalUrl }) {
     posterCard,
     stageBackdrop,
     posterDialog,
+    studioAssets,
     garmentTabs,
     benefitItems,
     initialBidNote,

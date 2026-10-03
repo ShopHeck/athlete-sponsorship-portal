@@ -2,8 +2,10 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 import { getStore } from "@netlify/blobs";
 
 export const SESSION_COOKIE = "asp_dash";
+export const ADMIN_SESSION_COOKIE = "asp_admin";
 
 const SESSION_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const ADMIN_SESSION_AGE_MS = 12 * 60 * 60 * 1000;
 const LOGIN_TOKEN_AGE_MS = 15 * 60 * 1000;
 const LOGIN_RATE_WINDOW_MS = 60 * 60 * 1000;
 const LOGIN_RATE_LIMIT = 5;
@@ -64,6 +66,44 @@ export function sessionCookie(slug, email, req) {
 
 export function clearSessionCookie(req) {
   return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureCookie(req)}`;
+}
+
+export function readAdminSession(req) {
+  try {
+    if (!process.env.DASHBOARD_SECRET) return null;
+    const cookie = req.headers.get("cookie") || "";
+    const value = cookie.split(";").map((part) => part.trim())
+      .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`))
+      ?.slice(ADMIN_SESSION_COOKIE.length + 1);
+    if (!value) return null;
+
+    const separator = value.lastIndexOf(".");
+    if (separator < 1) return null;
+    const payload = value.slice(0, separator);
+    const signature = value.slice(separator + 1);
+    if (!/^[a-f0-9]{64}$/i.test(signature)) return null;
+    const expected = Buffer.from(sign(payload), "hex");
+    const actual = Buffer.from(signature, "hex");
+    if (actual.length !== expected.length || !timingSafeEqual(expected, actual)) return null;
+
+    const session = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (session.role !== "admin" || !Number.isFinite(session.exp) || session.exp <= Date.now()) return null;
+    return { role: "admin", exp: session.exp };
+  } catch {
+    return null;
+  }
+}
+
+export function adminSessionCookie(req) {
+  const payload = Buffer.from(JSON.stringify({
+    role: "admin",
+    exp: Date.now() + ADMIN_SESSION_AGE_MS
+  })).toString("base64url");
+  return `${ADMIN_SESSION_COOKIE}=${payload}.${sign(payload)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${secureCookie(req)}`;
+}
+
+export function clearAdminCookie(req) {
+  return `${ADMIN_SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookie(req)}`;
 }
 
 export function sameOrigin(req) {

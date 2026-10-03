@@ -1,0 +1,20 @@
+.studio-preview{padding-bottom:180px}
+.studio-bar{position:fixed;z-index:30;left:50%;bottom:16px;transform:translateX(-50%);display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:20px;width:min(1120px,calc(100% - 28px));padding:16px 20px;border:1px solid rgba(255,255,255,.18);border-radius:16px;background:rgba(13,13,13,.88);backdrop-filter:blur(18px);box-shadow:0 18px 50px rgba(0,0,0,.45);color:var(--ink,#f5f1e8);font:14px/1.45 Inter,Arial,sans-serif}
+.studio-copy{min-width:0}
+.studio-eyebrow{margin:0 0 4px;color:var(--orange,var(--accent,#ff6a1a));font-size:10px;font-weight:800;letter-spacing:.16em}
+.studio-heading{display:block;font-size:15px}
+.studio-fit,.studio-review-status{margin:5px 0 0;color:rgba(255,255,255,.75);font-size:12px}
+.studio-controls{display:grid;justify-items:end;gap:7px}
+.studio-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.studio-button{min-height:40px;padding:9px 14px;border:1px solid var(--orange,var(--accent,#ff6a1a));border-radius:9px;background:var(--orange,var(--accent,#ff6a1a));color:#111;font:700 13px/1.2 Inter,Arial,sans-serif;cursor:pointer}
+.studio-button-secondary{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.08);color:var(--ink,#f5f1e8)}
+.studio-button:hover{filter:brightness(1.08)}
+.studio-button:disabled{opacity:.5;cursor:not-allowed}
+.studio-error{max-width:360px;margin:0;color:#ffb5b5;font-size:12px}
+.studio-dialog{width:min(480px,calc(100% - 28px));padding:24px;border:1px solid rgba(255,255,255,.2);border-radius:14px;background:#111;color:var(--ink,#f5f1e8);font:14px/1.5 Inter,Arial,sans-serif}
+.studio-dialog::backdrop{background:rgba(0,0,0,.72)}
+.studio-dialog h2{margin:0 0 12px;font:700 22px/1.15 "Barlow Condensed",Impact,sans-serif;text-transform:uppercase}
+.studio-dialog label{display:block;margin:10px 0 6px;color:rgba(255,255,255,.7);font-size:12px}
+.studio-dialog textarea{width:100%;padding:10px;border:1px solid rgba(255,255,255,.22);border-radius:8px;background:#080808;color:inherit;font:14px/1.5 Inter,Arial,sans-serif;resize:vertical}
+.studio-dialog .studio-actions{margin-top:16px}
+@media(max-width:760px){.studio-preview{padding-bottom:255px}.studio-bar{grid-template-columns:1fr;gap:12px;bottom:10px;padding:14px}.studio-controls{justify-items:stretch}.studio-actions{justify-content:stretch}.studio-button{flex:1;white-space:normal}}

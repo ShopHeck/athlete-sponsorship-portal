@@ -33,17 +33,23 @@ skip what the user has already completed. Read the relevant reference before edi
   `/api/dashboard/:slug/onboarding`, `/api/dashboard/:slug/model`, `/api/dashboard/:slug/model/consent`,
   `/api/dashboard/:slug/model/kit`, `/api/dashboard/:slug/model/photos/:angle` (GET/POST), and
   `/api/dashboard/:slug/model/submit`, `/api/dashboard/:slug/model/views/generate`, `/api/dashboard/:slug/model/views/decision`,
-  `/api/dashboard/:slug/model/views/:angle`, and `/api/dashboard/:slug/model/build/{start,model.glb,thumbnail}`.
+  `/api/dashboard/:slug/model/views/:angle`, `/api/dashboard/:slug/model/build/{start,model.glb,thumbnail}`,
+  and `/api/dashboard/:slug/model/review`. Athlete studio pages use `/dashboard/:slug/model/studio`.
+  Operator pages and APIs are `/admin`, `/admin/:slug/studio`, `/api/admin/session`, `/api/admin/logout`,
+  `/api/admin/reviews`, and `/api/admin/:slug/model/{publish,send-back,unpublish}`. Published models are served
+  from `/api/:slug/model.glb?v=<job-id>`; draft tenants require the preview token.
   Onboarding progress is stored per tenant in the `onboarding` Blobs store. Model Studio Phase A collects consent,
   kit colours and photos; Phase B generates reference views for athlete approval; Phase C builds and optimizes a
-  private GLB only from approved views. Phase C stops at `ready`; the 360° preview and publishing remain Phase D.
+  private GLB only from approved views. Phase D adds the authenticated private studio, athlete approval/rebuild,
+  operator review, publish/send-back/unpublish, and versioned public live-model serving without tenant JSON edits.
   The strong-consistency `model-studio` Blobs store uses `<slug>/consent`, `<slug>/kit`,
   `<slug>/photo/<angle>`, `<slug>/submission`, `<slug>/views/job`, `<slug>/views/<job-id>/<angle>`,
   `<slug>/views/<job-id>/errors/<angle>`, `<slug>/views/decision`, `<slug>/build/job`,
   `<slug>/build/<job-id>/processing`, `<slug>/build/<job-id>/model.glb`, `<slug>/build/<job-id>/thumbnail`,
-  and `<slug>/build/<job-id>/error`. Reference generation and 3D builds use `MESHY_API_KEY` and `MESHY_API_BASE`;
-  automated tests must override both to the local fake Meshy service. The `model-build-background` function
-  externalizes `sharp` and `draco3dgltf`.
+  `<slug>/build/<job-id>/error`, `<slug>/review/athlete`, `<slug>/review/operator`, `<slug>/live/current`, and
+  `<slug>/live/<job-id>/model.glb`. Reference generation and 3D builds use `MESHY_API_KEY` and `MESHY_API_BASE`;
+  automated tests must override both to the local fake Meshy service. `OPERATOR_EMAIL` is optional and receives
+  sign-off notifications. The `model-build-background` function alone externalizes `sharp` and `draco3dgltf`.
   Authenticated summaries and exports also work for draft tenants; all routes require `DASHBOARD_SECRET`,
   and POST requests require a same-origin `Origin`.
 - Connect tenants use `/api/<slug>/connect/onboard` and `/api/<slug>/connect/status`; their direct-charge invoices
@@ -89,13 +95,16 @@ MOCK_PORT=4343 node scripts/mock-services.mjs
 PREVIEW_TOKEN=devpreview ADMIN_TOKEN=devtoken PLATFORM_URL=http://localhost:8890 \
 STRIPE_SECRET_KEY=sk_test_mock STRIPE_API_BASE=http://127.0.0.1:4343 \
 STRIPE_WEBHOOK_SECRET=whsec_platform_test STRIPE_CONNECT_WEBHOOK_SECRET=whsec_connect_test \
-DASHBOARD_SECRET=devdashboard RESEND_API_KEY=re_mock RESEND_API_BASE=http://127.0.0.1:4343 \
+DASHBOARD_SECRET=devdashboard OPERATOR_EMAIL=ops@example.test \
+RESEND_API_KEY=re_mock RESEND_API_BASE=http://127.0.0.1:4343 \
+MESHY_API_KEY=mock_key MESHY_API_BASE=http://127.0.0.1:4343 \
 npx netlify dev --offline --port 8890
 scripts/smoke-test.sh http://localhost:8890 <slug> <OPEN-ID-A> <OPEN-ID-B>
 scripts/tenant-test.sh http://localhost:8890
 scripts/connect-test.sh http://localhost:8890
 scripts/webhook-test.sh http://localhost:8890
 scripts/dashboard-test.sh http://localhost:8890
+scripts/studio-test.sh http://localhost:8890
 ```
 
 Reset the local Blobs sandbox and restart the mock service before each test run with `rm -rf .netlify/blobs-serve`.

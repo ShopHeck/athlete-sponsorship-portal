@@ -39,6 +39,7 @@ function clampedProgress(progress) {
 export async function loadBuild(tenant, {
   viewsStatus,
   ownModel = hasOwnModel(tenant),
+  liveJobId = null,
   progress
 } = {}) {
   const store = storeForTenant();
@@ -56,8 +57,13 @@ export async function loadBuild(tenant, {
     progress: clampedProgress(progress),
     model: null
   };
-  if (viewsStatus !== "approved" || ownModel) return { status: "locked", ...shared };
-  if (!job || job.viewsJobId !== viewsJob?.id) return { status: "not_started", ...shared };
+  const publishedJob = Boolean(job?.id && job.id === liveJobId);
+  if (!publishedJob && (viewsStatus !== "approved" || ownModel)) {
+    return { status: "locked", ...shared };
+  }
+  if (!publishedJob && (!job || job.viewsJobId !== viewsJob?.id)) {
+    return { status: "not_started", ...shared };
+  }
 
   const [processing, model, error] = await Promise.all([
     store.get(processingKey(slug, job.id), { type: "json" }),
@@ -95,7 +101,11 @@ async function approvedViews(tenant) {
   return views.status === "approved" ? views : null;
 }
 
-export async function startBuild(tenant, session) {
+export async function startBuild(tenant, session, { allowReady = false, note = "" } = {}) {
+  const store = storeForTenant();
+  if (await store.get(`${tenant.slug}/live/current`, { type: "json" })) {
+    return { status: 409, error: "A live model cannot be rebuilt." };
+  }
   const views = await approvedViews(tenant);
   if (!views) return { status: 409, error: "Approve your reference views first." };
 
@@ -103,7 +113,7 @@ export async function startBuild(tenant, session) {
     viewsStatus: views.status,
     ownModel: hasOwnModel(tenant)
   });
-  if (["building", "processing", "ready"].includes(build.status)) {
+  if (["building", "processing"].includes(build.status) || (build.status === "ready" && !allowReady)) {
     return { status: 200 };
   }
   if (build.attempt >= MAX_BUILD_ATTEMPTS) {
@@ -113,7 +123,6 @@ export async function startBuild(tenant, session) {
     return { status: 503, error: "3D model building isn't configured." };
   }
 
-  const store = storeForTenant();
   const previousJob = await store.get(jobKey(tenant.slug), { type: "json" });
   const job = {
     id: randomUUID(),
@@ -122,6 +131,7 @@ export async function startBuild(tenant, session) {
     by: session.email,
     viewsJobId: views.jobId,
     taskId: null,
+    note: typeof note === "string" ? note.trim() : "",
     settingsVersion: SETTINGS_VERSION
   };
   await store.setJSON(jobKey(tenant.slug), job);

@@ -81,6 +81,16 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
   `draco3dgltf` in `netlify.toml`; keep both exact-pinned dependencies installed. Automated Phase C tests use the
   fake Meshy, whose textured GLB fixture is generated at mock startup with `@gltf-transform/core`; never use the
   production Meshy key for integration tests.
+- **A dashboard route or portal fails while loading native GLB dependencies.** Keep `optimize-glb.mjs` reachable
+  only through the `model-build-background` processor; dashboard-api, portal, and admin bundles must not import
+  Sharp or Draco.
+- **A private studio preview leaks draft access or becomes publicly cacheable.** The studio renders the portal
+  template with a session-protected build asset; never put `PREVIEW_TOKEN` in studio config. Private pages and
+  draft model responses use `no-store`. Only a published tenant model is immutable/CDN-cacheable, and
+  publish/unpublish must purge its `tenant-<slug>` cache tag. Publishing stores review/live records and a copied
+  GLB in the strong `model-studio` Blobs store; do not edit tenant JSON or delete published assets when unpublishing.
+- **Athlete approval notifications silently do not arrive.** Set optional `OPERATOR_EMAIL` for the sign-off inbox.
+  Phase D integration tests use the local mock Resend service and `ops@example.test`.
 
 ## Frontend
 - **Visitors landed on a SOLD placement ("0 of 6 available").** Default was "first shorts-front slot". Landing
