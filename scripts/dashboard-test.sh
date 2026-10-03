@@ -348,6 +348,155 @@ check "Michael session cannot update Jordan onboarding" "$(curl -sS -o /dev/null
   -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE" -H 'content-type: application/json' \
   -d '{"event":"portal_previewed"}')" "401"
 
+echo "6. model studio"
+JORDAN_MODEL_URL="$BASE/api/dashboard/jordan-reyes/model"
+check "model studio requires a matching session" "$(curl -sS -o /dev/null -w '%{http_code}' "$JORDAN_MODEL_URL")" "401"
+check "model studio rejects a foreign tenant session" "$(curl -sS -o /dev/null -w '%{http_code}' -H "Cookie: asp_dash=$MICHAEL_COOKIE" "$JORDAN_MODEL_URL")" "401"
+check "model studio returns 404 for an unknown tenant" "$(curl -sS -o /dev/null -w '%{http_code}' -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/no-such-tenant/model")" "404"
+JORDAN_MODEL_CODE=$(curl -sS -o "$TMP_DIR/jordan-model-start.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_MODEL_URL")
+check "Jordan model studio is available" "$JORDAN_MODEL_CODE" "200"
+json_check "Jordan model studio starts empty" "$TMP_DIR/jordan-model-start.json" \
+  'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model;const angles=["front","back","left","right","face"];const missing=["consent","kit","photo:front","photo:back","photo:left","photo:right"];process.exit(m?.status==="not_started"&&m.hasOwnModel===false&&angles.every((a)=>m.photos?.[a]===null)&&JSON.stringify(m.missing)===JSON.stringify(missing)?0:1)'
+check "model studio route rejects POST" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$JORDAN_MODEL_URL" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")" "405"
+check "model consent route rejects GET" "$(curl -sS -o /dev/null -w '%{http_code}' -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_MODEL_URL/consent")" "405"
+
+FIXTURE_DIR="$(dirname "$0")/fixtures"
+node - "$TMP_DIR" "$FIXTURE_DIR" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const [tmp, fixtures] = process.argv.slice(2);
+const jpeg = fs.readFileSync(path.join(fixtures, "photo-ok.jpg")).toString("base64");
+const small = fs.readFileSync(path.join(fixtures, "photo-small.jpg")).toString("base64");
+fs.writeFileSync(path.join(tmp, "photo-ok.json"), JSON.stringify({
+  image: `data:image/jpeg;base64,${jpeg}`,
+  warnings: ["blurry", "evil"]
+}));
+fs.writeFileSync(path.join(tmp, "photo-ok-clean.json"), JSON.stringify({ image: `data:image/jpeg;base64,${jpeg}` }));
+fs.writeFileSync(path.join(tmp, "photo-small.json"), JSON.stringify({ image: `data:image/jpeg;base64,${small}` }));
+fs.writeFileSync(path.join(tmp, "photo-png.json"), JSON.stringify({ image: `data:image/png;base64,${jpeg}` }));
+fs.writeFileSync(path.join(tmp, "photo-not-jpeg.json"), JSON.stringify({ image: "data:image/jpeg;base64,bm90anBlZw==" }));
+// Netlify Dev caps request streams at 6 MB; this still exceeds the API's 4 MiB image limit.
+const large = Buffer.alloc(4.25 * 1024 * 1024);
+large.set([0xff, 0xd8, 0xff]);
+fs.writeFileSync(path.join(tmp, "photo-too-large.json"), JSON.stringify({
+  image: `data:image/jpeg;base64,${large.toString("base64")}`
+}));
+NODE
+
+check "photo upload requires consent" "$(curl -sS -o "$TMP_DIR/photo-before-consent.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/photos/front" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  --data-binary "@$TMP_DIR/photo-ok-clean.json")" "409"
+CONSENT_BAD_CODE=$(curl -sS -o "$TMP_DIR/consent-bad.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/consent" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"accept":false,"version":"2026-10-03"}')
+check "invalid likeness consent is rejected" "$CONSENT_BAD_CODE" "400"
+if grep -Fq 'Accept the likeness consent to continue.' "$TMP_DIR/consent-bad.json"; then
+  echo "  ok   consent validation message is clear"
+else
+  echo "  FAIL consent validation message is clear"
+  FAIL=1
+fi
+CONSENT_CODE=$(curl -sS -o "$TMP_DIR/consent.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/consent" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"accept":true,"version":"2026-10-03"}')
+check "valid likeness consent is recorded" "$CONSENT_CODE" "200"
+json_check "consent stores the agreed version and timestamp" "$TMP_DIR/consent.json" \
+  'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.consent;process.exit(c?.version==="2026-10-03"&&typeof c.acceptedAt==="string"&&Number.isFinite(Date.parse(c.acceptedAt))?0:1)'
+
+check "unknown photo angle is rejected" "$(curl -sS -o "$TMP_DIR/photo-angle.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/photos/diagonal" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  --data-binary "@$TMP_DIR/photo-ok-clean.json")" "404"
+check "PNG data URL is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/photos/front" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  --data-binary "@$TMP_DIR/photo-png.json")" "400"
+check "non-JPEG bytes with JPEG label are rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/photos/front" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  --data-binary "@$TMP_DIR/photo-not-jpeg.json")" "400"
+check "photo below minimum dimensions is rejected" "$(curl -sS -o "$TMP_DIR/photo-small-error.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/photos/front" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  --data-binary "@$TMP_DIR/photo-small.json")" "400"
+check "photo over four megabytes is rejected" "$(curl -sS -o "$TMP_DIR/photo-large-error.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/photos/front" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  --data-binary "@$TMP_DIR/photo-too-large.json")" "413"
+json_check "oversize rejection comes from the photo limit" "$TMP_DIR/photo-large-error.json" \
+  'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).error==="Photo is too large — please use one under 4 MB."?0:1)'
+
+check "photo upload rejects a foreign Origin" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/photos/front" \
+  -H 'Origin: https://foreign.example' -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  --data-binary "@$TMP_DIR/photo-ok-clean.json")" "403"
+FRONT_CODE=$(curl -sS -o "$TMP_DIR/photo-front.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/photos/front" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  --data-binary "@$TMP_DIR/photo-ok.json")
+check "valid front photo is uploaded" "$FRONT_CODE" "200"
+json_check "photo metadata includes dimensions and filtered warnings" "$TMP_DIR/photo-front.json" \
+  'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.photos?.front;process.exit(p?.width===768&&p?.height===1366&&p?.size>0&&JSON.stringify(p.warnings)===JSON.stringify(["blurry"])&&typeof p.at==="string"?0:1)'
+PHOTO_GET_CODE=$(curl -sS -o "$TMP_DIR/front.jpg" -D "$TMP_DIR/front.headers" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$JORDAN_MODEL_URL/photos/front")
+check "private photo GET returns stored bytes" "$PHOTO_GET_CODE" "200"
+if grep -qi '^content-type: image/jpeg' "$TMP_DIR/front.headers" &&
+   grep -qi '^cache-control: private, no-store' "$TMP_DIR/front.headers" &&
+   grep -qi '^x-content-type-options: nosniff' "$TMP_DIR/front.headers"; then
+  echo "  ok   private photo response headers are set"
+else
+  echo "  FAIL private photo response headers are set"
+  FAIL=1
+fi
+check "private photo GET rejects a foreign tenant session" "$(curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Cookie: asp_dash=$MICHAEL_COOKIE" "$JORDAN_MODEL_URL/photos/front")" "401"
+
+check "kit rejects an invalid hex colour" "$(curl -sS -o "$TMP_DIR/kit-bad.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/kit" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"shirt":"red","shorts":"#111111","waistband":"#ffffff"}')" "400"
+KIT_CODE=$(curl -sS -o "$TMP_DIR/kit.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/kit" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"shirt":"#AABBCC","shorts":"#112233","waistband":"#FFFFFF","notes":"  tattoos and hairstyle  "}')
+check "valid kit colours are saved" "$KIT_CODE" "200"
+json_check "kit colours normalize and notes trim" "$TMP_DIR/kit.json" \
+  'const k=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.kit;process.exit(k?.shirt==="#aabbcc"&&k?.shorts==="#112233"&&k?.waistband==="#ffffff"&&k?.notes==="tattoos and hairstyle"?0:1)'
+
+SUBMIT_MISSING_CODE=$(curl -sS -o "$TMP_DIR/submit-missing.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/submit" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")
+check "submission requires all required photos" "$SUBMIT_MISSING_CODE" "409"
+json_check "missing submit response identifies back photo" "$TMP_DIR/submit-missing.json" \
+  'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).missing?.includes("photo:back")?0:1)'
+for angle in back left right; do
+  check "$angle photo upload succeeds" "$(curl -sS -o "$TMP_DIR/photo-$angle.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/photos/$angle" \
+    -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+    --data-binary "@$TMP_DIR/photo-ok-clean.json")" "200"
+done
+
+SUBMIT_CODE=$(curl -sS -o "$TMP_DIR/submit.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/submit" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")
+check "complete model materials can be submitted" "$SUBMIT_CODE" "200"
+json_check "submission is recorded" "$TMP_DIR/submit.json" \
+  'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model;process.exit(m?.status==="submitted"&&typeof m.submittedAt==="string"&&Number.isFinite(Date.parse(m.submittedAt))?0:1)'
+SUBMITTED_AT=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model.submittedAt)' "$TMP_DIR/submit.json")
+SUBMIT_REPEAT_CODE=$(curl -sS -o "$TMP_DIR/submit-repeat.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/submit" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")
+check "repeated submission is idempotent" "$SUBMIT_REPEAT_CODE" "200"
+check "repeat keeps the original submitted timestamp" \
+  "$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model.submittedAt)' "$TMP_DIR/submit-repeat.json")" "$SUBMITTED_AT"
+check "photo upload is locked after submission" "$(curl -sS -o "$TMP_DIR/photo-after-submit.json" -w '%{http_code}' -X POST "$JORDAN_MODEL_URL/photos/back" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  --data-binary "@$TMP_DIR/photo-ok-clean.json")" "409"
+
+JORDAN_MODEL_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/jordan-model-summary.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/jordan-reyes/summary")
+check "Jordan summary includes model status" "$JORDAN_MODEL_SUMMARY_CODE" "200"
+json_check "Jordan summary counts four photos" "$TMP_DIR/jordan-model-summary.json" \
+  'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model;process.exit(m?.status==="submitted"&&m.photoCount===4?0:1)'
+check "Jordan summary preserves the submitted timestamp" \
+  "$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model.submittedAt)' "$TMP_DIR/jordan-model-summary.json")" "$SUBMITTED_AT"
+MICHAEL_MODEL_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/michael-model-summary.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$MICHAEL_COOKIE" "$BASE/api/dashboard/michael-heckert/summary")
+check "Michael model summary is available" "$MICHAEL_MODEL_SUMMARY_CODE" "200"
+json_check "Michael summary identifies the live tenant model" "$TMP_DIR/michael-model-summary.json" \
+  'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model;process.exit(m?.status==="ready"&&m.hasOwnModel===true?0:1)'
+check "Michael cannot submit an already live model" "$(curl -sS -o "$TMP_DIR/michael-submit.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/michael-heckert/model/submit" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE")" "409"
+
 echo "  skipped missing DASHBOARD_SECRET check (requires a server restart)"
 if [ "$FAIL" -eq 0 ]; then
   echo "DASHBOARD TEST PASSED"

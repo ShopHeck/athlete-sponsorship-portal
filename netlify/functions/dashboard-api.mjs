@@ -10,9 +10,42 @@ import {
   sessionCookie,
   sessionFor
 } from "../lib/dashboard-auth.mjs";
+import { resolveTenantAssets } from "../lib/render.mjs";
 import { getTenant, listTenants } from "../lib/tenants.mjs";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ANGLES = ["front", "back", "left", "right", "face"];
+const REQUIRED_ANGLES = ["front", "back", "left", "right"];
+const PHOTO_WARNINGS = new Set(["blurry", "dark", "bright", "no_person", "multiple_people", "not_full_body", "landscape"]);
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+
+export function jpegSize(bytes) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (data.length < 4 || data[0] !== 0xff || data[1] !== 0xd8) return null;
+
+  let offset = 2;
+  while (offset < data.length) {
+    if (data[offset++] !== 0xff) continue;
+    while (data[offset] === 0xff) offset++;
+    const marker = data[offset++];
+    if (marker === undefined) return null;
+    if (marker === 0x00) continue;
+    if (marker === 0xd9 || marker === 0xda) break;
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+    if (offset + 2 > data.length) return null;
+
+    const segmentLength = (data[offset] << 8) | data[offset + 1];
+    if (segmentLength < 2 || offset + segmentLength > data.length) return null;
+    if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+      if (segmentLength < 7) return null;
+      const height = (data[offset + 3] << 8) | data[offset + 4];
+      const width = (data[offset + 5] << 8) | data[offset + 6];
+      return width > 0 && height > 0 ? { width, height } : null;
+    }
+    offset += segmentLength;
+  }
+  return null;
+}
 
 function platformUrl(req) {
   return (process.env.PLATFORM_URL || new URL(req.url).origin).replace(/\/+$/, "");
@@ -200,6 +233,44 @@ async function loadOnboarding(slug) {
   };
 }
 
+async function loadStudio(tenant) {
+  const store = getStore({ name: "model-studio", consistency: "strong" });
+  const slug = tenant.slug;
+  const [consent, kit, submission, ...photoMetadata] = await Promise.all([
+    store.get(`${slug}/consent`, { type: "json" }),
+    store.get(`${slug}/kit`, { type: "json" }),
+    store.get(`${slug}/submission`, { type: "json" }),
+    ...ANGLES.map((angle) => store.getMetadata(`${slug}/photo/${angle}`))
+  ]);
+  const photos = Object.fromEntries(ANGLES.map((angle, index) => {
+    const metadata = photoMetadata[index]?.metadata;
+    return [angle, metadata ? {
+      width: metadata.width,
+      height: metadata.height,
+      size: metadata.size,
+      warnings: metadata.warnings || [],
+      at: metadata.at
+    } : null];
+  }));
+  const hasOwnModel = resolveTenantAssets(tenant).model?.startsWith(`/tenants/${slug}/`) === true;
+  const missing = [];
+  if (!consent) missing.push("consent");
+  if (!kit) missing.push("kit");
+  for (const angle of REQUIRED_ANGLES) {
+    if (!photos[angle]) missing.push(`photo:${angle}`);
+  }
+  const hasInputs = Boolean(consent || kit || photoMetadata.some(Boolean));
+  return {
+    status: hasOwnModel ? "ready" : submission ? "submitted" : hasInputs ? "collecting" : "not_started",
+    hasOwnModel,
+    consent: consent ? { acceptedAt: consent.acceptedAt, version: consent.version } : null,
+    kit: kit ? { shirt: kit.shirt, shorts: kit.shorts, waistband: kit.waistband, notes: kit.notes } : null,
+    photos,
+    submittedAt: submission?.submittedAt ?? null,
+    missing
+  };
+}
+
 async function summary(req, slug) {
   const tenant = await getTenant(slug);
   if (!tenant) return json({ error: "Tenant not found." }, 404);
@@ -208,11 +279,12 @@ async function summary(req, slug) {
   const base = platformUrl(req);
   const portalUrl = `${base}/${tenant.slug}`;
   const services = forTenant(tenant, { portalUrl });
-  const [record, readiness, placements, onboarding] = await Promise.all([
+  const [record, readiness, placements, onboarding, studio] = await Promise.all([
     services.connect.record(),
     services.connect.readiness(),
     loadPlacementsForSummary(tenant, portalUrl),
-    loadOnboarding(tenant.slug)
+    loadOnboarding(tenant.slug),
+    loadStudio(tenant)
   ]);
   const status = readiness.status || record?.status || {};
   const totals = {
@@ -235,7 +307,8 @@ async function summary(req, slug) {
       eventName: tenant.event.name,
       portalUrl,
       embedCode: `<iframe src="${escapeHtml(portalUrl)}" title="${escapeHtml(tenant.copy.embedTitle)}" loading="lazy" allow="fullscreen" style="width:100%;height:900px;border:0"></iframe>`,
-      currency: tenant.pricing.currency
+      currency: tenant.pricing.currency,
+      accent: tenant.brand?.accent || null
     },
     pricing: {
       minBid: tenant.pricing.minBid,
@@ -257,7 +330,13 @@ async function summary(req, slug) {
     },
     totals,
     placements,
-    onboarding
+    onboarding,
+    model: {
+      status: studio.status,
+      hasOwnModel: studio.hasOwnModel,
+      photoCount: Object.values(studio.photos).filter(Boolean).length,
+      submittedAt: studio.submittedAt
+    }
   });
 }
 
@@ -455,6 +534,142 @@ async function updateOnboarding(req, slug) {
   return json({ onboarding: await loadOnboarding(tenant.slug) });
 }
 
+async function modelAccess(req, slug) {
+  const tenant = await getTenant(slug);
+  if (!tenant) return { response: json({ error: "Tenant not found." }, 404) };
+  const session = sessionFor(req, slug);
+  if (!session) return { response: json({ error: "Sign in required" }, 401) };
+  return { tenant, session };
+}
+
+async function getModel(req, slug) {
+  const access = await modelAccess(req, slug);
+  if (access.response) return access.response;
+  return json({ model: await loadStudio(access.tenant) });
+}
+
+async function saveModelConsent(req, slug) {
+  const access = await modelAccess(req, slug);
+  if (access.response) return access.response;
+  let body;
+  try { body = await req.json(); } catch { body = null; }
+  if (body?.accept !== true || body?.version !== "2026-10-03") {
+    return json({ error: "Accept the likeness consent to continue." }, 400);
+  }
+  const store = getStore({ name: "model-studio", consistency: "strong" });
+  await store.setJSON(`${access.tenant.slug}/consent`, {
+    acceptedAt: new Date().toISOString(),
+    by: access.session.email,
+    version: body.version
+  });
+  return json({ model: await loadStudio(access.tenant) });
+}
+
+async function saveModelKit(req, slug) {
+  const access = await modelAccess(req, slug);
+  if (access.response) return access.response;
+  let body;
+  try { body = await req.json(); } catch { body = null; }
+  const color = /^#[0-9a-f]{6}$/i;
+  const notes = body?.notes === undefined ? "" : typeof body.notes === "string" ? body.notes.trim() : null;
+  if (![body?.shirt, body?.shorts, body?.waistband].every((value) => typeof value === "string" && color.test(value)) ||
+      notes === null || notes.length > 500) {
+    return json({ error: "Pick a colour for the shirt, shorts and waistband." }, 400);
+  }
+  const store = getStore({ name: "model-studio", consistency: "strong" });
+  await store.setJSON(`${access.tenant.slug}/kit`, {
+    shirt: body.shirt.toLowerCase(),
+    shorts: body.shorts.toLowerCase(),
+    waistband: body.waistband.toLowerCase(),
+    notes,
+    updatedAt: new Date().toISOString(),
+    by: access.session.email
+  });
+  return json({ model: await loadStudio(access.tenant) });
+}
+
+async function saveModelPhoto(req, slug, angle) {
+  const access = await modelAccess(req, slug);
+  if (access.response) return access.response;
+  if (!ANGLES.includes(angle)) return json({ error: "Unknown photo angle." }, 404);
+  const store = getStore({ name: "model-studio", consistency: "strong" });
+  if (!(await store.get(`${access.tenant.slug}/consent`, { type: "json" }))) {
+    return json({ error: "Accept the likeness consent first." }, 409);
+  }
+  if (await store.get(`${access.tenant.slug}/submission`, { type: "json" })) {
+    return json({ error: "Your photos have been submitted. Contact us to change them." }, 409);
+  }
+
+  let body;
+  try { body = await req.json(); } catch { body = null; }
+  const match = typeof body?.image === "string"
+    ? body.image.match(/^data:image\/jpeg;base64,([A-Za-z0-9+/]*={0,2})$/)
+    : null;
+  if (!match) return json({ error: "Upload a JPG photo." }, 400);
+  const bytes = Buffer.from(match[1], "base64");
+  if (bytes.length > MAX_PHOTO_BYTES) {
+    return json({ error: "Photo is too large — please use one under 4 MB." }, 413);
+  }
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) {
+    return json({ error: "Upload a JPG photo." }, 400);
+  }
+  const dimensions = jpegSize(bytes);
+  if (!dimensions) return json({ error: "Upload a JPG photo." }, 400);
+  const shortEdge = Math.min(dimensions.width, dimensions.height);
+  const longEdge = Math.max(dimensions.width, dimensions.height);
+  if (shortEdge < 600 || longEdge > 4096) {
+    return json({ error: "Photo is too small — retake it closer or at a higher resolution." }, 400);
+  }
+  const warnings = Array.isArray(body.warnings)
+    ? body.warnings.filter((warning) => typeof warning === "string" && PHOTO_WARNINGS.has(warning)).slice(0, 6)
+    : [];
+  const at = new Date().toISOString();
+  await store.set(`${access.tenant.slug}/photo/${angle}`, bytes, {
+    metadata: {
+      type: "image/jpeg",
+      width: dimensions.width,
+      height: dimensions.height,
+      size: bytes.length,
+      warnings,
+      at,
+      by: access.session.email
+    }
+  });
+  return json({ model: await loadStudio(access.tenant) });
+}
+
+async function getModelPhoto(req, slug, angle) {
+  const access = await modelAccess(req, slug);
+  if (access.response) return access.response;
+  if (!ANGLES.includes(angle)) return json({ error: "Unknown photo angle." }, 404);
+  const store = getStore({ name: "model-studio", consistency: "strong" });
+  const key = `${access.tenant.slug}/photo/${angle}`;
+  if (!(await store.getMetadata(key))) return json({ error: "Photo not found." }, 404);
+  const bytes = await store.get(key, { type: "arrayBuffer" });
+  if (!bytes) return json({ error: "Photo not found." }, 404);
+  return new Response(bytes, {
+    headers: {
+      "content-type": "image/jpeg",
+      "cache-control": "private, no-store",
+      "x-content-type-options": "nosniff"
+    }
+  });
+}
+
+async function submitModel(req, slug) {
+  const access = await modelAccess(req, slug);
+  if (access.response) return access.response;
+  const model = await loadStudio(access.tenant);
+  if (model.hasOwnModel) return json({ error: "Your 3D model is already live." }, 409);
+  const store = getStore({ name: "model-studio", consistency: "strong" });
+  const key = `${access.tenant.slug}/submission`;
+  const existing = await store.get(key, { type: "json" });
+  if (existing) return json({ model });
+  if (model.missing.length) return json({ error: "Finish these steps first.", missing: model.missing }, 409);
+  await store.setJSON(key, { submittedAt: new Date().toISOString(), by: access.session.email });
+  return json({ model: await loadStudio(access.tenant) });
+}
+
 export default async function dashboardApi(req) {
   if (!process.env.DASHBOARD_SECRET) return json({ error: "DASHBOARD_SECRET is not configured." }, 503);
 
@@ -486,6 +701,33 @@ export default async function dashboardApi(req) {
   if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" && parts[3] === "onboarding") {
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
     return updateOnboarding(req, parts[2]);
+  }
+
+  if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" && parts[3] === "model") {
+    if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
+    return getModel(req, parts[2]);
+  }
+
+  if (parts.length === 5 && parts[0] === "api" && parts[1] === "dashboard" && parts[3] === "model") {
+    if (parts[4] === "consent") {
+      if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+      return saveModelConsent(req, parts[2]);
+    }
+    if (parts[4] === "kit") {
+      if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+      return saveModelKit(req, parts[2]);
+    }
+    if (parts[4] === "submit") {
+      if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+      return submitModel(req, parts[2]);
+    }
+  }
+
+  if (parts.length === 6 && parts[0] === "api" && parts[1] === "dashboard" &&
+      parts[3] === "model" && parts[4] === "photos") {
+    if (req.method === "GET") return getModelPhoto(req, parts[2], parts[5]);
+    if (req.method === "POST") return saveModelPhoto(req, parts[2], parts[5]);
+    return json({ error: "Method not allowed" }, 405);
   }
 
   if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" && parts[3] === "summary") {
@@ -522,6 +764,11 @@ export const config = {
     "/api/dashboard/logout",
     "/api/dashboard/:slug/link",
     "/api/dashboard/:slug/onboarding",
+    "/api/dashboard/:slug/model",
+    "/api/dashboard/:slug/model/consent",
+    "/api/dashboard/:slug/model/kit",
+    "/api/dashboard/:slug/model/photos/:angle",
+    "/api/dashboard/:slug/model/submit",
     "/api/dashboard/:slug/summary",
     "/api/dashboard/:slug/export.csv",
     "/api/dashboard/:slug/connect/onboard",

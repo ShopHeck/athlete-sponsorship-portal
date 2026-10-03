@@ -5,4 +5,5 @@ node_modules/
 .netlify/
 deno.lock
 dist/
+public/vendor/
 netlify/lib/platform.generated.json

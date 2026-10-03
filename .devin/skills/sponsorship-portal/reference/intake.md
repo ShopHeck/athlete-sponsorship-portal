@@ -34,7 +34,8 @@ delays. Copy this file into the new project as `INTAKE.md` and fill it in.
 | Approval owner for likeness and garments | |
 
 The 3D model is produced outside this repo (photogrammetry / Blender pipeline). The portal only needs the
-finished GLB — see `configuration.md` → "3D model requirements".
+finished GLB — see `configuration.md` → "3D model requirements". Athletes can also provide their own guided
+reference photos at `/dashboard/<slug>/model`.
 
 ## 4. Pricing and rules
 | Field | Answer | Env var |
