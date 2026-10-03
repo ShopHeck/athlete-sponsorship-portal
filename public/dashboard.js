@@ -599,28 +599,35 @@ function modelDate(value) {
   return value ? new Date(value).toLocaleDateString() : "";
 }
 
+function svgEl(tag, attrs = {}, ...children) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [key, value] of Object.entries(attrs)) if (value) node.setAttribute(key, value);
+  node.append(...children);
+  return node;
+}
+
 function poseIcon(angle) {
   const common = { fill: "none", stroke: "currentColor", "stroke-width": "2.5", "stroke-linecap": "round", "stroke-linejoin": "round" };
   if (angle === "face") {
-    return el("svg", { ...common, class: "pose-icon", viewBox: "0 0 48 48", "aria-hidden": "true" },
-      el("circle", { cx: "24", cy: "23", r: "17" }),
-      el("path", { d: "M18 21h.1M30 21h.1M19 30c3 3 7 3 10 0" }));
+    return svgEl("svg", { ...common, class: "pose-icon", viewBox: "0 0 48 48", "aria-hidden": "true" },
+      svgEl("circle", { cx: "24", cy: "23", r: "17" }),
+      svgEl("path", { d: "M18 21h.1M30 21h.1M19 30c3 3 7 3 10 0" }));
   }
   if (angle === "left" || angle === "right") {
     const flip = angle === "right" ? "translate(48 0) scale(-1 1)" : "";
-    return el("svg", { ...common, class: "pose-icon", viewBox: "0 0 48 72", "aria-hidden": "true" },
-      el("g", { transform: flip },
-        el("circle", { cx: "21", cy: "10", r: "5" }),
-        el("path", { d: "M21 16l4 25m-3-18-8 7m8-7 8 5m-6 13-8 20m8-20 11 19" })));
+    return svgEl("svg", { ...common, class: "pose-icon", viewBox: "0 0 48 72", "aria-hidden": "true" },
+      svgEl("g", { transform: flip },
+        svgEl("circle", { cx: "21", cy: "10", r: "5" }),
+        svgEl("path", { d: "M21 16l4 25m-3-18-8 7m8-7 8 5m-6 13-8 20m8-20 11 19" })));
   }
   if (angle === "back") {
-    return el("svg", { ...common, class: "pose-icon", viewBox: "0 0 48 72", "aria-hidden": "true" },
-      el("circle", { cx: "24", cy: "10", r: "5" }),
-      el("path", { d: "M24 16v25M13 24h22M24 41 15 62m9-21 9 21M17 26l7 5 7-5M18 31l6 4 6-4" }));
+    return svgEl("svg", { ...common, class: "pose-icon", viewBox: "0 0 48 72", "aria-hidden": "true" },
+      svgEl("circle", { cx: "24", cy: "10", r: "5" }),
+      svgEl("path", { d: "M24 16v25M13 24h22M24 41 15 62m9-21 9 21M17 26l7 5 7-5M18 31l6 4 6-4" }));
   }
-  return el("svg", { ...common, class: "pose-icon", viewBox: "0 0 48 72", "aria-hidden": "true" },
-    el("circle", { cx: "24", cy: "10", r: "5" }),
-    el("path", { d: "M24 16v25M13 24h22M24 41 15 62m9-21 9 21" }));
+  return svgEl("svg", { ...common, class: "pose-icon", viewBox: "0 0 48 72", "aria-hidden": "true" },
+    svgEl("circle", { cx: "24", cy: "10", r: "5" }),
+    svgEl("path", { d: "M24 16v25M13 24h22M24 41 15 62m9-21 9 21" }));
 }
 
 function photoMetrics(canvas) {
@@ -736,7 +743,7 @@ async function prepareModelPhoto(angle, file) {
   const metrics = photoMetrics(checkCanvas);
   const warnings = [];
   if (metrics.blurVariance < 60) warnings.push("blurry");
-  if (metrics.brightness < 55) warnings.push("dark");
+  if (metrics.brightness < 40) warnings.push("dark");
   if (metrics.brightness > 215) warnings.push("bright");
   if (angle !== "face") {
     if (width >= height) warnings.push("landscape");
@@ -809,7 +816,7 @@ function renderPhotoTile(angle, disabled) {
   const imageUrl = draft?.previewUrl || (photo
     ? `/api/dashboard/${encodeURIComponent(slug)}/model/photos/${angle}?v=${encodeURIComponent(photo.at || "")}`
     : "");
-  tile.append(
+  tile.append(...[
     el("div", { class: "photo-tile-head" }, poseIcon(angle), el("div", {}, el("h3", { text: info.title }), el("p", { class: "muted small", text: info.instruction }))),
     imageUrl ? el("img", { class: "photo-thumbnail", src: imageUrl, alt: `${info.title} photo` }) : null,
     photo && !draft ? el("p", { class: "photo-result", text: photo.warnings?.length ? `! ${photo.warnings.length} warning${photo.warnings.length === 1 ? "" : "s"}` : "✓ Photo ready" }) : null,
@@ -829,7 +836,7 @@ function renderPhotoTile(angle, disabled) {
       draft?.uploading
         ? el("button", { class: "btn btn-primary", type: "button", disabled: true, text: "Uploading…" })
         : (!draft?.warnings?.length || !draft.dataUrl) && !draft?.uploading ? picker : null)
-  );
+  ].filter(Boolean));
   return tile;
 }
 
@@ -974,7 +981,7 @@ function renderModelStudio() {
   const readOnly = Boolean(modelStudio.submittedAt);
   root.replaceChildren(
     el("div", { class: "dash-head model-heading" }, el("div", {},
-      el("p", { class: "eyebrow", text: "PHASE A · COLLECT YOUR REFERENCES" }),
+      el("p", { class: "eyebrow", text: "3D MODEL STUDIO" }),
       el("h1", { text: "Build your 3D likeness" }))),
     renderConsentSection(readOnly),
     renderPhotosSection(readOnly),
