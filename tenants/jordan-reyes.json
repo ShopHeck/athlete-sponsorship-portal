@@ -57,6 +57,11 @@
     "deadline": "2027-11-05T23:59:59-05:00",
     "currency": "usd"
   },
+  "payments": {
+    "mode": "connect",
+    "feePercent": 10,
+    "country": "US"
+  },
   "contact": {
     "notifyEmail": "jordan@example.test",
     "notifyFrom": "Jordan Reyes Sponsorships <sponsors@jordanreyes.example>",
@@ -106,6 +111,7 @@
     "lockItNow": "Lock it now",
     "skipAuction": "Skip the auction",
     "bidButton": "Place bid",
+    "paymentsPending": "Bidding opens soon — Jordan is finishing payout setup.",
     "bidNoteInitial": "Bids start at {minBid} in {increment} steps. Nothing is charged on this page — lock-ins receive a Stripe invoice by email right away, and the winning bidder is invoiced when bidding closes.",
     "bidNote": "Bids start at {minBid} in {increment} steps and close {closingDate}. Nothing is charged on this page — lock-ins receive a Stripe invoice by email right away, and the winning bidder is invoiced when bidding closes.",
     "privacyNote": "Upload a logo before you bid and it is saved with your bid, then shown on the placement once it is locked or won. Final artwork is confirmed personally.",

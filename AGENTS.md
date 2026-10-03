@@ -16,9 +16,11 @@ operating one. `reference/gotchas.md` first when debugging.
   `STRIPE_API_BASE`/`RESEND_API_BASE=http://127.0.0.1:4343`, `PLATFORM_URL=http://localhost:8890`,
   `PREVIEW_TOKEN=devpreview`, and `ADMIN_TOKEN=devtoken` (see `scripts/smoke-test.sh` header), then
   `scripts/smoke-test.sh http://localhost:8890 michael-heckert <OPEN-ID-A> <OPEN-ID-B>` and
-  `scripts/tenant-test.sh http://localhost:8890`
-  → must print `SMOKE TEST PASSED`. Reset the sandbox with `rm -rf .netlify/blobs-serve`.
-- Syntax check: `for f in public/app.js public/arena.js netlify/lib/*.mjs netlify/functions/*.mjs scripts/*.mjs; do node --check "$f" || exit 1; done`
+  `scripts/tenant-test.sh http://localhost:8890` and
+  `scripts/connect-test.sh http://localhost:8890`
+  → must print `SMOKE TEST PASSED`, `TENANT TEST PASSED`, and `CONNECT TEST PASSED`. Reset the sandbox with
+  `rm -rf .netlify/blobs-serve` and restart the mock service before each script.
+- Syntax check: `for f in public/app.js public/arena.js netlify/lib/*.mjs netlify/functions/*.mjs scripts/*.mjs; do node --check "$f" || exit 1; done; for f in scripts/*.sh; do bash -n "$f" || exit 1; done`
 - Package the skill for Claude / Codex / ChatGPT: `scripts/package-skill.sh` → `dist/skill/`
 - Production deploys happen from Git (`main`) via Netlify; do not `netlify deploy` a linked site.
 
@@ -26,7 +28,8 @@ operating one. `reference/gotchas.md` first when debugging.
 - Base PRs on `main`; never stack. Verify the Netlify build is live after merging.
 - Placement IDs and labels live only in `tenants/<slug>.json` under `garments[].placements`; the build generates the server allowlist and labels from these configs.
 - Add a tenant with `tenants/<slug>.json` and `public/tenants/<slug>/` assets. Set `status` to `draft`, preview with `?preview=$PREVIEW_TOKEN`, and change it to `live` after approval. Draft preview pages pass the token to bid APIs; preview bids are real records scoped to that tenant.
-- Tenant API routes are `/api/<slug>/bids` and `/api/<slug>/logos/<id>`; Blobs records are tenant-prefixed.
+- Every tenant config requires `payments.mode` (`platform` or `connect`); Connect mode also sets `feePercent` and optional two-letter country. Connect uses direct charges; account creation requests `card_payments` and `transfers` because Stripe requires both. Bidding stays closed until charges are enabled and `card_payments` is active.
+- Tenant API routes are `/api/<slug>/bids`, `/api/<slug>/logos/<id>`, and `/api/<slug>/connect/{onboard,status}`; Blobs records are tenant-prefixed.
 - Secrets only via `netlify env:set … --secret`; never in chat, code or commits.
 - Blobs deletions are destructive: confirm the placement ID and back up first.
 - Real test emails / locks need explicit confirmation and the owner's own address.

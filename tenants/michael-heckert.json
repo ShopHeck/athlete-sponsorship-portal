@@ -81,6 +81,9 @@
     "deadline": "2026-10-16T23:59:59-04:00",
     "currency": "usd"
   },
+  "payments": {
+    "mode": "platform"
+  },
   "contact": {
     "notifyEmail": "michaelheckert@heckholdings.com",
     "notifyFrom": "Team Heck Sponsorships <sponsors@michaelheckert.com>",
@@ -133,6 +136,7 @@
     "lockItNow": "Lock it now",
     "skipAuction": "Skip the auction",
     "bidButton": "Place bid",
+    "paymentsPending": "Bidding opens once payouts are set up.",
     "bidNoteInitial": "Bids start at {minBid} in {increment} steps. Nothing is charged on this page — lock-ins receive a Stripe invoice by email right away, and the winning bidder is invoiced when bidding closes.",
     "bidNote": "Bids start at {minBid} in {increment} steps and close {closingDate}. Nothing is charged on this page — lock-ins receive a Stripe invoice by email right away, and the winning bidder is invoiced when bidding closes.",
     "privacyNote": "Upload a logo before you bid and it is saved with your bid, then shown on the placement once it is locked or won. Final artwork is confirmed personally.",

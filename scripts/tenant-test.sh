@@ -3,6 +3,8 @@ set -u
 
 BASE="${1:-http://localhost:8890}"
 PREVIEW_TOKEN="${PREVIEW_TOKEN:-devpreview}"
+ADMIN_TOKEN="${ADMIN_TOKEN:-devtoken}"
+MOCK_BASE="${MOCK_BASE:-http://127.0.0.1:4343}"
 MOCK_LOG="${MOCK_LOG:-.netlify/mock-log.jsonl}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -34,7 +36,23 @@ check "unknown tenant hidden" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/
 check "reserved api slug hidden" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api")" "404"
 check "styles served as static asset" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/styles.css")" "200"
 
-echo "2. tenant-scoped bids"
+echo "2. prepare Jordan Connect payouts"
+ONBOARD_CODE=$(curl -sS -o "$TMP_DIR/onboard.json" -w '%{http_code}' -X POST "$BASE/api/jordan-reyes/connect/onboard" -H "authorization: Bearer $ADMIN_TOKEN")
+check "Jordan onboarding starts" "$ONBOARD_CODE" "200"
+ACCOUNT_ID=$(node -e 'const fs=require("fs");process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).accountId||"")' "$TMP_DIR/onboard.json")
+if [[ "$ACCOUNT_ID" == acct_* ]]; then echo "  ok   mock connected account created"; else echo "  FAIL mock connected account created"; FAIL=1; fi
+READY_CODE=$(curl -sS -o "$TMP_DIR/ready.json" -w '%{http_code}' -X POST "$MOCK_BASE/__mock/accounts/$ACCOUNT_ID/ready")
+check "mock account marked payout-ready" "$READY_CODE" "200"
+STATUS_CODE=$(curl -sS -o "$TMP_DIR/status.json" -w '%{http_code}' "$BASE/api/jordan-reyes/connect/status" -H "authorization: Bearer $ADMIN_TOKEN")
+check "Jordan status refreshed" "$STATUS_CODE" "200"
+if node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(s.ready===true&&s.status.cardPayments==="active"?0:1)' "$TMP_DIR/status.json"; then
+  echo "  ok   Jordan Connect account is ready"
+else
+  echo "  FAIL Jordan Connect account is ready"
+  FAIL=1
+fi
+
+echo "3. tenant-scoped bids"
 JORDAN_EMAIL="tenant-jordan-test@example.test"
 JORDAN_BODY="{\"id\":\"TR-L1\",\"type\":\"bid\",\"amount\":250,\"company\":\"Jordan Test Co\",\"name\":\"Jordan Tester\",\"email\":\"$JORDAN_EMAIL\",\"phone\":\"\",\"logo\":\"data:image/png;base64,aGVsbG8=\"}"
 check "Jordan GET requires preview token" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/jordan-reyes/bids")" "404"
@@ -64,7 +82,7 @@ else
   FAIL=1
 fi
 
-echo "3. tenant asset paths"
+echo "4. tenant asset paths"
 ASSET_PATHS=$(node -e '
   const fs = require("fs");
   const html = fs.readFileSync(process.argv[1], "utf8");

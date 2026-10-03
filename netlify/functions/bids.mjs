@@ -61,6 +61,9 @@ export default async (req, context) => {
 
   if (req.method !== "GET" && req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   if (tenant.status === "closed" && req.method === "POST") return json({ error: "Bidding is closed." }, 409);
+  if (req.method === "POST" && !(await services.connect.readiness()).ready) {
+    return json({ error: tenant.copy.paymentsPending }, 409);
+  }
 
   if (req.method === "GET") {
     const { blobs } = await store.list({ prefix });
@@ -71,7 +74,8 @@ export default async (req, context) => {
       const rec = await store.get(key, { type: "json" });
       if (rec) placements[id] = publicView(slug, id, rec);
     }));
-    return json({ minBid: MIN_BID, increment: INCREMENT, lockPrice: LOCK_PRICE, deadline: DEADLINE, placements });
+    const paymentsReady = (await services.connect.readiness()).ready;
+    return json({ minBid: MIN_BID, increment: INCREMENT, lockPrice: LOCK_PRICE, deadline: DEADLINE, paymentsReady, placements });
   }
 
   let body;

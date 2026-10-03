@@ -29,6 +29,22 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
   that generated registry.
 
 ## Bidding / invoicing
+- **Connect invoice finalization failed.** Direct-charge invoices and their customers must be created on the
+  connected athlete account using Stripe's `Stripe-Account` header. The bid API gates bidding on charges being
+  enabled plus `card_payments` being `active`.
+- **Athlete's Stripe onboarding link expired.** Account links are temporary; use its signed refresh URL to issue a
+  fresh Stripe-hosted link or call the admin onboarding endpoint again.
+- **Who pays fees or bears payment losses?** Direct charges make the athlete the merchant of record: Stripe fees,
+  refunds, and chargebacks affect the athlete's balance. With `controller.losses.payments=stripe`, Stripe is liable
+  for unrecoverable negative balances. Connect athletes receive the full Stripe Dashboard.
+- **Connect account has incompatible controller settings.** Stripe Dashboard type is immutable. Accounts created
+  with other controller settings must be replaced with a new account; do not reuse a destination-charge/Express
+  account for direct charges.
+- **Connect card payments remain unavailable.** Stripe requires both `card_payments` and `transfers` to be requested
+  for this controller combination. Requesting `transfers` does not turn these direct charges into destination
+  charges or change the controller's liability allocation; readiness still requires `card_payments` to be active.
+- **Stripe rejected an account-create retry as an idempotency mismatch.** Stripe caches idempotency keys with their
+  request parameters for 24 hours. Use a new key whenever Connect account creation parameters change.
 - **Every successful lock showed "Network error" in the UI even though the server saved it.** `busy.textContent =
   "Sending…"` wiped the `<span>` inside the lock button that `renderBidPanel()` writes to, so a re-render threw
   inside the `try`. Fixed with a dedicated `#lockLabel` span and a `submitBid.busy` guard.
