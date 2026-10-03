@@ -11,7 +11,7 @@ import { DecalGeometry } from "three/addons/geometries/DecalGeometry.js";
    viewing side; each is raycast onto the model and projected as a decal.
 --------------------------------------------------------------------------- */
 const MODEL_HEIGHT = 1.86;
-const THREE_CDN = "https://unpkg.com/three@0.170.0/examples/jsm/";
+const THREE_ADDONS = "/vendor/three-0.170.0/addons/";
 const config = JSON.parse(document.getElementById("portal-config").textContent);
 const garments = config.garments;
 const allPlacements = garments.flatMap((garment) => garment.placements);
@@ -34,6 +34,8 @@ const minimumBid = (id) => { const b = state.bids[id]; return Math.max(state.auc
 const stage = document.getElementById("modelStage");
 const canvas = document.getElementById("viewer");
 const loadingEl = document.getElementById("loadingText");
+const loadBar = document.getElementById("loadBar");
+const specRow = document.getElementById("specRow");
 const inventoryList = document.getElementById("inventoryList");
 const inventoryTitle = document.getElementById("inventoryTitle");
 const selectionCode = document.getElementById("selectionCode");
@@ -75,20 +77,31 @@ const orientationNeedle = document.getElementById("orientationNeedle");
 
 /* ------------------------------------------------------------ renderer */
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
+const MAX_PIXEL_RATIO = Math.min(window.devicePixelRatio || 1, 2);
+let pixelRatio = MAX_PIXEL_RATIO;
+renderer.setPixelRatio(pixelRatio);
+// Neutral tone mapping keeps sponsor brand colours true to their artwork.
+renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// Lights and athlete are static: the shadow map is redrawn only when the scene changes.
+renderer.shadowMap.autoUpdate = false;
+const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Frames are drawn only when something changed (camera, decals, resize).
+let needsRender = true;
+const invalidate = () => { needsRender = true; };
 
 const scene = new THREE.Scene();
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = 0.7;
+scene.environmentIntensity = 0.55;
 
-const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 40);
-const TARGET = new THREE.Vector3(0, 1.0, 0);
-camera.position.set(0, 1.05, 3.3);
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 40);
+const HOME = { dist: 3.05, polar: 1.57, targetY: 0.95 };
+const TARGET = new THREE.Vector3(0, HOME.targetY, 0);
+camera.position.setFromSpherical(new THREE.Spherical(HOME.dist, HOME.polar, 0)).add(TARGET);
 
 const controls = new OrbitControls(camera, canvas);
 controls.target.copy(TARGET);
@@ -99,13 +112,15 @@ controls.minDistance = 1.2;
 controls.maxDistance = ROPE_RADIUS - 0.2; // stay inside the ropes
 controls.minPolarAngle = 0.9;
 controls.maxPolarAngle = 1.75;
-controls.autoRotate = true;
-controls.autoRotateSpeed = 0.9;
-controls.addEventListener("start", () => { controls.autoRotate = false; });
+controls.autoRotate = false;
+controls.autoRotateSpeed = 0.7;
+let userInteracted = false;
+controls.addEventListener("start", () => { controls.autoRotate = false; userInteracted = true; tween = null; });
+controls.addEventListener("change", invalidate);
 
 const arena = buildArena(scene, config.ring);
 
-const key = new THREE.DirectionalLight(0xfff1e0, 2.2);
+const key = new THREE.DirectionalLight(0xfff0dc, 2.5);
 key.position.set(2.5, 4.5, 3.5);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
@@ -115,9 +130,13 @@ key.shadow.camera.right = key.shadow.camera.top = 1.6;
 key.shadow.bias = -0.0005; key.shadow.normalBias = 0.03;
 key.shadow.radius = 4;
 scene.add(key);
-const rim = new THREE.DirectionalLight(accentColor, 1.2);
+const rim = new THREE.DirectionalLight(accentColor, 1.9);
 rim.position.set(-3, 2.2, -3.5);
 scene.add(rim);
+// Cool edge light from the opposite back corner separates the silhouette from the backdrop.
+const edge = new THREE.DirectionalLight(0xdfe8ff, 1.1);
+edge.position.set(3.2, 2.8, -3);
+scene.add(edge);
 const fill = new THREE.DirectionalLight(0x8fa3ff, 0.45);
 fill.position.set(-2.5, 1.5, 3);
 scene.add(fill);
@@ -131,6 +150,22 @@ scene.add(floor);
 const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.66, 96), new THREE.MeshBasicMaterial({ color: accentColor, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
 ring.rotation.x = -Math.PI / 2; ring.position.y = 0.002;
 scene.add(ring);
+// Soft spotlight pool on the canvas under the athlete.
+const pool = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), new THREE.MeshBasicMaterial({
+  map: (() => {
+    const c = document.createElement("canvas"); c.width = c.height = 256;
+    const g = c.getContext("2d");
+    const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+    grad.addColorStop(0, "rgba(255,244,228,0.55)");
+    grad.addColorStop(0.35, "rgba(255,244,228,0.22)");
+    grad.addColorStop(1, "rgba(255,244,228,0)");
+    g.fillStyle = grad; g.fillRect(0, 0, 256, 256);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })(),
+  transparent: true, depthWrite: false, toneMapped: false
+}));
+pool.rotation.x = -Math.PI / 2; pool.position.y = 0.001; pool.renderOrder = -1;
+scene.add(pool);
 
 const athlete = new THREE.Group();
 scene.add(athlete);
@@ -144,29 +179,50 @@ function slotTexture(spec) {
   c.width = 512; c.height = Math.max(160, Math.round(512 * spec.h / spec.w));
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
   return { canvas: c, tex };
 }
+// Artwork is drawn at 1024px wide so sponsor logos stay crisp in close-ups; empty slots stay at 512px.
+function ensureArtworkResolution(slot) {
+  if (slot.canvas.width >= 1024) return;
+  const { spot } = slot;
+  slot.canvas.width = 1024;
+  slot.canvas.height = Math.max(320, Math.round(1024 * spot.h / spot.w));
+  slot.tex.dispose();
+  slot.tex = new THREE.CanvasTexture(slot.canvas);
+  slot.tex.colorSpace = THREE.SRGBColorSpace;
+  slot.tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  slot.mesh.material.map = slot.tex;
+}
 function drawSlot(slot) {
-  const { spot, canvas: c, tex } = slot;
-  const g = c.getContext("2d");
+  const { spot } = slot;
   const selected = spot.id === state.selected;
   const hovered = spot.id === state.hovered && !selected;
-  g.clearRect(0, 0, c.width, c.height);
   const soldImg = state.soldImages[spot.id] || (isLocked(spot.id) ? state.bidImages[spot.id] : null);
+  const bidState = state.bids[spot.id];
+  const inputs = [selected, hovered, soldImg, state.logoImages[spot.id], bidState?.locked, bidState?.closed, bidState?.high];
+  // Skip the canvas redraw and texture upload when nothing this slot shows has changed.
+  if (slot.inputs && inputs.every((v, i) => v === slot.inputs[i])) return;
+  slot.inputs = inputs;
+  if (soldImg || state.logoImages[spot.id]) ensureArtworkResolution(slot);
+  const { canvas: c, tex } = slot;
+  const g = c.getContext("2d");
+  const u = c.width / 512;
+  g.clearRect(0, 0, c.width, c.height);
+  invalidate();
   if (soldImg) {
-    const pad = 6, bw = c.width - pad * 2, bh = c.height - pad * 2;
+    const pad = 6 * u, bw = c.width - pad * 2, bh = c.height - pad * 2;
     const k = Math.min(bw / soldImg.width, bh / soldImg.height);
     g.drawImage(soldImg, (c.width - soldImg.width * k) / 2, (c.height - soldImg.height * k) / 2, soldImg.width * k, soldImg.height * k);
-    if (selected || hovered) { g.lineWidth = 8; g.strokeStyle = selected ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.4)"; roundRect(g, 5, 5, c.width - 10, c.height - 10, 16); g.stroke(); }
+    if (selected || hovered) { g.lineWidth = 8 * u; g.strokeStyle = selected ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.4)"; roundRect(g, 5 * u, 5 * u, c.width - 10 * u, c.height - 10 * u, 16 * u); g.stroke(); }
     tex.needsUpdate = true;
     return;
   }
   const img = state.logoImages[spot.id];
   if (img) {
     g.fillStyle = "rgba(255,255,255,0.96)";
-    roundRect(g, 6, 6, c.width - 12, c.height - 12, 14); g.fill();
-    const pad = 22, bw = c.width - pad * 2, bh = c.height - pad * 2;
+    roundRect(g, 6 * u, 6 * u, c.width - 12 * u, c.height - 12 * u, 14 * u); g.fill();
+    const pad = 22 * u, bw = c.width - pad * 2, bh = c.height - pad * 2;
     const k = Math.min(bw / img.width, bh / img.height);
     g.drawImage(img, (c.width - img.width * k) / 2, (c.height - img.height * k) / 2, img.width * k, img.height * k);
   } else {
@@ -191,7 +247,7 @@ function drawSlot(slot) {
       g.fillText(spot.id.replace(/^[A-Z]+-/, ""), c.width / 2, c.height / 2 + 2);
     }
   }
-  if (selected) { g.lineWidth = 10; g.strokeStyle = config.brand.accent; roundRect(g, 5, 5, c.width - 10, c.height - 10, 16); g.stroke(); }
+  if (selected) { g.lineWidth = 10 * u; g.strokeStyle = config.brand.accent; roundRect(g, 5 * u, 5 * u, c.width - 10 * u, c.height - 10 * u, 16 * u); g.stroke(); }
   tex.needsUpdate = true;
 }
 function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
@@ -221,7 +277,7 @@ function makeSlot(spot, side, meshes) {
   mesh.userData.spotId = spot.id;
   mesh.renderOrder = 2;
   athlete.add(mesh);
-  const slot = { spot, mesh, canvas: c, tex };
+  const slot = { spot, side, mesh, canvas: c, tex, point: hit.point.clone(), normal };
   slotMeshes.push(slot);
   drawSlot(slot);
   return slot;
@@ -276,7 +332,7 @@ const sponsorsReady = Promise.all(Object.entries(config.sold || {}).map(async ([
 const modelUrl = new URLSearchParams(location.search).get("model") || config.model;
 const isEmbedded = window.self !== window.top || new URLSearchParams(location.search).has("embed");
 if (isEmbedded) document.documentElement.classList.add("is-embedded");
-const draco = new DRACOLoader().setDecoderPath(`${THREE_CDN}libs/draco/`);
+const draco = new DRACOLoader().setDecoderPath(`${THREE_ADDONS}libs/draco/`);
 const loader = new GLTFLoader().setDRACOLoader(draco);
 loader.load(
   modelUrl,
@@ -296,10 +352,14 @@ loader.load(
     normalise(root);
     if (!facesPositiveZ(meshes)) { root.rotateY(Math.PI); normalise(root); }
     buildSlots(meshes);
-    firstRender().then(() => stage.classList.add("is-ready"));
+    renderer.shadowMap.needsUpdate = true;
+    firstRender().then(() => { stage.classList.add("is-ready"); playIntro(); });
   },
   (xhr) => {
-    if (xhr.total) loadingEl.textContent = formatCopy(config.copy.modelLoadingProgress, { percent: Math.round((xhr.loaded / xhr.total) * 100) });
+    if (!xhr.total) return;
+    const percent = Math.round((xhr.loaded / xhr.total) * 100);
+    loadingEl.textContent = formatCopy(config.copy.modelLoadingProgress, { percent });
+    loadBar?.style.setProperty("--progress", `${percent}%`);
   },
   (err) => {
     console.error(err);
@@ -315,13 +375,13 @@ function firstRender() {
 const LANDING_ORDER = ["front", "back", "lateral"].flatMap((view) => garments.flatMap((garment) =>
   garment.placements.filter((spot) => view === "lateral" ? spot.side === "left" || spot.side === "right" : spot.side === view)
 ));
+let linkedPlacement = null;
 function selectInitial() {
   const wanted = decodeURIComponent(location.hash.slice(1)).toUpperCase();
-  const linked = allPlacements.find((p) => p.id === wanted);
-  const spot = linked || LANDING_ORDER.find((p) => !isSold(p.id)) || firstPlacement;
+  linkedPlacement = allPlacements.find((p) => p.id === wanted) || null;
+  const spot = linkedPlacement || LANDING_ORDER.find((p) => !isSold(p.id)) || firstPlacement;
   state.selected = spot.id;
   state.garment = garmentOf(spot.id);
-  if (linked || currentSide() !== spot.side) rotateTo(SIDE_AZIMUTH[spot.side]);
 }
 
 /* ----------------------------------------------------------- UI logic */
@@ -422,6 +482,21 @@ function renderSelection() {
   }
   const anyOpen = allPlacements.some((p) => !isSold(p.id));
   openPlacementsBtn.hidden = !sold || !anyOpen;
+  renderSpecs(spot);
+  renderCalloutText();
+  invalidate();
+}
+function renderSpecs(spot) {
+  if (!specRow) return;
+  const garment = garments.find((g) => g.placements.includes(spot));
+  const sideLabel = config.copy[`${spot.side}View`];
+  const specs = [["Print area", printSize(spot)], ["View", spot.mirror ? `${sideLabel} + ${config.copy[`${spot.mirror}View`]}` : sideLabel], ["Garment", garment?.label || ""]];
+  specRow.replaceChildren(...specs.map(([label, value]) => {
+    const el = document.createElement("div");
+    el.className = "spec";
+    el.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+    return el;
+  }));
 }
 function renderSlots() { slotMeshes.forEach(drawSlot); }
 function renderBidPanel(spot, bid) {
@@ -472,12 +547,7 @@ function selectPlacement(id, focus = false) {
   state.garment = garmentOf(id);
   renderGarments(); renderSlots(); renderInventory(); renderSelection();
   if (!focus) scrollSelectedIntoView();
-  if (focus) {
-    const spot = findPlacement();
-    const cur = state.azimuth;
-    let delta = SIDE_AZIMUTH[spot.side] - cur; delta = Math.atan2(Math.sin(delta), Math.cos(delta));
-    if (Math.abs(delta) > 0.6) rotateTo(cur + delta);
-  }
+  if (focus) flyToPlacement(findPlacement());
 }
 function firstOpen(list) { return list.find((p) => !isSold(p.id))?.id || null; }
 function setGarment(garment) {
@@ -487,26 +557,65 @@ function setGarment(garment) {
   const spot = firstOpen(onThisSide) || firstOpen(g.placements) || firstOpen(allPlacements) || firstPlacement.id;
   state.selected = spot;
   const target = allPlacements.find((p) => p.id === spot);
-  if (target && !onThisSide.some((p) => p.id === spot)) rotateTo(SIDE_AZIMUTH[target.side]);
+  if (target && !onThisSide.some((p) => p.id === spot)) flyTo({ az: SIDE_AZIMUTH[target.side], ...homeFraming() });
   renderAll();
 }
 
 /* ----------------------------------------------------- camera control */
+// One eased camera move at a time across azimuth, polar angle, distance and look-at height.
 let tween = null;
-function rotateTo(azimuth) {
-  controls.autoRotate = false;
-  const dist = camera.position.distanceTo(controls.target);
-  const polar = controls.getPolarAngle();
-  const start = controls.getAzimuthalAngle();
-  let end = azimuth; let d = end - start; d = Math.atan2(Math.sin(d), Math.cos(d));
-  tween = { start, delta: d, polar, dist, t: 0 };
+const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const homeFraming = () => ({ polar: HOME.polar, dist: HOME.dist, targetY: HOME.targetY });
+function cameraPose() {
+  return { az: controls.getAzimuthalAngle(), polar: controls.getPolarAngle(), dist: camera.position.distanceTo(controls.target), targetY: controls.target.y };
 }
-function applyAzimuth(az, polar, dist) {
-  const s = new THREE.Spherical(dist, polar, az);
-  camera.position.setFromSpherical(s).add(controls.target);
+function flyTo(to, { duration = 0.9, from = cameraPose(), onDone = null } = {}) {
+  controls.autoRotate = false;
+  const pose = { ...from, ...to };
+  let dAz = pose.az - from.az; dAz = Math.atan2(Math.sin(dAz), Math.cos(dAz));
+  if (prefersReducedMotion) duration = 0.001;
+  tween = { from, delta: { az: dAz, polar: pose.polar - from.polar, dist: pose.dist - from.dist, targetY: pose.targetY - from.targetY }, t: 0, duration, onDone };
+  invalidate();
+}
+function rotateTo(azimuth) { flyTo({ az: azimuth }, { duration: 0.75 }); }
+function applyPose({ az, polar, dist, targetY }) {
+  controls.target.y = targetY;
+  camera.position.setFromSpherical(new THREE.Spherical(dist, polar, az)).add(controls.target);
   camera.lookAt(controls.target);
 }
-document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => rotateTo(SIDE_AZIMUTH[b.dataset.view])));
+function stepTween(dt) {
+  if (!tween) return;
+  tween.t = Math.min(1, tween.t + dt / tween.duration);
+  const e = easeInOut(tween.t);
+  const { from, delta } = tween;
+  applyPose({ az: from.az + delta.az * e, polar: from.polar + delta.polar * e, dist: from.dist + delta.dist * e, targetY: from.targetY + delta.targetY * e });
+  invalidate();
+  if (tween.t >= 1) {
+    const done = tween.onDone;
+    tween = null; lastSide = null; // re-run the visibility check once the move settles
+    done?.();
+  }
+}
+function slotFor(spot) {
+  return slotMeshes.find((s) => s.spot.id === spot.id && s.side === spot.side) || slotMeshes.find((s) => s.spot.id === spot.id);
+}
+// Close-up on a placement: face its side and frame it at chest/hip height so the artwork reads clearly.
+function flyToPlacement(spot) {
+  const slot = slotFor(spot);
+  const targetY = slot ? THREE.MathUtils.clamp(slot.point.y, 0.55, 1.5) : HOME.targetY;
+  flyTo({ az: SIDE_AZIMUTH[spot.side], polar: 1.55, dist: 1.85, targetY }, { duration: 1.05 });
+}
+// Opening shot: start tight on the face, then pull back to the full athlete and begin a slow turntable.
+function playIntro() {
+  const spot = linkedPlacement;
+  if (spot) { flyToPlacement(spot); return; }
+  if (prefersReducedMotion) { invalidate(); return; }
+  const from = { az: -0.75, polar: 1.5, dist: 1.25, targetY: 1.62 };
+  applyPose(from);
+  flyTo({ az: 0, ...homeFraming() }, { from, duration: 2.6, onDone: () => { if (!userInteracted) controls.autoRotate = true; } });
+}
+document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => flyTo({ az: SIDE_AZIMUTH[b.dataset.view], ...homeFraming() })));
+canvas.addEventListener("dblclick", () => flyTo(homeFraming()));
 document.getElementById("rotatePrev").addEventListener("click", () => rotateTo(controls.getAzimuthalAngle() - Math.PI / 4));
 document.getElementById("rotateNext").addEventListener("click", () => rotateTo(controls.getAzimuthalAngle() + Math.PI / 4));
 document.querySelectorAll(".garment-tab").forEach((b) => b.addEventListener("click", () => setGarment(b.dataset.garment)));
@@ -741,35 +850,97 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  invalidate();
 }
 new ResizeObserver(resize).observe(stage);
 resize();
+let stageVisible = true;
+new IntersectionObserver(([entry]) => { stageVisible = entry.isIntersecting; if (stageVisible) invalidate(); }).observe(stage);
+
+// Adaptive resolution: if sustained frame time is too slow, step the pixel ratio down (never below 1).
+const frameTimes = [];
+let lastFrameAt = 0;
+function sampleFrame(now) {
+  if (lastFrameAt && now - lastFrameAt < 1000) frameTimes.push(now - lastFrameAt);
+  lastFrameAt = now;
+  if (frameTimes.length < 45) return;
+  frameTimes.sort((a, b) => a - b);
+  const median = frameTimes[Math.floor(frameTimes.length / 2)];
+  frameTimes.length = 0;
+  if (median > 24 && pixelRatio > 1) {
+    pixelRatio = Math.max(1, pixelRatio - 0.25);
+    renderer.setPixelRatio(pixelRatio);
+    resize();
+  }
+}
+
+/* ---------------------------------------------- selected-placement callout */
+const callout = document.createElement("div");
+callout.className = "spot-callout";
+callout.setAttribute("aria-hidden", "true");
+callout.innerHTML = `<i class="spot-callout-dot"></i><span class="spot-callout-line"></span><div class="spot-callout-card"><span class="spot-callout-code"></span><strong class="spot-callout-name"></strong><small class="spot-callout-meta"></small></div>`;
+stage.append(callout);
+const calloutCode = callout.querySelector(".spot-callout-code");
+const calloutName = callout.querySelector(".spot-callout-name");
+const calloutMeta = callout.querySelector(".spot-callout-meta");
+const projected = new THREE.Vector3();
+const toCamera = new THREE.Vector3();
+function renderCalloutText() {
+  const spot = findPlacement();
+  const sold = state.sold[spot.id];
+  const bid = state.bids[spot.id];
+  calloutCode.textContent = `${spot.id} · ${printSize(spot)}`;
+  calloutName.textContent = sold ? sold.sponsor : spot.name;
+  calloutMeta.textContent = sold ? config.copy.soldStatus
+    : bid?.locked || bid?.closed ? (bid.locked ? config.copy.lockedStatus : config.copy.wonStatus)
+      : bid?.high ? formatCopy(config.copy.statusBid, { amount: usd(bid.high) })
+        : formatCopy(config.copy.statusOpen, { amount: usd(state.auction.minBid) });
+  callout.classList.toggle("is-sold", Boolean(sold || bid?.locked || bid?.closed));
+}
+function positionCallout() {
+  const slot = slotFor(findPlacement());
+  const ready = stage.classList.contains("is-ready") && !(tween && tween.duration > 2);
+  if (!slot || !ready) { callout.classList.remove("is-visible"); return; }
+  toCamera.copy(camera.position).sub(slot.point).normalize();
+  projected.copy(slot.point).project(camera);
+  const facing = slot.normal.dot(toCamera) > 0.25 && projected.z < 1;
+  const w = stage.clientWidth, h = stage.clientHeight;
+  const x = (projected.x * 0.5 + 0.5) * w, y = (-projected.y * 0.5 + 0.5) * h;
+  const inside = x > 0 && x < w && y > 0 && y < h;
+  callout.classList.toggle("is-visible", facing && inside);
+  callout.classList.toggle("is-left", x > w * 0.5);
+  callout.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+}
+// Approximate printed size on a 1.86 m athlete; final artwork dimensions are confirmed with the sponsor.
+function printSize(spot) {
+  const inches = (m) => (m * 39.37).toFixed(1).replace(/\.0$/, "");
+  return `≈ ${inches(spot.w)} × ${inches(spot.h)} in`;
+}
 
 let lastSide = null;
 const clock = new THREE.Clock();
-function animate() {
+function animate(now) {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (tween) {
-    tween.t = Math.min(1, tween.t + dt * 2.2);
-    const e = 1 - Math.pow(1 - tween.t, 3);
-    applyAzimuth(tween.start + tween.delta * e, tween.polar, tween.dist);
-    if (tween.t >= 1) { tween = null; lastSide = null; } // re-run the visibility check once the rotation settles
-  }
-  controls.update();
-  arena.update(clock.elapsedTime);
+  if (!stageVisible || document.hidden) { lastFrameAt = 0; return; }
+  stepTween(dt);
+  controls.update(dt);
+  if (!needsRender) { lastFrameAt = 0; return; }
+  needsRender = false;
   state.azimuth = controls.getAzimuthalAngle();
   const side = currentSide();
   if (side !== lastSide) {
     lastSide = side;
     const visible = visiblePlacements();
-    // Do not re-select while a programmatic rotation is carrying the user to a chosen placement.
+    // Do not re-select while a programmatic move is carrying the user to a chosen placement.
     const open = !tween && visible.length && !visible.some((p) => p.id === state.selected) ? firstOpen(visible) : null;
     if (open) { state.selected = open; renderSlots(); renderSelection(); }
     renderInventory();
   }
   renderOrientation();
   renderer.render(scene, camera);
+  positionCallout();
+  if (now) sampleFrame(now);
 }
 renderAll();
-animate();
+requestAnimationFrame(animate);

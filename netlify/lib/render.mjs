@@ -50,6 +50,9 @@ export function renderPortal(config, { template, version, portalUrl }) {
   const posterPreload = tenant.poster
     ? `<link rel="preload" as="image" href="${escapeHtml(tenant.poster.stage900)}" imagesrcset="${escapeHtml(tenant.poster.stage900)} 900w, ${escapeHtml(tenant.poster.stage1500)} 1500w" imagesizes="(max-width: 820px) 100vw, 50vw">`
     : "";
+  const modelPreload = tenant.model
+    ? `<link rel="preload" as="fetch" href="${escapeHtml(tenant.model)}" crossorigin="anonymous">`
+    : "";
   const posterMeta = tenant.poster
     ? `<meta property="og:image" content="${escapeHtml(imageUrl(tenant.poster.ogImage))}">
   <meta property="og:image:width" content="1200">
@@ -83,6 +86,7 @@ export function renderPortal(config, { template, version, portalUrl }) {
     version,
     portalUrl,
     posterPreload,
+    modelPreload,
     posterMeta,
     posterTwitterImage,
     posterCard,

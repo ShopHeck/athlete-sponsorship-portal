@@ -19,6 +19,14 @@
   <meta name="twitter:description" content="{{seo.twitterDescription}}">
   {{{posterTwitterImage}}}
   {{{posterPreload}}}
+  {{{modelPreload}}}
+  <link rel="modulepreload" href="/vendor/three-0.170.0/three.module.js">
+  <link rel="modulepreload" href="/vendor/three-0.170.0/addons/loaders/GLTFLoader.js">
+  <link rel="modulepreload" href="/vendor/three-0.170.0/addons/loaders/DRACOLoader.js">
+  <link rel="modulepreload" href="/vendor/three-0.170.0/addons/controls/OrbitControls.js">
+  <link rel="modulepreload" href="/vendor/three-0.170.0/addons/geometries/DecalGeometry.js">
+  <link rel="modulepreload" href="/vendor/three-0.170.0/addons/environments/RoomEnvironment.js">
+  <link rel="modulepreload" href="/vendor/three-0.170.0/addons/utils/BufferGeometryUtils.js">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -56,7 +64,7 @@
         {{{stageBackdrop}}}
         <div class="stage-glow"></div>
         <canvas id="viewer" class="viewer-canvas" tabindex="0" aria-label="{{copy.canvasLabel}}" role="img"></canvas>
-        <div class="viewer-loading" id="viewerLoading" aria-live="polite"><span class="spinner"></span><span id="loadingText">{{copy.loading}}</span></div>
+        <div class="viewer-loading" id="viewerLoading" aria-live="polite"><span class="spinner"></span><span id="loadingText">{{copy.loading}}</span><span class="load-bar" aria-hidden="true"><i id="loadBar"></i></span></div>
         <button class="rotate-button rotate-prev" id="rotatePrev" aria-label="{{copy.rotateLeftAriaLabel}}">‹</button>
         <button class="rotate-button rotate-next" id="rotateNext" aria-label="{{copy.rotateRightAriaLabel}}">›</button>
         <div class="orientation" aria-live="polite"><span id="orientationLabel">{{initialOrientationLabel}}</span><div class="orientation-track"><i id="orientationNeedle"></i></div></div>
@@ -73,6 +81,7 @@
           <div class="selection-top"><span id="selectionCode">{{firstPlacement.id}}</span><span id="selectionStatus">{{copy.availableStatus}}</span></div>
           <h3 id="selectionName">{{firstPlacement.name}}</h3>
           <p id="selectionDescription">{{firstPlacement.detail}}</p>
+          <div class="spec-row" id="specRow"></div>
           <img class="sponsor-logo" id="sponsorLogo" alt="" hidden>
           <button class="secondary-cta" id="openPlacements" hidden>{{copy.openPlacements}}</button>
           <div class="preview-thumb" id="previewThumb" hidden>
@@ -140,7 +149,7 @@
   </dialog>
 
   {{{configScript}}}
-  <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.170.0/examples/jsm/"}}</script>
+  <script type="importmap">{"imports":{"three":"/vendor/three-0.170.0/three.module.js","three/addons/":"/vendor/three-0.170.0/addons/"}}</script>
   <script type="module" src="/app.js?v={{version}}"></script>
 </body>
 </html>
