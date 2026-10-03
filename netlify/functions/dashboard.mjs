@@ -103,8 +103,9 @@ function dashboardPage(tenant) {
   <div class="brand"><span class="brand-mark">${escapeHtml(tenant.athlete?.brandMark || "")}</span>
     <span class="brand-copy"><strong>${escapeHtml(name)}</strong><small>SPONSORSHIP DASHBOARD</small></span></div>
   <nav class="top-actions">
-    <a class="btn btn-ghost" id="viewPortal" href="/${escapeHtml(tenant.slug)}" target="_blank" rel="noopener">View portal</a>
-    <a class="btn btn-ghost" href="/api/dashboard/${escapeHtml(tenant.slug)}/export.csv">Export CSV</a>
+    <button class="btn btn-ghost" id="tourBtn" type="button" data-tour="tour">Take the tour</button>
+    <a class="btn btn-ghost" id="viewPortal" data-tour="portal" href="/${escapeHtml(tenant.slug)}" target="_blank" rel="noopener">View portal</a>
+    <a class="btn btn-ghost" data-tour="export" href="/api/dashboard/${escapeHtml(tenant.slug)}/export.csv">Export CSV</a>
     <form method="post" action="/api/dashboard/logout"><button class="btn btn-ghost" type="submit">Sign out</button></form>
   </nav>
 </header>

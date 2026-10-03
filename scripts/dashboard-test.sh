@@ -246,6 +246,75 @@ check "logout redirects to dashboard" "$LOGOUT_LOCATION" "/dashboard"
 if grep -qi 'set-cookie: asp_dash=;.*Max-Age=0' "$TMP_DIR/logout.headers"; then echo "  ok   logout clears the cookie"; else echo "  FAIL logout clears the cookie"; FAIL=1; fi
 check "logout removes dashboard access" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/dashboard/michael-heckert/summary")" "401"
 
+echo "5. persistent dashboard onboarding state"
+JORDAN_ONBOARDING_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/jordan-onboarding-summary.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/jordan-reyes/summary")
+check "Jordan summary includes onboarding state" "$JORDAN_ONBOARDING_SUMMARY_CODE" "200"
+json_check "Jordan onboarding timestamps start null" "$TMP_DIR/jordan-onboarding-summary.json" \
+  'const o=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).onboarding;process.exit(o&&["tourCompletedAt","checklistDismissedAt","previewedAt","sharedAt"].every((key)=>o[key]===null)?0:1)'
+check "onboarding requires a matching session" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" \
+  -H "Origin: $BASE" -H 'content-type: application/json' -d '{"event":"tour_completed"}')" "401"
+check "onboarding rejects a foreign Origin" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" \
+  -H 'Origin: https://foreign.example' -H "Cookie: asp_dash=$JORDAN_COOKIE" \
+  -H 'content-type: application/json' -d '{"event":"tour_completed"}')" "403"
+check "unknown onboarding event is rejected" "$(curl -sS -o "$TMP_DIR/onboarding-invalid.json" -w '%{http_code}' \
+  -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" -H "Origin: $BASE" \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' -d '{"event":"unknown"}')" "400"
+if grep -Fq 'Unknown onboarding event.' "$TMP_DIR/onboarding-invalid.json"; then
+  echo "  ok   unknown onboarding event error is clear"
+else
+  echo "  FAIL unknown onboarding event error is clear"
+  FAIL=1
+fi
+check "onboarding route rejects GET" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/dashboard/jordan-reyes/onboarding")" "405"
+
+TOUR_CODE=$(curl -sS -o "$TMP_DIR/tour-completed.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"event":"tour_completed"}')
+check "tour completion is recorded" "$TOUR_CODE" "200"
+json_check "tour completion timestamp is set" "$TMP_DIR/tour-completed.json" \
+  'const at=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).onboarding?.tourCompletedAt;process.exit(typeof at==="string"&&Number.isFinite(Date.parse(at))?0:1)'
+TOUR_FIRST=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).onboarding.tourCompletedAt)' "$TMP_DIR/tour-completed.json")
+TOUR_REPEAT_CODE=$(curl -sS -o "$TMP_DIR/tour-repeat.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"event":"tour_completed"}')
+check "repeating tour completion succeeds" "$TOUR_REPEAT_CODE" "200"
+TOUR_SECOND=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).onboarding.tourCompletedAt)' "$TMP_DIR/tour-repeat.json")
+check "tour completion timestamp is stable" "$TOUR_SECOND" "$TOUR_FIRST"
+
+DISMISS_CODE=$(curl -sS -o "$TMP_DIR/checklist-dismissed.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"event":"checklist_dismissed"}')
+check "checklist dismissal succeeds" "$DISMISS_CODE" "200"
+json_check "checklist dismissal timestamp is set" "$TMP_DIR/checklist-dismissed.json" \
+  'const at=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).onboarding?.checklistDismissedAt;process.exit(typeof at==="string"&&Number.isFinite(Date.parse(at))?0:1)'
+RESTORE_CODE=$(curl -sS -o "$TMP_DIR/checklist-restored.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"event":"checklist_restored"}')
+check "checklist restore succeeds" "$RESTORE_CODE" "200"
+json_check "restored checklist timestamp is null" "$TMP_DIR/checklist-restored.json" \
+  'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).onboarding?.checklistDismissedAt===null?0:1)'
+
+SHARE_CODE=$(curl -sS -o "$TMP_DIR/portal-shared.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" -H 'content-type: application/json' \
+  -d '{"event":"portal_shared"}')
+check "portal share is recorded" "$SHARE_CODE" "200"
+SHARED_AT=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).onboarding.sharedAt||"")' "$TMP_DIR/portal-shared.json")
+if [ -n "$SHARED_AT" ]; then echo "  ok   portal share timestamp is set"; else echo "  FAIL portal share timestamp is set"; FAIL=1; fi
+JORDAN_ONBOARDING_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/jordan-onboarding-final.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/jordan-reyes/summary")
+check "onboarding summary reflects portal share" "$JORDAN_ONBOARDING_SUMMARY_CODE" "200"
+if node -e 'const x=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const y=JSON.parse(require("fs").readFileSync(process.argv[2],"utf8"));process.exit(x.onboarding?.sharedAt&&x.onboarding.sharedAt===y.onboarding?.sharedAt?0:1)' \
+  "$TMP_DIR/jordan-onboarding-final.json" "$TMP_DIR/portal-shared.json"; then
+  echo "  ok   summary returns the shared timestamp"
+else
+  echo "  FAIL summary returns the shared timestamp"
+  FAIL=1
+fi
+check "Michael session cannot update Jordan onboarding" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/onboarding" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE" -H 'content-type: application/json' \
+  -d '{"event":"portal_previewed"}')" "401"
+
 echo "  skipped missing DASHBOARD_SECRET check (requires a server restart)"
 if [ "$FAIL" -eq 0 ]; then
   echo "DASHBOARD TEST PASSED"

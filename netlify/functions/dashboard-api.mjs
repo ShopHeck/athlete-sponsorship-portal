@@ -184,6 +184,19 @@ function placementConfigs(tenant) {
   })));
 }
 
+function onboardingView(record) {
+  return {
+    tourCompletedAt: record?.tourCompletedAt ?? null,
+    checklistDismissedAt: record?.checklistDismissedAt ?? null,
+    previewedAt: record?.previewedAt ?? null,
+    sharedAt: record?.sharedAt ?? null
+  };
+}
+
+function loadOnboarding(slug) {
+  return getStore({ name: "onboarding", consistency: "strong" }).get(slug, { type: "json" });
+}
+
 async function summary(req, slug) {
   const tenant = await getTenant(slug);
   if (!tenant) return json({ error: "Tenant not found." }, 404);
@@ -192,10 +205,11 @@ async function summary(req, slug) {
   const base = platformUrl(req);
   const portalUrl = `${base}/${tenant.slug}`;
   const services = forTenant(tenant, { portalUrl });
-  const [record, readiness, placements] = await Promise.all([
+  const [record, readiness, placements, onboardingRecord] = await Promise.all([
     services.connect.record(),
     services.connect.readiness(),
-    loadPlacementsForSummary(tenant, portalUrl)
+    loadPlacementsForSummary(tenant, portalUrl),
+    loadOnboarding(tenant.slug)
   ]);
   const status = readiness.status || record?.status || {};
   const totals = {
@@ -239,7 +253,8 @@ async function summary(req, slug) {
       deauthorized: Boolean(record?.deauthorizedAt)
     },
     totals,
-    placements
+    placements,
+    onboarding: onboardingView(onboardingRecord)
   });
 }
 
@@ -400,6 +415,49 @@ async function connectOnboard(req, slug) {
   }
 }
 
+async function updateOnboarding(req, slug) {
+  const tenant = await getTenant(slug);
+  if (!tenant) return json({ error: "Tenant not found." }, 404);
+  const session = sessionFor(req, slug);
+  if (!session) return json({ error: "Sign in required" }, 401);
+
+  let event;
+  try {
+    event = (await req.json())?.event;
+  } catch {
+    return json({ error: "Unknown onboarding event." }, 400);
+  }
+  if (!["tour_completed", "portal_previewed", "portal_shared", "checklist_dismissed", "checklist_restored"].includes(event)) {
+    return json({ error: "Unknown onboarding event." }, 400);
+  }
+
+  const store = getStore({ name: "onboarding", consistency: "strong" });
+  const record = await store.get(tenant.slug, { type: "json" }) || {
+    tourCompletedAt: null,
+    tourCompletedBy: null,
+    checklistDismissedAt: null,
+    previewedAt: null,
+    sharedAt: null,
+    updatedAt: null
+  };
+  const now = new Date().toISOString();
+  if (event === "tour_completed" && !record.tourCompletedAt) {
+    record.tourCompletedAt = now;
+    record.tourCompletedBy = session.email;
+  } else if (event === "portal_previewed" && !record.previewedAt) {
+    record.previewedAt = now;
+  } else if (event === "portal_shared" && !record.sharedAt) {
+    record.sharedAt = now;
+  } else if (event === "checklist_dismissed") {
+    record.checklistDismissedAt = now;
+  } else if (event === "checklist_restored") {
+    record.checklistDismissedAt = null;
+  }
+  record.updatedAt = now;
+  await store.setJSON(tenant.slug, record);
+  return json({ onboarding: onboardingView(record) });
+}
+
 export default async function dashboardApi(req) {
   if (!process.env.DASHBOARD_SECRET) return json({ error: "DASHBOARD_SECRET is not configured." }, 503);
 
@@ -426,6 +484,11 @@ export default async function dashboardApi(req) {
   if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" && parts[3] === "link") {
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
     return link(req, parts[2]);
+  }
+
+  if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" && parts[3] === "onboarding") {
+    if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+    return updateOnboarding(req, parts[2]);
   }
 
   if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" && parts[3] === "summary") {
@@ -461,6 +524,7 @@ export const config = {
     "/api/dashboard/session",
     "/api/dashboard/logout",
     "/api/dashboard/:slug/link",
+    "/api/dashboard/:slug/onboarding",
     "/api/dashboard/:slug/summary",
     "/api/dashboard/:slug/export.csv",
     "/api/dashboard/:slug/connect/onboard",
