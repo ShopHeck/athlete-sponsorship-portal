@@ -34,6 +34,10 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
   secrets.
 - **Webhook event is ignored despite a valid signature.** The livemode guard accepts only events whose `livemode`
   matches whether `STRIPE_SECRET_KEY` contains `_live_`; test-key deployments ignore live events and vice versa.
+- **Dashboard sign-in links were consumed by an email scanner.** Serve the sign-in link on the dashboard GET page and
+  require an explicit POST confirmation; email security scanners may prefetch GET links.
+- **The global `PREVIEW_TOKEN` appeared in a dashboard request or response.** It is only for draft portal APIs and
+  must never be passed to or exposed by the dashboard.
 - **Paid invoice was re-created by the close job.** `invoice.status === "sent"` remains the invoice retry guard.
   Record payment separately in `invoice.paidAt` (and `amountPaid`) when handling `invoice.paid`; never replace
   `"sent"` with a paid status.

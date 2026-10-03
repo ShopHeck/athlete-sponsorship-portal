@@ -1,3 +1,4 @@
+import { getStore } from "@netlify/blobs";
 import { connectForTenant } from "./connect.mjs";
 
 const STRIPE_API = process.env.STRIPE_API_BASE || "https://api.stripe.com";
@@ -26,7 +27,40 @@ export function forTenant(config, { portalUrl }) {
     maximumFractionDigits: 0
   }).format(Math.round(amount));
   const describePlacement = (id) => placementList.find((placement) => placement.id === id)?.label || id;
-  const soldPlacements = async () => new Set(Object.keys(config.sold || {}));
+  async function soldDetails() {
+    const details = new Map();
+    for (const [id, entry] of Object.entries(config.sold || {})) {
+      const sponsor = typeof entry === "string" ? entry : entry?.sponsor;
+      const soldEntry = entry && typeof entry === "object" ? entry : {};
+      details.set(id, {
+        sponsor: sponsor || "",
+        amount: soldEntry.amount ?? null,
+        note: soldEntry.note || "",
+        at: soldEntry.at || null,
+        source: "config",
+        ...(soldEntry.logo ? { logo: soldEntry.logo } : {})
+      });
+    }
+
+    const store = getStore({ name: "sold", consistency: "strong" });
+    const prefix = `${config.slug}/`;
+    const { blobs } = await store.list({ prefix });
+    for (const { key } of blobs) {
+      const id = key.slice(prefix.length);
+      const record = await store.get(key, { type: "json" });
+      if (!record || record.releasedAt || details.has(id)) continue;
+      details.set(id, {
+        sponsor: record.sponsor || "",
+        amount: record.amount ?? null,
+        note: record.note || "",
+        at: record.at || null,
+        source: "dashboard"
+      });
+    }
+    return details;
+  }
+
+  const soldPlacements = async () => new Set((await soldDetails()).keys());
 
   const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -397,6 +431,7 @@ export function forTenant(config, { portalUrl }) {
     isPlacementId,
     describePlacement,
     soldPlacements,
+    soldDetails,
     usd,
     sendEmail,
     tryEmail,

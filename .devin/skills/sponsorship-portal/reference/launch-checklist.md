@@ -14,6 +14,7 @@
 - [ ] Create/configure the platform's Netlify site and connect the intended repository and production branch.
 - [ ] Set `PLATFORM_URL` to the public platform origin; tenant canonical and API links append `/<slug>`.
 - [ ] Set a strong global `PREVIEW_TOKEN` and `ADMIN_TOKEN`.
+- [ ] Set `DASHBOARD_SECRET` as a Netlify secret for dashboard session signing.
 - [ ] Configure `STRIPE_SECRET_KEY` for the correct Stripe account and `RESEND_API_KEY` for a verified sender domain.
 - [ ] Set a tenant's `contact.notifyFrom` and `contact.notifyEmail`. `NOTIFY_FROM` is only a global fallback sender.
 - [ ] Confirm Stripe and Resend service API bases are production defaults; use mock API bases only in local tests.

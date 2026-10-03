@@ -75,6 +75,22 @@ export default async (req, context) => {
       const rec = await store.get(key, { type: "json" });
       if (rec) placements[id] = publicView(slug, id, rec);
     }));
+    for (const [id, detail] of await services.soldDetails()) {
+      if (detail.source !== "dashboard" || !isPlacementId(id)) continue;
+      placements[id] = {
+        ...publicView(slug, id, {
+          high: 0,
+          history: [],
+          locked: true,
+          lockedBy: { company: detail.sponsor },
+          closed: true
+        }),
+        locked: true,
+        closed: true,
+        lockedBy: detail.sponsor || null,
+        sold: true
+      };
+    }
     const paymentsReady = (await services.connect.readiness()).ready;
     return json({ minBid: MIN_BID, increment: INCREMENT, lockPrice: LOCK_PRICE, deadline: DEADLINE, paymentsReady, placements });
   }
