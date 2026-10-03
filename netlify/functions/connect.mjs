@@ -1,5 +1,6 @@
 import { forTenant, json } from "../lib/sponsorship.mjs";
 import { getTenant } from "../lib/tenants.mjs";
+import { isConnectReady } from "../lib/connect.mjs";
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -77,7 +78,7 @@ export default async function connectEndpoint(req, context) {
       console.error("Connect return status refresh failed", slug, err);
       updated = await connect.record();
     }
-    const ready = updated?.status?.chargesEnabled === true && updated?.status?.transfers === "active";
+    const ready = isConnectReady(updated?.status);
     const athleteName = escapeHtml(tenant.athlete?.displayName || tenant.athlete?.firstName || slug);
     const refreshUrl = `${new URL(portalUrl).origin}/api/${encodeURIComponent(slug)}/connect/refresh?sig=${encodeURIComponent(url.searchParams.get("sig") || "")}`;
     const message = ready

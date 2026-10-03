@@ -1,11 +1,12 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 
+export const isConnectReady = (status) => status?.chargesEnabled === true && status?.cardPayments === "active";
+
 export function connectForTenant(config, { stripe, portalUrl }) {
   const { slug, payments } = config;
   const mode = payments.mode;
   const store = () => getStore({ name: "connect", consistency: "strong" });
-  const readyStatus = (status) => status?.chargesEnabled === true && status?.transfers === "active";
 
   async function record() {
     return store().get(slug, { type: "json" });
@@ -31,13 +32,10 @@ export function connectForTenant(config, { stripe, portalUrl }) {
     const params = {
       country: payments.country || "US",
       controller: {
-        fees: { payer: "application" },
-        losses: { payments: "application" },
-        stripe_dashboard: { type: "express" }
-      },
-      capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true }
+        fees: { payer: "account" },
+        losses: { payments: "stripe" },
+        requirement_collection: "stripe",
+        stripe_dashboard: { type: "full" }
       },
       metadata: {
         tenant: slug,
@@ -47,7 +45,7 @@ export function connectForTenant(config, { stripe, portalUrl }) {
     if (new URL(portalUrl).protocol === "https:") {
       params.business_profile = { url: portalUrl };
     }
-    const account = await stripe("POST", "accounts", params, `${slug}-connect-account`);
+    const account = await stripe("POST", "accounts", params, `${slug}-connect-account-direct-no-card-payments`);
     const created = { accountId: account.id, createdAt: new Date().toISOString() };
     await store().setJSON(slug, created);
     return created;
@@ -74,7 +72,7 @@ export function connectForTenant(config, { stripe, portalUrl }) {
       chargesEnabled: account.charges_enabled === true,
       payoutsEnabled: account.payouts_enabled === true,
       detailsSubmitted: account.details_submitted === true,
-      transfers: account.capabilities?.transfers || null,
+      cardPayments: account.capabilities?.card_payments || null,
       currentlyDue: account.requirements?.currently_due || [],
       disabledReason: account.requirements?.disabled_reason || null
     };
@@ -92,7 +90,7 @@ export function connectForTenant(config, { stripe, portalUrl }) {
     try {
       current = await record();
       if (!current?.accountId) return { mode, ready: false, accountId: null, status: null };
-      if (readyStatus(current.status)) {
+      if (isConnectReady(current.status)) {
         return { mode, ready: true, accountId: current.accountId, status: current.status };
       }
       const checkedAt = Date.parse(current.checkedAt || "");
@@ -100,7 +98,7 @@ export function connectForTenant(config, { stripe, portalUrl }) {
         const updated = await refreshStatus();
         return {
           mode,
-          ready: readyStatus(updated?.status),
+          ready: isConnectReady(updated?.status),
           accountId: updated?.accountId || current.accountId,
           status: updated?.status || null
         };

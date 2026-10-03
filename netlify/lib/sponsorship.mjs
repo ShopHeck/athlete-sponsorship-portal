@@ -175,10 +175,11 @@ export function forTenant(config, { portalUrl }) {
     return typeof value === "object" ? encodeForm(value, formKey) : [[formKey, String(value)]];
   });
 
-  async function stripe(method, pathname, params, idempotencyKey) {
+  async function stripe(method, pathname, params, idempotencyKey, { stripeAccount } = {}) {
     const key = process.env.STRIPE_SECRET_KEY;
     if (!key) throw new Error("STRIPE_SECRET_KEY is not set");
     const headers = { authorization: `Bearer ${key}` };
+    if (stripeAccount) headers["stripe-account"] = stripeAccount;
     let url = `${STRIPE_API}/v1/${pathname}`;
     const init = { method, headers };
     if (method === "GET") {
@@ -197,10 +198,11 @@ export function forTenant(config, { portalUrl }) {
   const stripeEnabled = () => Boolean(process.env.STRIPE_SECRET_KEY);
   const connect = connectForTenant(config, { stripe, portalUrl });
 
-  async function findOrCreateCustomer(bidder, id) {
+  async function findOrCreateCustomer(bidder, id, stripeAccount) {
     const email = bidder.email.replace(/'/g, "\\'");
     const query = `email:'${email}' AND metadata['tenant']:'${config.slug}'`;
-    const found = await stripe("GET", "customers/search", { query, limit: 1 }).catch(() => null);
+    const options = stripeAccount ? { stripeAccount } : undefined;
+    const found = await stripe("GET", "customers/search", { query, limit: 1 }, undefined, options).catch(() => null);
     if (found?.data?.length) return found.data[0];
     return stripe("POST", "customers", {
       name: bidder.company,
@@ -213,7 +215,7 @@ export function forTenant(config, { portalUrl }) {
         source: "athlete-sponsorship-portal",
         first_placement: id
       }
-    }, `${config.slug}-cust-${id}-${bidder.email}`);
+    }, `${config.slug}-cust-${id}-${bidder.email}`, options);
   }
 
   async function createInvoice({ id, amount, bidder, kind, at, connectAccountId }) {
@@ -222,7 +224,9 @@ export function forTenant(config, { portalUrl }) {
       if (!readiness.ready) throw new Error("Connected account not ready for payouts");
       connectAccountId = readiness.accountId;
     }
-    const customer = await findOrCreateCustomer(bidder, id);
+    const stripeAccount = config.payments.mode === "connect" ? connectAccountId : undefined;
+    const stripeOptions = stripeAccount ? { stripeAccount } : undefined;
+    const customer = await findOrCreateCustomer(bidder, id, stripeAccount);
     const label = describePlacement(id);
     const seed = `${config.slug}-${id}-${kind}-${amount}-${bidder.email}-${at}`.replace(/[^a-zA-Z0-9@.\-_]/g, "_").slice(0, 255);
     const tenantMetadata = { tenant: config.slug, source: "athlete-sponsorship-portal" };
@@ -235,7 +239,10 @@ export function forTenant(config, { portalUrl }) {
       company: bidder.company,
       portal: portalUrl,
       ...tenantMetadata,
-      ...(config.payments.mode === "connect" ? { platform_fee_percent: String(config.payments.feePercent) } : {})
+      ...(stripeAccount ? {
+        connected_account: stripeAccount,
+        platform_fee_percent: String(config.payments.feePercent)
+      } : {})
     };
     const draft = await stripe("POST", "invoices", {
       customer: customer.id,
@@ -252,11 +259,10 @@ export function forTenant(config, { portalUrl }) {
       }),
       footer: config.copy.invoiceFooter,
       metadata: invoiceMetadata,
-      ...(config.payments.mode === "connect" ? {
-        transfer_data: { destination: connectAccountId },
+      ...(stripeAccount ? {
         application_fee_amount: connect.feeAmount(Math.round(amount * 100))
       } : {})
-    }, `${seed}-inv`);
+    }, `${seed}-inv`, stripeOptions);
     await stripe("POST", "invoiceitems", {
       customer: customer.id,
       invoice: draft.id,
@@ -269,8 +275,8 @@ export function forTenant(config, { portalUrl }) {
         action: kind === "lock" ? config.copy.invoiceItemLockAction : config.copy.invoiceItemWinningAction
       }),
       metadata: { placement: id, ...tenantMetadata }
-    }, `${seed}-item`);
-    const invoice = await stripe("POST", `invoices/${draft.id}/finalize`, { auto_advance: false }, `${seed}-fin`);
+    }, `${seed}-item`, stripeOptions);
+    const invoice = await stripe("POST", `invoices/${draft.id}/finalize`, { auto_advance: false }, `${seed}-fin`, stripeOptions);
     return {
       id: invoice.id,
       number: invoice.number,
