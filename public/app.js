@@ -235,17 +235,17 @@ function makeSlot(spot, side, meshes) {
 
 function buildSlots(meshes) {
   const missing = [];
-  let total = 0;
-  const addSlot = (spot, side) => {
-    total++;
-    if (!makeSlot(spot, side, meshes)) missing.push({ id: spot.id, side });
-  };
   allPlacements.forEach((spot) => {
-    addSlot(spot, spot.side);
-    if (spot.mirror) addSlot(spot, spot.mirror);
+    const failedSides = [];
+    for (const side of new Set([spot.side, spot.mirror].filter(Boolean))) {
+      if (!makeSlot(spot, side, meshes)) failedSides.push(side);
+    }
+    if (failedSides.length) missing.push({ id: spot.id, sides: failedSides });
   });
   if (isStudio) {
-    window.dispatchEvent(new CustomEvent("studio:fit", { detail: { total, missing } }));
+    window.dispatchEvent(new CustomEvent("studio:fit", {
+      detail: { total: allPlacements.length, missing }
+    }));
   }
 }
 
@@ -443,7 +443,9 @@ function renderSlots() { slotMeshes.forEach(drawSlot); }
 function renderBidPanel(spot, bid) {
   const { minBid, increment, lockPrice, online, paymentsReady } = state.auction;
   const floor = minimumBid(spot.id);
-  if (!paymentsReady) {
+  if (isStudio) {
+    bidMeta.textContent = "Preview only — bidding is disabled";
+  } else if (!paymentsReady) {
     bidMeta.textContent = config.copy.paymentsPending;
   } else if (bid?.high) {
     bidHigh.textContent = usd(bid.high);

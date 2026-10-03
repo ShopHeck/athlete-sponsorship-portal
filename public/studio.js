@@ -1,7 +1,8 @@
 const config = JSON.parse(document.getElementById("portal-config").textContent);
 const studio = config.studio;
+const shell = document.querySelector(".portal-shell");
 
-if (studio) {
+if (studio && shell) {
   const review = studio.review || {};
   const bar = document.createElement("section");
   bar.className = "studio-bar";
@@ -18,6 +19,7 @@ if (studio) {
   heading.textContent = studio.mode === "operator" ? `Review ${studio.displayName}'s model` : "Private preview — only you can see this";
   const fit = document.createElement("p");
   fit.className = "studio-fit";
+  fit.dataset.state = "checking";
   fit.setAttribute("aria-live", "polite");
   fit.textContent = "Checking placement fit…";
   const reviewStatus = document.createElement("p");
@@ -36,7 +38,7 @@ if (studio) {
   controls.append(error, actions);
   bar.append(copy, controls);
 
-  function button(label, action, className = "") {
+  function button(label, action, className = "studio-button-primary") {
     const control = document.createElement("button");
     control.type = "button";
     control.className = `studio-button ${className}`.trim();
@@ -56,11 +58,19 @@ if (studio) {
       headingNode.textContent = title;
       const noteLabel = document.createElement("label");
       noteLabel.textContent = label;
+      noteLabel.htmlFor = "studio-note";
       const note = document.createElement("textarea");
+      note.id = "studio-note";
       note.rows = 4;
       note.maxLength = 500;
       note.required = required;
-      note.addEventListener("input", () => note.setCustomValidity(""));
+      const counter = document.createElement("span");
+      counter.className = "studio-char-count";
+      counter.textContent = "0/500";
+      note.addEventListener("input", () => {
+        note.setCustomValidity("");
+        counter.textContent = `${note.value.length}/500`;
+      });
       const buttons = document.createElement("div");
       buttons.className = "studio-actions";
       const cancel = document.createElement("button");
@@ -70,10 +80,10 @@ if (studio) {
       cancel.addEventListener("click", () => dialog.close("cancel"));
       const submit = document.createElement("button");
       submit.type = "submit";
-      submit.className = "studio-button";
+      submit.className = "studio-button studio-button-primary";
       submit.textContent = submitText;
       buttons.append(cancel, submit);
-      form.append(headingNode, noteLabel, note, buttons);
+      form.append(headingNode, noteLabel, note, counter, buttons);
       form.addEventListener("submit", (event) => {
         event.preventDefault();
         if (required && !note.value.trim()) {
@@ -185,14 +195,18 @@ if (studio) {
   window.addEventListener("studio:fit", (event) => {
     const result = event.detail || {};
     if (result.error) {
+      fit.dataset.state = "error";
       fit.textContent = "Placement fit could not be checked because the model did not load.";
     } else if (result.missing?.length) {
-      const missing = result.missing.map((item) => `${item.id} (${item.side})`).join(", ");
-      fit.textContent = `${result.missing.length} placements need attention: ${missing}`;
+      fit.dataset.state = "attention";
+      const missing = result.missing.map((item) => item.id).join(", ");
+      const count = result.missing.length;
+      fit.textContent = `${count} placement${count === 1 ? "" : "s"} need${count === 1 ? "s" : ""} attention: ${missing}`;
     } else {
-      fit.textContent = `All ${result.total || 0} placements fit your model.`;
+      fit.dataset.state = "fit";
+      fit.textContent = `All ${result.total ?? 0} placements fit your model`;
     }
   });
 
-  document.body.append(bar);
+  shell.append(bar);
 }

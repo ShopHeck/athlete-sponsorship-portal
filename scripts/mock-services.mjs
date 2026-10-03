@@ -74,7 +74,9 @@ async function createMockGlb() {
   return Buffer.from(await new NodeIO().writeBinary(document));
 }
 
-const MOCK_GLB = await createMockGlb();
+const MOCK_GLB = process.env.MOCK_MESHY_GLB
+  ? fs.readFileSync(path.resolve(process.env.MOCK_MESHY_GLB))
+  : await createMockGlb();
 
 function redactDataUris(values) {
   return Array.isArray(values) ? values.map((value) => {
