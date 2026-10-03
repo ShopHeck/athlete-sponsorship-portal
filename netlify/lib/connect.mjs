@@ -37,6 +37,10 @@ export function connectForTenant(config, { stripe, portalUrl }) {
         requirement_collection: "stripe",
         stripe_dashboard: { type: "full" }
       },
+      capabilities: {
+        card_payments: { requested: true },
+        transfers: { requested: true }
+      },
       metadata: {
         tenant: slug,
         source: "athlete-sponsorship-portal"
@@ -45,7 +49,7 @@ export function connectForTenant(config, { stripe, portalUrl }) {
     if (new URL(portalUrl).protocol === "https:") {
       params.business_profile = { url: portalUrl };
     }
-    const account = await stripe("POST", "accounts", params, `${slug}-connect-account-direct-no-card-payments`);
+    const account = await stripe("POST", "accounts", params, `${slug}-connect-account-standard`);
     const created = { accountId: account.id, createdAt: new Date().toISOString() };
     await store().setJSON(slug, created);
     return created;

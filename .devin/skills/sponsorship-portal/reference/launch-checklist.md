@@ -28,6 +28,8 @@ For each tenant with `payments.mode: "connect"`:
 - [ ] Start onboarding with `POST /api/<slug>/connect/onboard` and
       `Authorization: Bearer $ADMIN_TOKEN`.
 - [ ] Send the returned Stripe-hosted `url` to the athlete so they can complete account setup.
+- [ ] Confirm account creation requests both `card_payments` and `transfers`; Stripe requires both for this
+      controller combination. Direct charges still use the athlete-liable controller settings.
 - [ ] Account links expire. If an athlete returns to an expired link, use the signed `refresh_url` from the link or
       start onboarding again through the admin endpoint to create a fresh link.
 - [ ] Check `GET /api/<slug>/connect/status` with the admin token. Bidding is enabled only when charges are enabled

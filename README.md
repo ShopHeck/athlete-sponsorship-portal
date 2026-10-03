@@ -29,7 +29,9 @@ Every tenant config sets `payments.mode` to `"platform"` or `"connect"`. Michael
 tenants must finish Stripe-hosted onboarding and have charges enabled with `card_payments` active before bids are
 accepted. Connect invoices are direct charges on the athlete's Stripe account with the configured `feePercent`
 application fee. The athlete pays Stripe fees and bears refunds and chargebacks; Stripe is liable for unrecoverable
-negative balances. Connect athletes receive the full Stripe Dashboard.
+negative balances. Connect athletes receive the full Stripe Dashboard. Stripe requires both `card_payments` and
+`transfers` to be requested for this controller combination; the transfers capability does not change direct-charge
+liability.
 Use `POST /api/<slug>/connect/onboard` with the admin Bearer token to create an onboarding link, send the returned
 URL to the athlete, then verify readiness with `GET /api/<slug>/connect/status`.
 

@@ -40,11 +40,11 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
 - **Connect account has incompatible controller settings.** Stripe Dashboard type is immutable. Accounts created
   with other controller settings must be replaced with a new account; do not reuse a destination-charge/Express
   account for direct charges.
-- **Stripe rejected the card-payments capability request.** Test mode returned “Accounts do not currently support
-  `card_payments` without `transfers`” for this controller combination. Account creation omits capability requests;
-  readiness still requires `card_payments` to become active, so confirm it is active before opening bids. Stripe
-  cached the rejected request parameters under its idempotency key, so the fallback uses a new key for the revised
-  account-creation parameters.
+- **Connect card payments remain unavailable.** Stripe requires both `card_payments` and `transfers` to be requested
+  for this controller combination. Requesting `transfers` does not turn these direct charges into destination
+  charges or change the controller's liability allocation; readiness still requires `card_payments` to be active.
+- **Stripe rejected an account-create retry as an idempotency mismatch.** Stripe caches idempotency keys with their
+  request parameters for 24 hours. Use a new key whenever Connect account creation parameters change.
 - **Every successful lock showed "Network error" in the UI even though the server saved it.** `busy.textContent =
   "Sending…"` wiped the `<span>` inside the lock button that `renderBidPanel()` writes to, so a re-render threw
   inside the `try`. Fixed with a dedicated `#lockLabel` span and a `submitBid.busy` guard.

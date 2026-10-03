@@ -109,7 +109,9 @@ it must be two uppercase letters. Connect invoices are direct charges on the ath
 this application fee. The connected account pays Stripe fees and bears refunds and chargebacks; Stripe is liable
 for unrecoverable negative balances. The athlete receives the full Stripe Dashboard. The required
 `copy.paymentsPending` string is shown while bidding is closed pending payout setup. Bidding becomes available only
-when Stripe reports charges enabled and the `card_payments` capability active.
+when Stripe reports charges enabled and the `card_payments` capability active. Stripe requires both `card_payments`
+and `transfers` to be requested for this controller combination; `transfers` does not change the direct-charge
+liability setup.
 
 Global environment variables are reserved for platform/service operation: `STRIPE_SECRET_KEY`,
 `RESEND_API_KEY`, `STRIPE_API_BASE`, `RESEND_API_BASE`, `PLATFORM_URL`, `PREVIEW_TOKEN`, and `ADMIN_TOKEN`.

@@ -28,7 +28,8 @@ skip what the user has already completed. Read the relevant reference before edi
   are tenant-prefixed (`<slug>/<placementId>`).
 - Connect tenants use `/api/<slug>/connect/onboard` and `/api/<slug>/connect/status`; their direct-charge invoices
   are created on the athlete's Stripe account. Bidding stays closed until charges are enabled and the
-  `card_payments` capability is active.
+  `card_payments` capability is active. Account creation requests both `card_payments` and `transfers` because
+  Stripe requires both for this controller combination.
 - `netlify/lib/sponsorship.mjs` exports `forTenant(config, { portalUrl })`, which closes email, invoice, pricing,
   and placement helpers over one tenant.
 - The scheduled job processes every non-draft tenant; the admin close endpoint may process all non-draft tenants or

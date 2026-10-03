@@ -70,12 +70,13 @@ const required = {
   "controller[losses][payments]": "stripe",
   "controller[requirement_collection]": "stripe",
   "controller[stripe_dashboard][type]": "full",
+  "capabilities[card_payments][requested]": "true",
+  "capabilities[transfers][requested]": "true",
   "metadata[tenant]": "jordan-reyes",
   "metadata[source]": "athlete-sponsorship-portal"
 };
-if (accounts.length !== 1 || account.idempotency !== "jordan-reyes-connect-account-direct-no-card-payments" || body.country !== required.country) process.exit(1);
+if (accounts.length !== 1 || account.idempotency !== "jordan-reyes-connect-account-standard" || body.country !== required.country) process.exit(1);
 if (Object.entries(required).some(([key, value]) => body[key] !== value)) process.exit(1);
-if (Object.keys(body).some((key) => key.startsWith("capabilities["))) process.exit(1);
 if (Object.hasOwn(body, "type") || Object.hasOwn(body, "business_profile[url]")) process.exit(1);
 if (!links.length || links.some((row) => {
   const b = row.body || {};
