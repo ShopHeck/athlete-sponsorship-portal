@@ -1,6 +1,6 @@
 import { hasValidBuildSignature } from "../lib/build-signature.mjs";
 import { getTenant } from "../lib/tenants.mjs";
-import { processBuild } from "../lib/model-build.mjs";
+import { processBuild } from "../lib/model-build-process.mjs";
 
 export default async function modelBuildBackground(req) {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
