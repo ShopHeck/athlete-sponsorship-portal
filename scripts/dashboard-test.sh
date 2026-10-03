@@ -824,6 +824,13 @@ BUILD_RETRY_CODE=$(curl -sS -o "$TMP_DIR/build-attempt-2-start.json" -w '%{http_
 check "retry starts build attempt two" "$BUILD_RETRY_CODE" "200"
 json_check "retry increments the build attempt" "$TMP_DIR/build-attempt-2-start.json" \
   'const b=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.build;process.exit(b?.status==="building"&&b.attempt===2&&b.attemptsLeft===1?0:1)'
+check "fake Meshy arms one transient task-poll error" "$(curl -sS -o "$TMP_DIR/mock-meshy-error-next-poll.json" -w '%{http_code}' -X POST \
+  "http://127.0.0.1:4343/__mock/meshy/error-next-poll")" "200"
+TRANSIENT_POLL_CODE=$(curl -sS -o "$TMP_DIR/build-attempt-2-transient-poll.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/jordan-reyes/model")
+check "transient Meshy poll still returns the model state" "$TRANSIENT_POLL_CODE" "200"
+json_check "transient Meshy poll keeps the paid build building" "$TMP_DIR/build-attempt-2-transient-poll.json" \
+  'const b=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).model?.build;process.exit(b?.status==="building"&&b.attempt===2&&b.attemptsLeft===1?0:1)'
 if poll_build_until ready "$TMP_DIR/build-attempt-2-ready.json"; then
   echo "  ok   successful mock task is processed to ready"
 else

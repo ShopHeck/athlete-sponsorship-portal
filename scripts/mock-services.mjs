@@ -17,6 +17,7 @@ fs.writeFileSync(LOG, "");
 let n = 0;
 let meshTaskCounter = 0;
 let failNextMeshy = false;
+let failNextMeshyPoll = false;
 const accounts = new Map();
 const meshTasks = new Map();
 const MOCK_PNG = Buffer.from(
@@ -120,6 +121,10 @@ http.createServer(async (req, res) => {
     failNextMeshy = true;
     return send(200, { ok: true });
   }
+  if (req.method === "POST" && url.pathname === "/__mock/meshy/error-next-poll") {
+    failNextMeshyPoll = true;
+    return send(200, { ok: true });
+  }
   if (req.method === "POST" && url.pathname === "/openapi/v1/image-to-image") {
     if (!/^Bearer \S+$/.test(req.headers.authorization || "")) {
       return send(401, { message: "Mock Meshy requires a bearer token." });
@@ -148,6 +153,10 @@ http.createServer(async (req, res) => {
     const id = decodeURIComponent(meshTaskMatch[1]);
     const task = meshTasks.get(id);
     if (!task || task.type !== "image") return send(404, { message: "Mock Meshy task not found." });
+    if (failNextMeshyPoll) {
+      failNextMeshyPoll = false;
+      return send(500, { message: "Mock transient Meshy poll error." });
+    }
     task.polls += 1;
     if (task.fail) {
       return send(200, { status: "FAILED", progress: 100, task_error: { message: "Mock failure" } });
@@ -168,6 +177,10 @@ http.createServer(async (req, res) => {
     const id = decodeURIComponent(multiImageTaskMatch[1]);
     const task = meshTasks.get(id);
     if (!task || task.type !== "model") return send(404, { message: "Mock Meshy task not found." });
+    if (failNextMeshyPoll) {
+      failNextMeshyPoll = false;
+      return send(500, { message: "Mock transient Meshy poll error." });
+    }
     task.polls += 1;
     if (task.fail) {
       return send(200, { status: "FAILED", progress: 100, task_error: { message: "Mock failure" } });

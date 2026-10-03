@@ -6,7 +6,8 @@ import {
   downloadAsset,
   getImageToImage,
   isMeshyConfigured,
-  MeshyConfigurationError
+  MeshyConfigurationError,
+  MeshyRequestError
 } from "./meshy.mjs";
 
 const ANGLES = ["front", "back", "left", "right"];
@@ -283,7 +284,11 @@ export async function advanceViews(tenant) {
         status: error?.status ?? null,
         message
       });
-      await store.setJSON(failureKey, { message, at: new Date().toISOString() });
+      if (error instanceof MeshyRequestError &&
+          error.status >= 400 && error.status < 500 &&
+          error.status !== 408 && error.status !== 429) {
+        await store.setJSON(failureKey, { message, at: new Date().toISOString() });
+      }
     }
   }));
   return progress;

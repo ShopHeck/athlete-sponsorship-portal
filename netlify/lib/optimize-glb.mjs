@@ -8,7 +8,7 @@ import { dedup, draco, prune, textureCompress } from "@gltf-transform/functions"
 import draco3d from "draco3dgltf";
 import sharp from "sharp";
 
-const MAX_OPTIMIZED_BYTES = 20 * 1024 * 1024;
+const MAX_OPTIMIZED_BYTES = 5 * 1024 * 1024;
 const require = createRequire(import.meta.url);
 
 function dracoDirectoriesFrom(start) {
@@ -144,7 +144,7 @@ export async function optimizeGlb(inputBytes) {
   const textureSize = await largestTextureSize(document);
   const bytes = Buffer.from(await io.writeBinary(document));
   if (bytes.length > MAX_OPTIMIZED_BYTES) {
-    throw new Error("Optimized model exceeds the 20 MB limit.");
+    throw new Error("Optimized model exceeds the 5 MB limit.");
   }
 
   const warnings = stats.bounds.y < Math.max(stats.bounds.x, stats.bounds.z)

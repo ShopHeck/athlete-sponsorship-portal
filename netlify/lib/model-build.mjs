@@ -9,7 +9,8 @@ import {
   downloadModel,
   getMultiImageTo3D,
   isMeshyConfigured,
-  MeshyConfigurationError
+  MeshyConfigurationError,
+  MeshyRequestError
 } from "./meshy.mjs";
 import { getViewAsset, loadViews } from "./reference-views.mjs";
 import { optimizeGlb } from "./optimize-glb.mjs";
@@ -220,6 +221,11 @@ export async function advanceBuild(tenant, { origin }) {
     return {};
   }
 
+  if (ageOf(job.startedAt) > MESHY_TIMEOUT_MS) {
+    await storeBuildError(store, slug, job.id, "Meshy task timed out.");
+    return {};
+  }
+
   try {
     const task = await getMultiImageTo3D(job.taskId);
     const status = String(task?.status || "").toUpperCase();
@@ -243,8 +249,6 @@ export async function advanceBuild(tenant, { origin }) {
         job.id,
         task?.task_error?.message || `Meshy task ${status.toLowerCase()}.`
       );
-    } else if (ageOf(job.startedAt) > MESHY_TIMEOUT_MS) {
-      await storeBuildError(store, slug, job.id, "Meshy task timed out.");
     } else {
       return { progress: clampedProgress(Number(task?.progress)) };
     }
@@ -256,7 +260,11 @@ export async function advanceBuild(tenant, { origin }) {
       status: error?.status ?? null,
       message: error?.providerMessage || error?.message || "Unknown Meshy error"
     });
-    await storeBuildError(store, slug, job.id, error?.providerMessage || error?.message || "Meshy task polling failed.");
+    if (error instanceof MeshyRequestError &&
+        error.status >= 400 && error.status < 500 &&
+        error.status !== 408 && error.status !== 429) {
+      await storeBuildError(store, slug, job.id, error.providerMessage || error.message);
+    }
   }
   return {};
 }
