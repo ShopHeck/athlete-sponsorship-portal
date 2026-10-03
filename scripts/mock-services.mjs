@@ -36,7 +36,14 @@ http.createServer(async (req, res) => {
     return send(200, account);
   }
   const body = (req.headers["content-type"] || "").includes("json") ? JSON.parse(raw || "{}") : Object.fromEntries(new URLSearchParams(raw));
-  fs.appendFileSync(LOG, JSON.stringify({ at: new Date().toISOString(), method: req.method, path: url.pathname, idempotency: req.headers["idempotency-key"] || null, body }) + "\n");
+  fs.appendFileSync(LOG, JSON.stringify({
+    at: new Date().toISOString(),
+    method: req.method,
+    path: url.pathname,
+    idempotency: req.headers["idempotency-key"] || null,
+    stripeAccount: req.headers["stripe-account"] || null,
+    body
+  }) + "\n");
   n += 1;
   // Resend
   if (url.pathname === "/emails") return send(200, { id: `email_${n}` });

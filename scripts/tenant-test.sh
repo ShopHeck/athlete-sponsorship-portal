@@ -45,7 +45,7 @@ READY_CODE=$(curl -sS -o "$TMP_DIR/ready.json" -w '%{http_code}' -X POST "$MOCK_
 check "mock account marked payout-ready" "$READY_CODE" "200"
 STATUS_CODE=$(curl -sS -o "$TMP_DIR/status.json" -w '%{http_code}' "$BASE/api/jordan-reyes/connect/status" -H "authorization: Bearer $ADMIN_TOKEN")
 check "Jordan status refreshed" "$STATUS_CODE" "200"
-if node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(s.ready===true?0:1)' "$TMP_DIR/status.json"; then
+if node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(s.ready===true&&s.status.cardPayments==="active"?0:1)' "$TMP_DIR/status.json"; then
   echo "  ok   Jordan Connect account is ready"
 else
   echo "  FAIL Jordan Connect account is ready"

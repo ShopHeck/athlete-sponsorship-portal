@@ -66,16 +66,16 @@ const account = accounts[0];
 const body = account?.body || {};
 const required = {
   country: "US",
-  "controller[fees][payer]": "application",
-  "controller[losses][payments]": "application",
-  "controller[stripe_dashboard][type]": "express",
-  "capabilities[card_payments][requested]": "true",
-  "capabilities[transfers][requested]": "true",
+  "controller[fees][payer]": "account",
+  "controller[losses][payments]": "stripe",
+  "controller[requirement_collection]": "stripe",
+  "controller[stripe_dashboard][type]": "full",
   "metadata[tenant]": "jordan-reyes",
   "metadata[source]": "athlete-sponsorship-portal"
 };
-if (accounts.length !== 1 || account.idempotency !== "jordan-reyes-connect-account" || body.country !== required.country) process.exit(1);
+if (accounts.length !== 1 || account.idempotency !== "jordan-reyes-connect-account-direct-no-card-payments" || body.country !== required.country) process.exit(1);
 if (Object.entries(required).some(([key, value]) => body[key] !== value)) process.exit(1);
+if (Object.keys(body).some((key) => key.startsWith("capabilities["))) process.exit(1);
 if (Object.hasOwn(body, "type") || Object.hasOwn(body, "business_profile[url]")) process.exit(1);
 if (!links.length || links.some((row) => {
   const b = row.body || {};
@@ -104,7 +104,7 @@ fi
 echo "3. status and signed onboarding callbacks"
 STATUS_CODE=$(curl -sS -o "$TMP_DIR/status.json" -w '%{http_code}' "$BASE/api/jordan-reyes/connect/status" -H "authorization: Bearer $ADMIN_TOKEN")
 check "Jordan status endpoint responds" "$STATUS_CODE" "200"
-if node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(s.ready===false&&s.status.currentlyDue.length>0?0:1)' "$TMP_DIR/status.json"; then
+if node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(s.ready===false&&s.status.cardPayments==="inactive"&&s.status.currentlyDue.length>0?0:1)' "$TMP_DIR/status.json"; then
   echo "  ok   not-ready status includes outstanding requirements"
 else
   echo "  FAIL not-ready status includes outstanding requirements"
@@ -148,7 +148,7 @@ else
 fi
 STATUS_CODE=$(curl -sS -o "$TMP_DIR/status-ready.json" -w '%{http_code}' "$BASE/api/jordan-reyes/connect/status" -H "authorization: Bearer $ADMIN_TOKEN")
 check "ready status endpoint responds" "$STATUS_CODE" "200"
-if node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(s.ready===true&&s.status.currentlyDue.length===0?0:1)' "$TMP_DIR/status-ready.json"; then
+if node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(s.ready===true&&s.status.cardPayments==="active"&&s.status.currentlyDue.length===0?0:1)' "$TMP_DIR/status-ready.json"; then
   echo "  ok   mock readiness transition is visible"
 else
   echo "  FAIL mock readiness transition is visible"
@@ -158,7 +158,7 @@ RETURN_CODE=$(curl -sS -o "$TMP_DIR/return-ready.html" -w '%{http_code}' "$BASE/
 check "ready return page responds" "$RETURN_CODE" "200"
 if grep -Fq "Sponsors can bid" "$TMP_DIR/return-ready.html"; then echo "  ok   ready return page confirms bidding can open"; else echo "  FAIL ready return page confirms bidding can open"; FAIL=1; fi
 
-echo "4. bid and invoice destination behavior"
+echo "4. direct-charge invoice behavior"
 JORDAN_CODE=$(curl -sS -o "$TMP_DIR/jordan-bid.json" -w '%{http_code}' -X POST "$BASE/api/jordan-reyes/bids" -H 'content-type: application/json' -H "x-preview-token: $PREVIEW_TOKEN" -d "$JORDAN_BODY")
 check "ready Jordan bid is accepted" "$JORDAN_CODE" "200"
 JORDAN_LOCK='{"id":"TR-R1","type":"lock","amount":0,"company":"Jordan Lock Co","name":"Jordan Locker","email":"jordan-lock@example.test"}'
@@ -171,20 +171,34 @@ if node - "$MOCK_LOG" "$ACCOUNT_ID" <<'NODE'
 const fs = require("fs");
 const [file, accountId] = process.argv.slice(2);
 const rows = fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map(JSON.parse);
+const searches = rows.filter((r) => r.method === "GET" && r.path === "/v1/customers/search");
+const customers = rows.filter((r) => r.method === "POST" && r.path === "/v1/customers");
 const invoices = rows.filter((r) => r.method === "POST" && r.path === "/v1/invoices");
-const jordan = invoices.find((r) => r.body?.["metadata[tenant]"] === "jordan-reyes")?.body;
-const michael = invoices.find((r) => r.body?.["metadata[tenant]"] === "michael-heckert")?.body;
-if (!jordan || jordan["transfer_data[destination]"] !== accountId ||
-    jordan.application_fee_amount !== "15000" ||
-    jordan["metadata[platform_fee_percent]"] !== "10") process.exit(1);
-if (!michael || Object.hasOwn(michael, "transfer_data[destination]") ||
-    Object.hasOwn(michael, "application_fee_amount") ||
-    Object.hasOwn(michael, "metadata[platform_fee_percent]")) process.exit(1);
+const invoiceItems = rows.filter((r) => r.method === "POST" && r.path === "/v1/invoiceitems");
+const finalizes = rows.filter((r) => r.method === "POST" && /^\/v1\/invoices\/in_\d+\/finalize$/.test(r.path));
+const jordan = invoices.find((r) => r.body?.["metadata[tenant]"] === "jordan-reyes");
+const michael = invoices.find((r) => r.body?.["metadata[tenant]"] === "michael-heckert");
+const jordanCustomer = customers.find((r) => r.body?.["metadata[tenant]"] === "jordan-reyes");
+const michaelCustomer = customers.find((r) => r.body?.["metadata[tenant]"] === "michael-heckert");
+const jordanItem = invoiceItems.find((r) => r.body?.["metadata[tenant]"] === "jordan-reyes");
+const michaelItem = invoiceItems.find((r) => r.body?.["metadata[tenant]"] === "michael-heckert");
+if (searches.length !== 2 || !jordanCustomer || !michaelCustomer || !jordan || !michael ||
+    !jordanItem || !michaelItem || finalizes.length !== 2) process.exit(1);
+if ([searches[0], jordanCustomer, jordan, jordanItem, finalizes[0]].some((r) => r.stripeAccount !== accountId)) process.exit(1);
+if ([searches[1], michaelCustomer, michael, michaelItem, finalizes[1]].some((r) => r.stripeAccount !== null)) process.exit(1);
+if (jordan.body?.application_fee_amount !== "15000" ||
+    jordan.body?.["metadata[connected_account]"] !== accountId ||
+    jordan.body?.["metadata[platform_fee_percent]"] !== "10" ||
+    Object.hasOwn(jordan.body || {}, "transfer_data[destination]")) process.exit(1);
+if (Object.hasOwn(michael.body || {}, "transfer_data[destination]") ||
+    Object.hasOwn(michael.body || {}, "application_fee_amount") ||
+    Object.hasOwn(michael.body || {}, "metadata[connected_account]") ||
+    Object.hasOwn(michael.body || {}, "metadata[platform_fee_percent]")) process.exit(1);
 NODE
 then
-  echo "  ok   Connect invoice has destination and 10% fee; Michael invoice stays platform-only"
+  echo "  ok   Connect Stripe calls are account-scoped with a 10% fee; Michael stays platform-only"
 else
-  echo "  FAIL Connect vs platform invoice parameters"
+  echo "  FAIL Connect vs platform Stripe call parameters"
   FAIL=1
 fi
 
