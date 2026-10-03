@@ -46,4 +46,4 @@ export default async function portal(req, context) {
   return new Response(html, { headers });
 }
 
-export const config = { path: ["/:slug", "/:slug/"], preferStatic: true };
+export const config = { path: ["/:slug", "/:slug/"], excludedPath: ["/dashboard", "/dashboard/"], preferStatic: true };

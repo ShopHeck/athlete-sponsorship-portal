@@ -152,6 +152,7 @@ function placementSummary(placement, record, soldDetail) {
     sponsor: soldDetail?.sponsor || record?.lockedBy?.company || null,
     soldSource: soldDetail?.source || null,
     soldAmount: soldDetail?.amount ?? null,
+    soldNote: soldDetail?.note || null,
     invoice: invoice ? {
       status: invoice.status || null,
       number: invoice.number || null,
@@ -216,7 +217,7 @@ async function summary(req, slug) {
       status: tenant.status,
       eventName: tenant.event.name,
       portalUrl,
-      embedCode: `<iframe src="${portalUrl}" title="${tenant.copy.embedTitle}" loading="lazy" allow="fullscreen" style="width:100%;height:900px;border:0"></iframe>`,
+      embedCode: `<iframe src="${escapeHtml(portalUrl)}" title="${escapeHtml(tenant.copy.embedTitle)}" loading="lazy" allow="fullscreen" style="width:100%;height:900px;border:0"></iframe>`,
       currency: tenant.pricing.currency
     },
     pricing: {
@@ -404,7 +405,8 @@ export default async function dashboardApi(req) {
 
   const url = new URL(req.url);
   const parts = url.pathname.split("/").filter(Boolean).map((part) => decodeURIComponent(part));
-  if (req.method === "POST" && !sameOrigin(req)) return json({ error: "Forbidden" }, 403);
+  const adminRoute = parts.length === 4 && parts[3] === "link";
+  if (req.method === "POST" && !adminRoute && !sameOrigin(req)) return json({ error: "Forbidden" }, 403);
 
   if (parts.length === 3 && parts[0] === "api" && parts[1] === "dashboard") {
     if (parts[2] === "login") {
