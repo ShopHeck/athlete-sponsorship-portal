@@ -2,6 +2,8 @@ import path from "node:path";
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])$/;
 const PLACEMENT_SIDES = new Set(["front", "back", "left", "right"]);
+export const RESERVED_SLUGS = new Set(["api", "tenants", "assets", "admin", "dashboard", "static"]);
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function validateConfig(config, filename) {
   if (!config || typeof config !== "object" || Array.isArray(config)) {
@@ -9,6 +11,9 @@ export function validateConfig(config, filename) {
   }
   if (typeof config.slug !== "string" || !SLUG_PATTERN.test(config.slug)) {
     throw new Error(`invalid tenant slug: ${config.slug}`);
+  }
+  if (RESERVED_SLUGS.has(config.slug)) {
+    throw new Error(`tenant slug ${config.slug} is reserved`);
   }
   if (filename && path.basename(filename) !== `${config.slug}.json`) {
     throw new Error(`tenant filename ${path.basename(filename)} must match slug ${config.slug}`);
@@ -42,6 +47,11 @@ export function validateConfig(config, filename) {
   }
   if (!Array.isArray(config.embedOrigins) || config.embedOrigins.some((origin) => typeof origin !== "string")) {
     throw new Error(`tenant ${config.slug} embedOrigins must be an array of strings`);
+  }
+  if (config.contact?.dashboardEmails !== undefined &&
+      (!Array.isArray(config.contact.dashboardEmails) ||
+       config.contact.dashboardEmails.some((email) => typeof email !== "string" || !EMAIL_PATTERN.test(email.trim())))) {
+    throw new Error(`tenant ${config.slug} contact.dashboardEmails must be an array of email addresses`);
   }
   if (!Array.isArray(config.garments) || config.garments.length === 0) {
     throw new Error(`tenant ${config.slug} needs at least one garment`);
