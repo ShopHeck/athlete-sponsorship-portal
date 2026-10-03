@@ -1,3 +1,5 @@
+import { connectForTenant } from "./connect.mjs";
+
 const STRIPE_API = process.env.STRIPE_API_BASE || "https://api.stripe.com";
 const RESEND_API = process.env.RESEND_API_BASE || "https://api.resend.com";
 
@@ -193,6 +195,7 @@ export function forTenant(config, { portalUrl }) {
   }
 
   const stripeEnabled = () => Boolean(process.env.STRIPE_SECRET_KEY);
+  const connect = connectForTenant(config, { stripe, portalUrl });
 
   async function findOrCreateCustomer(bidder, id) {
     const email = bidder.email.replace(/'/g, "\\'");
@@ -213,11 +216,27 @@ export function forTenant(config, { portalUrl }) {
     }, `${config.slug}-cust-${id}-${bidder.email}`);
   }
 
-  async function createInvoice({ id, amount, bidder, kind, at }) {
+  async function createInvoice({ id, amount, bidder, kind, at, connectAccountId }) {
+    if (config.payments.mode === "connect" && !connectAccountId) {
+      const readiness = await connect.readiness();
+      if (!readiness.ready) throw new Error("Connected account not ready for payouts");
+      connectAccountId = readiness.accountId;
+    }
     const customer = await findOrCreateCustomer(bidder, id);
     const label = describePlacement(id);
     const seed = `${config.slug}-${id}-${kind}-${amount}-${bidder.email}-${at}`.replace(/[^a-zA-Z0-9@.\-_]/g, "_").slice(0, 255);
     const tenantMetadata = { tenant: config.slug, source: "athlete-sponsorship-portal" };
+    const invoiceMetadata = {
+      placement: id,
+      placement_label: label,
+      kind,
+      contact_name: bidder.name,
+      contact_email: bidder.email,
+      company: bidder.company,
+      portal: portalUrl,
+      ...tenantMetadata,
+      ...(config.payments.mode === "connect" ? { platform_fee_percent: String(config.payments.feePercent) } : {})
+    };
     const draft = await stripe("POST", "invoices", {
       customer: customer.id,
       collection_method: "send_invoice",
@@ -232,16 +251,11 @@ export function forTenant(config, { portalUrl }) {
         source: config.copy.invoiceSource
       }),
       footer: config.copy.invoiceFooter,
-      metadata: {
-        placement: id,
-        placement_label: label,
-        kind,
-        contact_name: bidder.name,
-        contact_email: bidder.email,
-        company: bidder.company,
-        portal: portalUrl,
-        ...tenantMetadata
-      }
+      metadata: invoiceMetadata,
+      ...(config.payments.mode === "connect" ? {
+        transfer_data: { destination: connectAccountId },
+        application_fee_amount: connect.feeAmount(Math.round(amount * 100))
+      } : {})
     }, `${seed}-inv`);
     await stripe("POST", "invoiceitems", {
       customer: customer.id,
@@ -273,6 +287,35 @@ export function forTenant(config, { portalUrl }) {
   async function invoicePlacement(store, id, rec, kind) {
     const storageKey = `${config.slug}/${id}`;
     if (rec.invoice?.status === "sent") return rec;
+    let connectReadiness;
+    if (config.payments.mode === "connect") {
+      try {
+        connectReadiness = await connect.readiness();
+      } catch (err) {
+        console.error("Connect readiness check failed", config.slug, err);
+        connectReadiness = { ready: false };
+      }
+      if (!connectReadiness.ready) {
+        const bidder = rec.bidder;
+        rec.invoice = {
+          status: "failed",
+          error: "Connected account not ready for payouts",
+          kind,
+          at: new Date().toISOString(),
+          attempts: (rec.invoice?.attempts || 0) + 1
+        };
+        await store.setJSON(storageKey, rec);
+        await notifyOwner(`${id} · invoice NOT created · ${bidder.company}`, [
+          `Placement: ${id} — ${describePlacement(id)}`,
+          `Action: ${kind === "lock" ? "LOCKED" : "WON"} for ${usd(rec.high)}`,
+          `Company: ${bidder.company}`,
+          `Contact: ${bidder.name} <${bidder.email}>`,
+          "",
+          "Connected account not ready for payouts. No invoice was created; the close-auction job will retry."
+        ]);
+        return rec;
+      }
+    }
     if (!stripeEnabled()) {
       rec.invoice = { status: "skipped", reason: "STRIPE_SECRET_KEY not set", kind, at: new Date().toISOString() };
       await store.setJSON(storageKey, rec);
@@ -289,7 +332,7 @@ export function forTenant(config, { portalUrl }) {
     const bidder = rec.bidder;
     const at = rec.lockedAt || rec.closedAt || new Date().toISOString();
     try {
-      rec.invoice = await createInvoice({ id, amount: rec.high, bidder, kind, at });
+      rec.invoice = await createInvoice({ id, amount: rec.high, bidder, kind, at, connectAccountId: connectReadiness?.accountId });
       await store.setJSON(storageKey, rec);
     } catch (err) {
       console.error("invoice failed", id, err);
@@ -357,6 +400,7 @@ export function forTenant(config, { portalUrl }) {
     invoiceEmail,
     placementLink,
     formatDeadline,
+    connect,
     stripeEnabled,
     createInvoice,
     invoicePlacement

@@ -22,7 +22,7 @@ const accentColor = new THREE.Color(config.brand.accent);
 const formatCopy = (template, values = {}) => String(template).replace(/\{([A-Za-z][A-Za-z0-9]*)\}/g, (_, key) => values[key] ?? "");
 
 const SIDE_AZIMUTH = { front: 0, back: Math.PI, left: Math.PI / 2, right: -Math.PI / 2 };
-const state = { garment: garments[0].id, selected: firstPlacement.id, hovered: null, logos: {}, logoImages: {}, sold: {}, soldImages: {}, bidImages: {}, azimuth: 0, bids: {}, auction: { minBid: config.pricing.minBid, increment: config.pricing.increment, lockPrice: config.pricing.lockPrice, deadline: config.pricing.deadline, online: false } };
+const state = { garment: garments[0].id, selected: firstPlacement.id, hovered: null, logos: {}, logoImages: {}, sold: {}, soldImages: {}, bidImages: {}, azimuth: 0, bids: {}, auction: { minBid: config.pricing.minBid, increment: config.pricing.increment, lockPrice: config.pricing.lockPrice, deadline: config.pricing.deadline, online: false, paymentsReady: true } };
 const BIDS_URL = `/api/${config.slug}/bids`;
 const previewHeaders = config.previewToken ? { "x-preview-token": config.previewToken } : {};
 const isLocked = (id) => Boolean(state.bids[id]?.locked || state.bids[id]?.closed);
@@ -425,9 +425,11 @@ function renderSelection() {
 }
 function renderSlots() { slotMeshes.forEach(drawSlot); }
 function renderBidPanel(spot, bid) {
-  const { minBid, increment, lockPrice, online } = state.auction;
+  const { minBid, increment, lockPrice, online, paymentsReady } = state.auction;
   const floor = minimumBid(spot.id);
-  if (bid?.high) {
+  if (!paymentsReady) {
+    bidMeta.textContent = config.copy.paymentsPending;
+  } else if (bid?.high) {
     bidHigh.textContent = usd(bid.high);
     bidMeta.textContent = `${bid.company ? bid.company + " · " : ""}${bid.count} ${bid.count === 1 ? config.copy.bidCountOne : config.copy.bidCountMany} · ${online ? formatCopy(config.copy.nextBid, { amount: usd(floor) }) : config.copy.offline}`;
   } else {
@@ -442,7 +444,7 @@ function renderBidPanel(spot, bid) {
   lockPriceEl.textContent = usd(lockPrice);
   if (!submitBid.busy) {
     lockLabel.textContent = formatCopy(config.copy.lockLabel, { price: usd(lockPrice) });
-    bidButton.disabled = lockButton.disabled = !online;
+    bidButton.disabled = lockButton.disabled = !online || !paymentsReady;
   }
   if (switched) bidError.hidden = true;
   if (state.auction.deadline) {
@@ -581,7 +583,7 @@ async function loadBids() {
     const res = await fetch(BIDS_URL, { cache: "no-store", headers: previewHeaders, signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(8000) : undefined });
     if (!res.ok) throw new Error(res.statusText);
     const data = await res.json();
-    state.auction = { minBid: data.minBid, increment: data.increment, lockPrice: data.lockPrice, deadline: data.deadline, online: true };
+    state.auction = { minBid: data.minBid, increment: data.increment, lockPrice: data.lockPrice, deadline: data.deadline, online: true, paymentsReady: data.paymentsReady ?? true };
     state.bids = data.placements || {};
     await loadBidLogos();
   } catch (err) {
@@ -674,7 +676,7 @@ async function submitBid(type) {
   } finally {
     submitBid.busy = false;
     busy.textContent = label;
-    bidButton.disabled = lockButton.disabled = !state.auction.online;
+    bidButton.disabled = lockButton.disabled = !state.auction.online || !state.auction.paymentsReady;
   }
 }
 bidForm.addEventListener("submit", (e) => { e.preventDefault(); submitBid("bid"); });

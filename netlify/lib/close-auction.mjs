@@ -11,6 +11,13 @@ import { forTenant } from "./sponsorship.mjs";
 --------------------------------------------------------------------------- */
 export async function closeAuction(tenant, { portalUrl, force = false } = {}) {
   const services = forTenant(tenant, { portalUrl });
+  if (services.connect.mode === "connect") {
+    try {
+      await services.connect.refreshStatus();
+    } catch (err) {
+      console.error("Connect status refresh failed", tenant.slug, err);
+    }
+  }
   const store = getStore({ name: "bids", consistency: "strong" });
   const prefix = `${tenant.slug}/`;
   const sold = await services.soldPlacements();
