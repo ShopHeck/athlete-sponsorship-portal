@@ -202,21 +202,21 @@ JORDAN_GET=$(curl -sS -H "x-preview-token: $PREVIEW_TOKEN" "$BASE/api/jordan-rey
 printf '%s' "$JORDAN_GET" > "$TMP_DIR/jordan-unpaid.json"
 json_check "rejected Jordan events leave placement unpaid" "$TMP_DIR/jordan-unpaid.json" 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(j.placements["TR-L2"]?.paid===false?0:1)'
 
-MICHAEL_LOCK='{"id":"SB-R1","type":"lock","amount":0,"company":"Webhook Michael Co","name":"Michael Tester","email":"webhook-michael@example.test"}'
-MICHAEL_LOCK_CODE=$(curl -sS -o "$TMP_DIR/michael-lock.json" -w '%{http_code}' -X POST "$BASE/api/michael-heckert/bids" \
-  -H 'content-type: application/json' -d "$MICHAEL_LOCK")
-check "Michael platform lock creates an invoice" "$MICHAEL_LOCK_CODE" "200"
-MICHAEL_INVOICE=$(invoice_id michael-heckert SB-R1)
-write_invoice_event "$TMP_DIR/event.json" "$MICHAEL_INVOICE" michael-heckert SB-R1 yes acct_wrong
+FIXTURE_LOCK='{"id":"SB-R1","type":"lock","amount":0,"company":"Webhook Fixture Co","name":"Fixture Tester","email":"webhook-fixture@example.test"}'
+FIXTURE_LOCK_CODE=$(curl -sS -o "$TMP_DIR/fixture-lock.json" -w '%{http_code}' -X POST "$BASE/api/platform-fixture/bids" \
+  -H 'content-type: application/json' -d "$FIXTURE_LOCK")
+check "platform fixture lock creates an invoice" "$FIXTURE_LOCK_CODE" "200"
+FIXTURE_INVOICE=$(invoice_id platform-fixture SB-R1)
+write_invoice_event "$TMP_DIR/event.json" "$FIXTURE_INVOICE" platform-fixture SB-R1 yes acct_wrong
 post_signed "$PLATFORM_SECRET" "$(date +%s)"
 check "platform invoice event with account is ignored" "$LAST_CODE" "200"
 if printf '%s' "$LAST_BODY" | grep -Fq '"ignored":"account"'; then echo "  ok   platform account mismatch response"; else echo "  FAIL platform account mismatch response"; FAIL=1; fi
-write_invoice_event "$TMP_DIR/event.json" "$MICHAEL_INVOICE" michael-heckert SB-R1 no ""
+write_invoice_event "$TMP_DIR/event.json" "$FIXTURE_INVOICE" platform-fixture SB-R1 no ""
 post_signed "$PLATFORM_SECRET" "$(date +%s)"
 check "platform invoice event without account is handled" "$LAST_CODE" "200"
-MICHAEL_GET=$(curl -sS "$BASE/api/michael-heckert/bids")
-printf '%s' "$MICHAEL_GET" > "$TMP_DIR/michael-paid.json"
-json_check "Michael public bid shows paid" "$TMP_DIR/michael-paid.json" 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(j.placements["SB-R1"]?.paid===true?0:1)'
+FIXTURE_GET=$(curl -sS "$BASE/api/platform-fixture/bids")
+printf '%s' "$FIXTURE_GET" > "$TMP_DIR/fixture-paid.json"
+json_check "platform fixture public bid shows paid" "$TMP_DIR/fixture-paid.json" 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(j.placements["SB-R1"]?.paid===true?0:1)'
 
 echo "4. deauthorization and unknown event handling"
 write_account_event "$TMP_DIR/event.json" "account.application.deauthorized" "$ACCOUNT_ID" ""

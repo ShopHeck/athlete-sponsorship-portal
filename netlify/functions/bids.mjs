@@ -49,6 +49,10 @@ export default async (req, context) => {
   const slug = context.params?.slug || "";
   const tenant = await resolveTenantForApi(req, context);
   if (!tenant) return json({ error: "Tenant not found." }, 404);
+  if (req.method !== "GET" && req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (tenant.showcase && req.method === "POST") {
+    return json({ error: "Sponsorship for this event has closed." }, 409);
+  }
   const portalBase = (process.env.PLATFORM_URL || new URL(req.url).origin).replace(/\/+$/, "");
   const services = forTenant(tenant, { portalUrl: `${portalBase}/${slug}` });
   const {
@@ -60,7 +64,6 @@ export default async (req, context) => {
   const prefix = `${slug}/`;
   const storageKey = (id) => `${prefix}${id}`;
 
-  if (req.method !== "GET" && req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   if (tenant.status === "closed" && req.method === "POST") return json({ error: "Bidding is closed." }, 409);
   if (req.method === "POST" && !(await services.connect.readiness()).ready) {
     return json({ error: tenant.copy.paymentsPending }, 409);
@@ -92,7 +95,9 @@ export default async (req, context) => {
       };
     }
     const paymentsReady = (await services.connect.readiness()).ready;
-    return json({ minBid: MIN_BID, increment: INCREMENT, lockPrice: LOCK_PRICE, deadline: DEADLINE, paymentsReady, placements });
+    const payload = { minBid: MIN_BID, increment: INCREMENT, lockPrice: LOCK_PRICE, deadline: DEADLINE, paymentsReady, placements };
+    if (tenant.showcase) payload.closed = true;
+    return json(payload);
   }
 
   let body;

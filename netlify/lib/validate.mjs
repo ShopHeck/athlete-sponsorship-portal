@@ -4,6 +4,7 @@ const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])$/;
 const PLACEMENT_SIDES = new Set(["front", "back", "left", "right"]);
 export const RESERVED_SLUGS = new Set(["api", "tenants", "assets", "admin", "dashboard", "static"]);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const nonEmptyString = (value) => typeof value === "string" && Boolean(value.trim());
 
 export function validateConfig(config, filename) {
   if (!config || typeof config !== "object" || Array.isArray(config)) {
@@ -52,6 +53,34 @@ export function validateConfig(config, filename) {
       (!Array.isArray(config.contact.dashboardEmails) ||
        config.contact.dashboardEmails.some((email) => typeof email !== "string" || !EMAIL_PATTERN.test(email.trim())))) {
     throw new Error(`tenant ${config.slug} contact.dashboardEmails must be an array of email addresses`);
+  }
+  if (config.showcase !== undefined) {
+    const showcase = config.showcase;
+    if (!showcase || typeof showcase !== "object" || Array.isArray(showcase)) {
+      throw new Error(`tenant ${config.slug} showcase must be an object`);
+    }
+    for (const key of ["kicker", "headline", "body"]) {
+      if (!nonEmptyString(showcase[key])) {
+        throw new Error(`tenant ${config.slug} showcase.${key} must be a non-empty string`);
+      }
+    }
+    if (!Array.isArray(showcase.stats) || showcase.stats.length < 1 || showcase.stats.length > 4) {
+      throw new Error(`tenant ${config.slug} showcase.stats must contain one to four entries`);
+    }
+    for (const [index, stat] of showcase.stats.entries()) {
+      if (!stat || typeof stat !== "object" || Array.isArray(stat) ||
+          !nonEmptyString(stat.value) || !nonEmptyString(stat.label)) {
+        throw new Error(`tenant ${config.slug} showcase.stats[${index}] needs non-empty value and label strings`);
+      }
+    }
+    if (showcase.cta !== undefined) {
+      const { cta } = showcase;
+      if (!cta || typeof cta !== "object" || Array.isArray(cta) ||
+          !nonEmptyString(cta.label) || !nonEmptyString(cta.href) ||
+          (!cta.href.startsWith("/") && !cta.href.startsWith("https://"))) {
+        throw new Error(`tenant ${config.slug} showcase.cta needs a non-empty label and an href beginning with / or https://`);
+      }
+    }
   }
   if (!Array.isArray(config.garments) || config.garments.length === 0) {
     throw new Error(`tenant ${config.slug} needs at least one garment`);
