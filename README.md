@@ -86,6 +86,8 @@ in the tenant config, absent from its `sold` map, and with no existing local bid
   controls which sites may frame its portal.
 - `GET` and `POST /api/<slug>/bids` expose tenant-scoped bid data. Logo images are served from
   `/api/<slug>/logos/<id>`. Blobs stores remain named `bids` and `logos`, with keys prefixed by `<slug>/`.
+- `POST /api/apply` accepts founding-athlete applications, stores them in the strong-consistency `applications`
+  Blobs store, and rate-limits by a SHA-256 hash of the client IP.
 - `POST /api/<slug>/connect/onboard` and `GET /api/<slug>/connect/status` require the admin token. Connect tenants
   cannot accept bids until charges are enabled and `card_payments` is active. Their customers and invoices live on
   the connected account and are accessed with Stripe's `Stripe-Account` header.

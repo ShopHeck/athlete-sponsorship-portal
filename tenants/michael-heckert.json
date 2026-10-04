@@ -42,11 +42,23 @@
     "headline": "Sold out before fight night.",
     "body": "Michael sold every sponsorship placement on his fight shorts and walkout T-shirt for BKFC Fight Night Clearwater — even though the portal launched late in the campaign.",
     "stats": [
-      {"value": "12/12", "label": "Placements sold"},
-      {"value": "$1,100", "label": "Average per placement"},
-      {"value": "$13K+", "label": "Sponsorship raised"}
+      {
+        "value": "12/12",
+        "label": "Placements sold"
+      },
+      {
+        "value": "$1,100",
+        "label": "Average per placement"
+      },
+      {
+        "value": "$13K+",
+        "label": "Sponsorship raised"
+      }
     ],
-    "cta": {"label": "Get a portal like this", "href": "/"}
+    "cta": {
+      "label": "Get a portal like this",
+      "href": "/"
+    }
   },
   "poster": {
     "card": "backdrop/fight-poster.webp",
@@ -648,6 +660,30 @@
     "TB-01": {
       "sponsor": "Watchmen",
       "logo": "sponsors/watchmen.png"
+    },
+    "SB-R2": {
+      "sponsor": "Suited Ape Society",
+      "logo": "sponsors/suited-ape-society.png"
+    },
+    "SB-R1": {
+      "sponsor": "#BEASTMODE App",
+      "logo": "sponsors/beastmode.png"
+    },
+    "SB-R3": {
+      "sponsor": "PerGram App",
+      "logo": "sponsors/pergram.png"
+    },
+    "TF-07": {
+      "sponsor": "Suited Ape Society",
+      "logo": "sponsors/suited-ape-society.png"
+    },
+    "TF-08": {
+      "sponsor": "#BEASTMODE App",
+      "logo": "sponsors/beastmode-white.png"
+    },
+    "TF-09": {
+      "sponsor": "PerGram App",
+      "logo": "sponsors/pergram.png"
     }
   }
 }

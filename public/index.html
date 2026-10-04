@@ -4,23 +4,201 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080808">
-  <title>Athlete Sponsorship Portal</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <title>Athlete Sponsorship Portal — Sell every placement on your fight kit</title>
+  <meta name="description" content="A 360° 3D sponsorship portal built from your likeness. Sponsors pick a placement on your fight kit, bid or lock it in, and pay you directly through Stripe.">
+  <link rel="canonical" href="https://athletes.michaelheckert.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Athlete Sponsorship Portal">
+  <meta property="og:title" content="Sell every placement on your fight kit">
+  <meta property="og:description" content="12 of 12 placements sold, $13K+ raised. A 360° 3D sponsorship portal built from your likeness — sponsors bid, lock and pay you directly.">
+  <meta property="og:url" content="https://athletes.michaelheckert.com/">
+  <meta property="og:image" content="https://athletes.michaelheckert.com/assets/marketing/og.jpg">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>
-    :root { color-scheme: dark; font-family: Inter, Arial, sans-serif; background: #080808; color: #f5f1e8; }
-    body { min-height: 100vh; margin: 0; display: grid; place-items: center; }
-    main { max-width: 34rem; padding: 2rem; text-align: center; }
-    h1 { margin: 0 0 .75rem; font: 800 clamp(2.5rem, 8vw, 5rem)/.9 "Barlow Condensed", Impact, sans-serif; text-transform: uppercase; }
-    p { margin: 0; color: #9b9b94; font-size: .95rem; line-height: 1.6; }
-    h1 span { color: #f36a16; }
-  </style>
+  <link rel="stylesheet" href="/marketing.css">
+  <script type="module" src="/marketing.js"></script>
 </head>
 <body>
+  <header class="nav" id="top">
+    <a class="wordmark" href="/" aria-label="Athlete Sponsorship Portal home"><span class="wordmark-mark">ASP</span><span class="wordmark-text">Athlete Sponsorship Portal</span></a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#how">How it works</a>
+      <a href="#case-study">Case study</a>
+      <a href="#founding">Founding offer</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a class="btn btn--primary btn--sm" href="#apply">Apply</a>
+  </header>
+
   <main>
-    <h1>Athlete Sponsorship <span>Portal</span></h1>
-    <p>Explore athlete sponsorship experiences hosted on this platform.</p>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="kicker">For fighters and athletes</p>
+        <h1>Sell every<br>inch of your<br><em>fight kit.</em></h1>
+        <p class="lede">A 360° sponsorship portal built around a 3D model of you. Sponsors spin you around, pick a placement on your shorts or walkout shirt, bid or lock it in — and pay you directly.</p>
+        <div class="hero-actions">
+          <a class="btn btn--primary" href="#apply">Apply for a founding spot</a>
+          <a class="btn btn--ghost" href="/michael-heckert">See a sold-out portal</a>
+        </div>
+        <dl class="proof">
+          <div><dt>Placements sold</dt><dd>12/12</dd></div>
+          <div><dt>Average placement</dt><dd>$1,100</dd></div>
+          <div><dt>Raised for one fight</dt><dd>$13K+</dd></div>
+        </dl>
+      </div>
+      <figure class="hero-shot">
+        <div class="browser">
+          <div class="browser-bar"><i></i><i></i><i></i><span>athletes.michaelheckert.com/michael-heckert</span></div>
+          <img src="/assets/marketing/portal-hero.webp" width="1440" height="900" alt="Michael Heckert's sold-out sponsorship portal: a 3D model of Michael in his fight shorts and walkout shirt with every sponsor logo placed">
+        </div>
+        <figcaption>Michael Heckert · BKFC Fight Night Clearwater · every placement sold</figcaption>
+      </figure>
+    </section>
+
+    <section class="sponsors" aria-label="Brands that sponsored Michael Heckert">
+      <p class="kicker kicker--muted">Brands that bought placements on Michael's kit</p>
+      <ul class="sponsor-wall">
+        <li><img src="/tenants/michael-heckert/sponsors/boxrope.png" alt="Boxrope" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/ljc-construction.png" alt="LJC Construction" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/nitro.png" alt="Nitro" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/tummo-studios.png" alt="Tummo Studios" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/sammy-sharks.png" alt="Sammy Sharks" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/bluefitmd.png" alt="BluefitMD" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/mekkalabs.png" alt="Mekkalabs" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/babysnek.png" alt="BabySNEK" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/watchmen.png" alt="Watchmen" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/suited-ape-society.png" alt="Suited Ape Society" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/beastmode.png" alt="#BEASTMODE App" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/pergram.png" alt="PerGram App" loading="lazy"></li>
+      </ul>
+    </section>
+
+    <section class="section" id="how">
+      <header class="section-head">
+        <p class="kicker">How it works</p>
+        <h2>From a few phone photos<br>to a <em>sold-out kit.</em></h2>
+      </header>
+      <ol class="steps">
+        <li><span class="step-n">01</span><h3>Send your photos</h3><p>Guided front, back and side shots from your phone, checked instantly for blur, lighting and framing.</p></li>
+        <li><span class="step-n">02</span><h3>Approve your 3D likeness</h3><p>We build a realistic 3D model of you in your kit. You review it inside your real portal and approve it before anyone else sees it.</p></li>
+        <li><span class="step-n">03</span><h3>Sponsors pick their spot</h3><p>Every placement on your shorts and walkout shirt is mapped in 3D. Sponsors preview their logo on you, bid, or lock a placement instantly.</p></li>
+        <li><span class="step-n">04</span><h3>Get paid directly</h3><p>Winning sponsors are invoiced from your own Stripe account, and payouts go straight to you.</p></li>
+      </ol>
+    </section>
+
+    <section class="section section--split">
+      <figure class="feature-shot">
+        <img src="/assets/marketing/placement-closeup.webp" width="1440" height="900" alt="A selected sponsor placement on the 3D fight shorts with its print size and sponsor shown in a callout" loading="lazy">
+      </figure>
+      <div>
+        <header class="section-head">
+          <p class="kicker">Built to close sponsors</p>
+          <h2>A pitch that sells<br><em>itself.</em></h2>
+        </header>
+        <ul class="features">
+          <li><h3>Real-time 360° 3D</h3><p>Sponsors see exactly where their logo sits, at print size, on a model that looks like you — not a flat mock-up.</p></li>
+          <li><h3>Live bidding + Lock It Now</h3><p>Opening bids, increments and a fixed buy-now price create urgency, so placements sell before fight night.</p></li>
+          <li><h3>Your Stripe, your money</h3><p>Invoices come from your own Stripe account, and refunds and chargebacks stay with you and Stripe.</p></li>
+          <li><h3>Your dashboard</h3><p>Every bid with sponsor contact details, CSV export, offline sales and payout status in one place.</p></li>
+          <li><h3>One-line embed</h3><p>Drop the portal into your own website, or share your link anywhere.</p></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section case" id="case-study">
+      <div class="case-copy">
+        <p class="kicker">Case study · BKFC Fight Night Clearwater</p>
+        <h2>Sold out before<br><em>fight night.</em></h2>
+        <p>Michael “King Killer” Heckert put every sponsor placement on his fight shorts and walkout T-shirt into his portal, and every one sold — even though the portal launched late in his campaign.</p>
+        <a class="btn btn--ghost" href="/michael-heckert">Explore Michael's portal in 3D</a>
+      </div>
+      <dl class="case-stats">
+        <div><dd>12/12</dd><dt>Placements sold</dt></div>
+        <div><dd>$1,100</dd><dt>Average per placement</dt></div>
+        <div><dd>$13K+</dd><dt>Sponsorship raised</dt></div>
+        <div><dd>9</dd><dt>Brands on one kit</dt></div>
+      </dl>
+    </section>
+
+    <section class="section founding" id="founding">
+      <div class="founding-card">
+        <p class="kicker">Founding Athlete program · 10 spots</p>
+        <h2>We build it. You fight.<br><em>$0 setup.</em></h2>
+        <p class="lede">We're opening the platform with ten founding athletes. We build your entire portal before we talk, then walk you through it live.</p>
+        <ul class="checklist">
+          <li>Your realistic 3D likeness, built from your photos</li>
+          <li>Your placement map, pricing and Lock It Now strategy</li>
+          <li>Your fight poster, colours and ring on the stage</li>
+          <li>Stripe payouts set up on your own account</li>
+          <li>A live walkthrough call and launch support</li>
+        </ul>
+        <div class="founding-price">
+          <div><strong>$0</strong><span>Setup</span></div>
+          <div><strong>10%</strong><span>Of sponsorship you collect</span></div>
+        </div>
+        <a class="btn btn--primary" href="#apply">Apply for a founding spot</a>
+      </div>
+    </section>
+
+    <section class="section faq" id="faq">
+      <header class="section-head">
+        <p class="kicker">FAQ</p>
+        <h2>Questions athletes ask.</h2>
+      </header>
+      <div class="faq-list">
+        <details><summary>How does the 3D model look so much like me?</summary><p>We generate it from your guided photos, then you approve it inside your private portal preview. If it isn't right, you can rebuild before anything goes live.</p></details>
+        <details><summary>Who pays the card fees, refunds and chargebacks?</summary><p>Sponsors pay invoices on your own Stripe account. Stripe's processing fees come out of those payments, and refunds and chargebacks are handled on your account. Our fee is taken automatically from each payment.</p></details>
+        <details><summary>Do sponsors need an account?</summary><p>No. Sponsors pick a placement, enter their company and email, and bid or lock it. Winners receive a Stripe invoice by email.</p></details>
+        <details><summary>My promotion has sponsor rules. Is that a problem?</summary><p>No. You choose which placements are offered and confirm final artwork personally before anything is printed or shown.</p></details>
+        <details><summary>Can I put the portal on my own website?</summary><p>Yes. Every portal has a one-line embed code, and its own link to share on social media.</p></details>
+        <details><summary>What sports does it work for?</summary><p>We're starting with combat sports — bare knuckle, MMA, boxing, Muay Thai and kickboxing — because kit placements are a proven sponsorship format there. Apply if you compete in something else; we'd like to hear from you.</p></details>
+      </div>
+    </section>
+
+    <section class="section apply" id="apply">
+      <header class="section-head">
+        <p class="kicker">Apply</p>
+        <h2>Claim a <em>founding spot.</em></h2>
+        <p class="lede">Tell us about your next event. We reply personally to every application.</p>
+      </header>
+      <form class="apply-form" id="applyForm" novalidate>
+        <label><span>Full name</span><input name="name" autocomplete="name" required maxlength="120"></label>
+        <label><span>Email</span><input name="email" type="email" autocomplete="email" required maxlength="200"></label>
+        <label><span>Phone <small>(optional)</small></span><input name="phone" type="tel" autocomplete="tel" maxlength="40"></label>
+        <label><span>Instagram or social handle</span><input name="social" required maxlength="120" placeholder="@yourhandle"></label>
+        <label><span>Sport</span>
+          <select name="sport" required>
+            <option value="">Choose one</option>
+            <option>Bare knuckle</option>
+            <option>MMA</option>
+            <option>Boxing</option>
+            <option>Muay Thai / kickboxing</option>
+            <option>Other</option>
+          </select>
+        </label>
+        <label><span>Promotion or team</span><input name="promotion" maxlength="120" placeholder="e.g. BKFC"></label>
+        <label><span>Next event</span><input name="event" maxlength="160" placeholder="Event name and city"></label>
+        <label><span>Event date</span><input name="eventDate" type="date"></label>
+        <label class="full"><span>Anything else? <small>(optional)</small></span><textarea name="message" rows="4" maxlength="1000" placeholder="Current sponsors, audience, what you want from the portal"></textarea></label>
+        <label class="hp" aria-hidden="true">Company website<input name="website" tabindex="-1" autocomplete="off"></label>
+        <p class="form-legal full">By applying you agree to our <a href="/terms/">Terms</a> and <a href="/privacy/">Privacy Policy</a>.</p>
+        <p class="form-error full" id="applyError" role="alert" hidden></p>
+        <button class="btn btn--primary full" type="submit" id="applyButton">Send application</button>
+      </form>
+      <div class="apply-success" id="applySuccess" role="status" hidden>
+        <p class="kicker">Application received</p>
+        <h3>Thanks — we'll be in touch.</h3>
+        <p>We reply personally to every founding application, usually within a couple of days.</p>
+      </div>
+    </section>
   </main>
+
+  <footer class="footer">
+    <a class="wordmark" href="/"><span class="wordmark-mark">ASP</span><span class="wordmark-text">Athlete Sponsorship Portal</span></a>
+    <nav aria-label="Legal"><a href="/terms/">Terms</a><a href="/privacy/">Privacy</a><a href="mailto:sponsors@michaelheckert.com">Contact</a><a href="/dashboard">Athlete sign in</a></nav>
+  </footer>
 </body>
 </html>

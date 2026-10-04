@@ -2,8 +2,8 @@ import path from "node:path";
 
 const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])$/;
 const PLACEMENT_SIDES = new Set(["front", "back", "left", "right"]);
-export const RESERVED_SLUGS = new Set(["api", "tenants", "assets", "admin", "dashboard", "static"]);
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const RESERVED_SLUGS = new Set(["api", "tenants", "assets", "admin", "dashboard", "static", "terms", "privacy"]);
+export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const nonEmptyString = (value) => typeof value === "string" && Boolean(value.trim());
 
 export function validateConfig(config, filename) {
