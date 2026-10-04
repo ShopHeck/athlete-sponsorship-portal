@@ -119,7 +119,6 @@ function notification(record) {
     ["Event", record.event],
     ["Event date", record.eventDate],
     ["Message", record.message],
-    ["Website", ""],
     ...(record.ref ? [["Ref", record.ref]] : [])
   ];
   const text = [`Application ID: ${record.id}`, ...fields.map(([label, value]) => `${label}: ${value || "—"}`)].join("\n");
