@@ -37,6 +37,7 @@ operating one. `reference/gotchas.md` first when debugging.
 - Base PRs on `main`; never stack. Verify the Netlify build is live after merging.
 - Placement IDs and labels live only in `tenants/<slug>.json` under `garments[].placements`; the build generates the server allowlist and labels from these configs.
 - Add a tenant with `tenants/<slug>.json` and `public/tenants/<slug>/` assets. Set `status` to `draft`, preview with `?preview=$PREVIEW_TOKEN`, and change it to `live` after approval. Draft preview pages pass the token to bid APIs; preview bids are real records scoped to that tenant.
+- Optional `ring.style` selects `"ropes"` (default) or `"octagon"`; `ring.backdrop` supplies a tenant arena image when no poster is configured.
 - A tenant with a `demo` block is a read-only showcase: bidding, locking, Connect onboarding, dashboard sales, Model Studio changes, and auction invoicing are disabled server-side.
 - Every tenant config requires `payments.mode` (`platform` or `connect`); Connect mode also sets `feePercent` and optional two-letter country. Connect uses direct charges; account creation requests `card_payments` and `transfers` because Stripe requires both. Bidding stays closed until charges are enabled and `card_payments` is active.
 - `POST /api/apply` stores founding-athlete applications in the strong-consistency `applications` Blobs store;

@@ -43,8 +43,11 @@
     "accentGradient": "#102627"
   },
   "model": "models/demo-mma-women.glb",
+  "modelFacing": "positive-z",
   "ring": {
     "enabled": true,
+    "style": "octagon",
+    "backdrop": "arena.webp",
     "padText": null,
     "ropeColors": ["#14a3a8", "#ffffff", "#000000", "#14a3a8"],
     "cornerColors": ["#14a3a8", "#d44860"],

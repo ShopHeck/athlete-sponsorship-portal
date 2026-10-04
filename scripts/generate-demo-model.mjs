@@ -2,6 +2,7 @@
 //   node scripts/generate-demo-model.mjs <spec.json> front   → text-to-image front view (~9 credits)
 //   node scripts/generate-demo-model.mjs <spec.json> views   → back/left/right from the front (~27 credits)
 //   node scripts/generate-demo-model.mjs <spec.json> model   → multi-image-to-3D + optimize (~35 credits)
+//   node scripts/generate-demo-model.mjs <spec.json> backdrop → optional arena backdrop photo (~9 credits)
 // Work files go to $DEMO_WORK_DIR/<slug>/ (default ~/demo-models-work); the optimized GLB is written to
 // public/tenants/<slug>/models/<slug>.glb.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -22,8 +23,8 @@ import { optimizeGlb } from "../netlify/lib/optimize-glb.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const [specPath, stage] = process.argv.slice(2);
-if (!specPath || !["front", "views", "model"].includes(stage)) {
-  console.error("usage: generate-demo-model.mjs <spec.json> front|views|model");
+if (!specPath || !["front", "views", "model", "backdrop"].includes(stage)) {
+  console.error("usage: generate-demo-model.mjs <spec.json> front|views|model|backdrop");
   process.exit(2);
 }
 const spec = JSON.parse(readFileSync(specPath, "utf8"));
@@ -57,6 +58,10 @@ if (stage === "front") {
   const id = await createTextToImage({ prompt: spec.front });
   writeFileSync(path.join(workDir, "front.task"), id);
   await saveImage(await poll("front", getTextToImage, id, 10 * 60_000), "front.png");
+} else if (stage === "backdrop") {
+  const id = await createTextToImage({ prompt: spec.backdrop, aspectRatio: "3:4", removeBackground: false });
+  writeFileSync(path.join(workDir, "backdrop.task"), id);
+  await saveImage(await poll("backdrop", getTextToImage, id, 10 * 60_000), "backdrop.png");
 } else if (stage === "views") {
   const front = dataUri("front.png");
   await Promise.all(Object.entries(spec.views).map(async ([angle, prompt]) => {

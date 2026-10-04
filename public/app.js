@@ -134,7 +134,10 @@ let userInteracted = false;
 controls.addEventListener("start", () => { controls.autoRotate = false; userInteracted = true; tween = null; });
 controls.addEventListener("change", invalidate);
 
-const arena = buildArena(scene, config.ring);
+const arena = buildArena(scene, config.ring, {
+  accentColor: config.brand.accent,
+  maxAnisotropy: renderer.capabilities.getMaxAnisotropy()
+});
 
 const key = new THREE.DirectionalLight(0xfff0dc, 2.5);
 key.position.set(2.5, 4.5, 3.5);
@@ -375,7 +378,9 @@ loader.load(
     });
     athlete.add(root);
     normalise(root);
-    if (!facesPositiveZ(meshes)) { root.rotateY(Math.PI); normalise(root); }
+    const frontFacesPositiveZ = config.modelFacing === "positive-z" ||
+      (config.modelFacing !== "negative-z" && facesPositiveZ(meshes));
+    if (!frontFacesPositiveZ) { root.rotateY(Math.PI); normalise(root); }
     buildSlots(meshes);
     renderer.shadowMap.needsUpdate = true;
     firstRender().then(() => { stage.classList.add("is-ready"); playIntro(); });

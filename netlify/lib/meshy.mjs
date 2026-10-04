@@ -73,15 +73,15 @@ export async function createImageToImage({ prompt, referenceImageUrls }) {
   return body.result;
 }
 
-export async function createTextToImage({ prompt }) {
+export async function createTextToImage({ prompt, aspectRatio = "9:16", removeBackground = true }) {
   const response = await apiRequest("/openapi/v1/text-to-image", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       ai_model: "nano-banana-pro",
       prompt,
-      aspect_ratio: "9:16",
-      remove_background: true
+      aspect_ratio: aspectRatio,
+      remove_background: removeBackground
     })
   });
   const body = await response.json();

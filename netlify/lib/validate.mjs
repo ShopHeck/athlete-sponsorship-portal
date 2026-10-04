@@ -49,6 +49,16 @@ export function validateConfig(config, filename) {
   if (config.demo !== undefined && config.showcase !== undefined) {
     throw new Error(`tenant ${config.slug} demo and showcase are mutually exclusive`);
   }
+  if (config.modelFacing !== undefined && !["auto", "positive-z", "negative-z"].includes(config.modelFacing)) {
+    throw new Error(`tenant ${config.slug} modelFacing must be auto, positive-z, or negative-z`);
+  }
+  if (config.ring?.style !== undefined && !["ropes", "octagon"].includes(config.ring.style)) {
+    throw new Error(`tenant ${config.slug} ring.style must be ropes or octagon`);
+  }
+  if (config.ring?.backdrop !== undefined &&
+      (typeof config.ring.backdrop !== "string" || !config.ring.backdrop.trim())) {
+    throw new Error(`tenant ${config.slug} ring.backdrop must be a non-empty string`);
+  }
   if (!Array.isArray(config.embedOrigins) || config.embedOrigins.some((origin) => typeof origin !== "string")) {
     throw new Error(`tenant ${config.slug} embedOrigins must be an array of strings`);
   }

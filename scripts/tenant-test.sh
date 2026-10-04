@@ -83,6 +83,13 @@ else
   echo "  FAIL demo page renders its body class, panel, and badge"
   FAIL=1
 fi
+if grep -Fq 'class="stage-backdrop is-arena"' "$TMP_DIR/demo.html" &&
+   grep -Fq '/tenants/demo-mma-women/arena.webp' "$TMP_DIR/demo.html"; then
+  echo "  ok   demo page renders its configured arena backdrop"
+else
+  echo "  FAIL demo page renders its configured arena backdrop"
+  FAIL=1
+fi
 
 if node --input-type=module -e '
   import { readFileSync } from "node:fs";
@@ -102,10 +109,26 @@ if node --input-type=module -e '
   } catch (error) {
     if (!error.message.includes("demo.bidNotice")) process.exit(1);
   }
+  const invalidRing = JSON.parse(JSON.stringify(demo));
+  invalidRing.ring.style = "hexagon";
+  try {
+    validateConfig(invalidRing);
+    process.exit(1);
+  } catch (error) {
+    if (!error.message.includes("ring.style")) process.exit(1);
+  }
+  const invalidModelFacing = JSON.parse(JSON.stringify(demo));
+  invalidModelFacing.modelFacing = "sideways";
+  try {
+    validateConfig(invalidModelFacing);
+    process.exit(1);
+  } catch (error) {
+    if (!error.message.includes("modelFacing")) process.exit(1);
+  }
 '; then
-  echo "  ok   demo schema rejects showcase overlap and missing required copy"
+  echo "  ok   demo schema rejects showcase overlap, missing copy, invalid ring style, and invalid model facing"
 else
-  echo "  FAIL demo schema rejects showcase overlap and missing required copy"
+  echo "  FAIL demo schema rejects showcase overlap, missing copy, invalid ring style, and invalid model facing"
   FAIL=1
 fi
 

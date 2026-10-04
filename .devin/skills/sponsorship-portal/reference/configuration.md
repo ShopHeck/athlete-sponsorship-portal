@@ -146,8 +146,12 @@ Global environment variables are reserved for platform/service operation: `STRIP
 The optional `poster` object configures the card image, two stage backdrop sizes, share image, alt text, and copy.
 Set `poster` to `null` to omit the card, dialog, backdrop, image preload, and poster-based Open Graph image.
 
-`model` points to a GLB. For consistent decal projection, the model should have a similar stance and face +Z. Ring
-configuration controls whether the arena is shown, pad text, rope colors, corner colors, and pad color.
+`model` points to a GLB. For consistent decal projection, the model should have a similar stance and face +Z.
+Optional `modelFacing` is `"auto"` (the default), `"positive-z"`, or `"negative-z"`; set a direction if the
+automatic pose detection does not orient a model correctly. Ring configuration controls whether the arena is shown,
+pad text, rope colors, corner colors, and pad color. Optional
+`ring.style` is `"ropes"` (the default) or `"octagon"`. `ring.backdrop` points to a tenant asset used as the stage
+background when there is no poster; a configured poster takes precedence.
 
 ## Adding and previewing a tenant
 

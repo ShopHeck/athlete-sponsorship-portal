@@ -18,6 +18,9 @@ export function resolveTenantAssets(config) {
       resolved.poster[key] = resolveAsset(resolved.slug, resolved.poster[key]);
     }
   }
+  if (resolved.ring?.backdrop) {
+    resolved.ring.backdrop = resolveAsset(resolved.slug, resolved.ring.backdrop);
+  }
   for (const entry of Object.values(resolved.sold || {})) {
     if (entry.logo) entry.logo = resolveAsset(resolved.slug, entry.logo);
   }
@@ -60,6 +63,8 @@ export function renderPortal(config, { template, version, portalUrl }) {
   const benefitItems = tenant.benefits.map((benefit) => `<li>${escapeHtml(benefit)}</li>`).join("\n                ");
   const posterPreload = tenant.poster
     ? `<link rel="preload" as="image" href="${escapeHtml(tenant.poster.stage900)}" imagesrcset="${escapeHtml(tenant.poster.stage900)} 900w, ${escapeHtml(tenant.poster.stage1500)} 1500w" imagesizes="(max-width: 820px) 100vw, 50vw">`
+    : tenant.ring?.backdrop
+      ? `<link rel="preload" as="image" href="${escapeHtml(tenant.ring.backdrop)}">`
     : "";
   const modelPreload = tenant.model
     ? `<link rel="preload" as="fetch" href="${escapeHtml(tenant.model)}" crossorigin="anonymous">`
@@ -82,6 +87,10 @@ export function renderPortal(config, { template, version, portalUrl }) {
   const stageBackdrop = tenant.poster
     ? `<div class="stage-backdrop" aria-hidden="true">
           <img src="${escapeHtml(tenant.poster.stage900)}" srcset="${escapeHtml(tenant.poster.stage900)} 900w, ${escapeHtml(tenant.poster.stage1500)} 1500w" sizes="(max-width: 820px) 100vw, 50vw" alt="" decoding="async" fetchpriority="high">
+        </div>`
+    : tenant.ring?.backdrop
+      ? `<div class="stage-backdrop is-arena" aria-hidden="true">
+          <img src="${escapeHtml(tenant.ring.backdrop)}" alt="" decoding="async" fetchpriority="high">
         </div>`
     : "";
   const posterDialog = tenant.poster
