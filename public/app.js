@@ -15,6 +15,7 @@ const THREE_ADDONS = "/vendor/three-0.170.0/addons/";
 const config = JSON.parse(document.getElementById("portal-config").textContent);
 const isStudio = Boolean(config.studio);
 const isShowcase = Boolean(config.showcase) && !isStudio;
+const isDemo = Boolean(config.demo) && !isStudio;
 const garments = config.garments;
 const allPlacements = garments.flatMap((garment) => garment.placements);
 const isConfiguredSold = (id) => Object.hasOwn(config.sold || {}, id);
@@ -67,6 +68,9 @@ const bidNote = document.getElementById("bidNote");
 const bidNoteText = document.getElementById("bidNote").firstChild;
 if (isStudio) {
   bidNoteText.data = "Preview only — bidding is disabled. ";
+  bidForm.querySelectorAll("input,button").forEach((control) => { control.disabled = true; });
+  lockButton.disabled = true;
+} else if (isDemo) {
   bidForm.querySelectorAll("input,button").forEach((control) => { control.disabled = true; });
   lockButton.disabled = true;
 }
@@ -534,7 +538,10 @@ function renderSlots() { slotMeshes.forEach(drawSlot); }
 function renderBidPanel(spot, bid) {
   const { minBid, increment, lockPrice, online, paymentsReady } = state.auction;
   const floor = minimumBid(spot.id);
-  if (isStudio) {
+  if (isDemo) {
+    bidHigh.textContent = config.copy.noBids;
+    bidMeta.textContent = `${formatCopy(config.copy.openingBid, { amount: usd(minBid) })} · ${config.demo.bidNotice}`;
+  } else if (isStudio) {
     bidMeta.textContent = "Preview only — bidding is disabled";
   } else if (!paymentsReady) {
     bidMeta.textContent = config.copy.paymentsPending;
@@ -553,10 +560,10 @@ function renderBidPanel(spot, bid) {
   lockPriceEl.textContent = usd(lockPrice);
   if (!submitBid.busy) {
     lockLabel.textContent = formatCopy(config.copy.lockLabel, { price: usd(lockPrice) });
-    bidButton.disabled = lockButton.disabled = isStudio || !online || !paymentsReady;
+    bidButton.disabled = lockButton.disabled = isStudio || isDemo || !online || !paymentsReady;
   }
   if (switched) bidError.hidden = true;
-  if (state.auction.deadline && !isStudio) {
+  if (state.auction.deadline && !isStudio && !isDemo) {
     const d = new Date(state.auction.deadline);
     bidNoteText.textContent = `${formatCopy(config.copy.bidNote, {
       minBid: usd(minBid),
@@ -724,7 +731,7 @@ openPlacementsBtn.addEventListener("click", () => {
 });
 /* ------------------------------------------------------------ bidding */
 async function loadBids() {
-  if (isStudio || isShowcase) return;
+  if (isStudio || isShowcase || isDemo) return;
   try {
     const res = await fetch(BIDS_URL, { cache: "no-store", headers: previewHeaders, signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(8000) : undefined });
     if (!res.ok) throw new Error(res.statusText);
@@ -751,8 +758,8 @@ async function loadBidLogos() {
 }
 // Gate the first render on live bids so we never land on a locked placement, but only briefly:
 // a slow or stalled API must not keep the viewer hidden. Polling keeps refreshing afterwards.
-const bidsReady = isStudio || isShowcase ? Promise.resolve() : Promise.race([loadBids(), new Promise((r) => setTimeout(r, 4000))]);
-if (!isStudio && !isShowcase) setInterval(loadBids, 30000);
+const bidsReady = isStudio || isShowcase || isDemo ? Promise.resolve() : Promise.race([loadBids(), new Promise((r) => setTimeout(r, 4000))]);
+if (!isStudio && !isShowcase && !isDemo) setInterval(loadBids, 30000);
 
 // Rasterise the previewed logo (max 800px, PNG) so it travels with the bid and survives a refresh.
 function logoDataUrl(id) {
@@ -789,7 +796,7 @@ function showBidSuccess(spot, data, locked, email) {
   bidSuccess.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 async function submitBid(type) {
-  if (isStudio || isShowcase) return;
+  if (isStudio || isShowcase || isDemo) return;
   const spot = findPlacement();
   if (isSold(spot.id)) return;
   const f = bidForm.elements;

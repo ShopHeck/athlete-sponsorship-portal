@@ -457,6 +457,7 @@ async function exportCsv(req, slug) {
 async function markSold(req, slug, id) {
   const tenant = await getTenant(slug);
   if (!tenant) return json({ error: "Tenant not found." }, 404);
+  if (tenant.demo) return json({ error: "Demo portals cannot change placements." }, 409);
   const session = sessionFor(req, slug);
   if (!session) return json({ error: "Sign in required" }, 401);
   let body;
@@ -502,6 +503,7 @@ async function markSold(req, slug, id) {
 async function releaseSale(req, slug, id) {
   const tenant = await getTenant(slug);
   if (!tenant) return json({ error: "Tenant not found." }, 404);
+  if (tenant.demo) return json({ error: "Demo portals cannot change placements." }, 409);
   const session = sessionFor(req, slug);
   if (!session) return json({ error: "Sign in required" }, 401);
   if (Object.hasOwn(tenant.sold || {}, id)) {
@@ -520,6 +522,7 @@ async function releaseSale(req, slug, id) {
 async function connectOnboard(req, slug) {
   const tenant = await getTenant(slug);
   if (!tenant) return json({ error: "Tenant not found." }, 404);
+  if (tenant.demo) return json({ error: "Demo portals cannot use Stripe Connect." }, 409);
   if (!sessionFor(req, slug)) return json({ error: "Sign in required" }, 401);
   if (tenant.payments.mode !== "connect") return json({ error: "Tenant does not use Stripe Connect." }, 400);
   const services = forTenant(tenant, { portalUrl: `${platformUrl(req)}/${tenant.slug}` });
@@ -572,6 +575,7 @@ async function updateOnboarding(req, slug) {
 async function modelAccess(req, slug, { allowAdmin = false } = {}) {
   const tenant = await getTenant(slug);
   if (!tenant) return { response: json({ error: "Tenant not found." }, 404) };
+  if (tenant.demo) return { response: json({ error: "Demo portals do not support Model Studio." }, 409) };
   const session = sessionFor(req, slug);
   if (!session && !(allowAdmin && readAdminSession(req))) {
     return { response: json({ error: "Sign in required" }, 401) };

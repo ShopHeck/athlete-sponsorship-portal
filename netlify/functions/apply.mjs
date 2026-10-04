@@ -6,7 +6,7 @@ import { EMAIL_PATTERN } from "../lib/validate.mjs";
 const MAX_BODY_BYTES = 16 * 1024;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 const RATE_LIMIT = 5;
-const SPORTS = new Set(["Bare knuckle", "MMA", "Boxing", "Muay Thai / kickboxing", "Other"]);
+const SPORTS = new Set(["Bare knuckle", "MMA", "Boxing", "Muay Thai / kickboxing", "Jiu-jitsu / grappling", "Other"]);
 const RATE_LIMIT_ERROR = "Too many applications from this connection. Please email sponsors@michaelheckert.com instead.";
 const rateQueues = new Map();
 

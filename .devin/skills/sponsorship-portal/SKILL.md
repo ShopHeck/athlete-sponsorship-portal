@@ -56,6 +56,9 @@ skip what the user has already completed. Read the relevant reference before edi
   are created on the athlete's Stripe account. Bidding stays closed until charges are enabled and the
   `card_payments` capability is active. Account creation requests both `card_payments` and `transfers` because
   Stripe requires both for this controller combination.
+- A tenant may use a `demo` block instead of `showcase` for an interactive prospect preview. Demo pages keep every
+  placement and local logo preview available, but bids, locks, Connect onboarding, dashboard sales, Model Studio
+  changes, and close-auction invoicing are blocked server-side.
 - `netlify/lib/sponsorship.mjs` exports `forTenant(config, { portalUrl })`, which closes email, invoice, pricing,
   and placement helpers over one tenant.
 - The scheduled job processes every non-draft tenant; the admin close endpoint may process all non-draft tenants or

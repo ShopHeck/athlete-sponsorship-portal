@@ -94,6 +94,17 @@ export function renderPortal(config, { template, version, portalUrl }) {
   const studioAssets = ["athlete", "operator"].includes(tenant.studio?.mode)
     ? `<link rel="stylesheet" href="/studio.css?v=${escapeHtml(version)}"><script type="module" src="/studio.js?v=${escapeHtml(version)}"></script>`
     : "";
+  const demoPanel = tenant.demo
+    ? `<section class="demo-panel" aria-labelledby="demoHeadline">
+            <p class="showcase-kicker">${escapeHtml(tenant.demo.kicker)}</p>
+            <h2 id="demoHeadline">${escapeHtml(tenant.demo.headline)}</h2>
+            <p class="showcase-body">${escapeHtml(tenant.demo.body)}</p>
+            ${tenant.demo.cta
+              ? `<a class="primary-cta demo-cta" href="${escapeHtml(tenant.demo.cta.href)}" target="_top">${escapeHtml(tenant.demo.cta.label)}</a>`
+              : ""}
+            <a class="showcase-contact" href="mailto:${escapeHtml(tenant.contact.notifyEmail)}" target="_top">${escapeHtml(tenant.contact.contactLinkText)}</a>
+          </section>`
+    : "";
   const showcasePanel = tenant.showcase
     ? `<section class="showcase-panel" aria-labelledby="showcaseHeadline">
             <p class="showcase-kicker">${escapeHtml(tenant.showcase.kicker)}</p>
@@ -107,6 +118,9 @@ export function renderPortal(config, { template, version, portalUrl }) {
               : ""}
             <a class="showcase-contact" href="mailto:${escapeHtml(tenant.contact.notifyEmail)}" target="_top">${escapeHtml(tenant.contact.contactLinkText)}</a>
           </section>`
+    : "";
+  const demoBadge = tenant.demo
+    ? `<div class="demo-badge">DEMO · ${escapeHtml(tenant.demo.sport)}</div>`
     : "";
   const context = {
     ...tenant,
@@ -124,8 +138,10 @@ export function renderPortal(config, { template, version, portalUrl }) {
     stageBackdrop,
     posterDialog,
     studioAssets,
+    demoBadge,
+    demoPanel,
     showcasePanel,
-    showcaseBodyClass: tenant.showcase ? ' class="is-showcase"' : "",
+    portalBodyClass: tenant.showcase ? ' class="is-showcase"' : tenant.demo ? ' class="is-demo"' : "",
     garmentTabs,
     benefitItems,
     initialBidNote,

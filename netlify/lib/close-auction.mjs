@@ -10,7 +10,7 @@ import { forTenant } from "./sponsorship.mjs";
    Idempotent — placements with a sent invoice are skipped.
 --------------------------------------------------------------------------- */
 export async function closeAuction(tenant, { portalUrl, force = false } = {}) {
-  if (tenant.showcase) {
+  if (tenant.showcase || tenant.demo) {
     return { pastDeadline: false, stripe: false, invoiced: [], retried: [], noBids: [], skipped: [] };
   }
   const services = forTenant(tenant, { portalUrl });

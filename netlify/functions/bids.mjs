@@ -50,6 +50,9 @@ export default async (req, context) => {
   const tenant = await resolveTenantForApi(req, context);
   if (!tenant) return json({ error: "Tenant not found." }, 404);
   if (req.method !== "GET" && req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (tenant.demo && req.method === "POST") {
+    return json({ error: "This is a demo portal — bidding is disabled." }, 409);
+  }
   if (tenant.showcase && req.method === "POST") {
     return json({ error: "Sponsorship for this event has closed." }, 409);
   }
@@ -97,6 +100,7 @@ export default async (req, context) => {
     const paymentsReady = (await services.connect.readiness()).ready;
     const payload = { minBid: MIN_BID, increment: INCREMENT, lockPrice: LOCK_PRICE, deadline: DEADLINE, paymentsReady, placements };
     if (tenant.showcase) payload.closed = true;
+    if (tenant.demo) payload.demo = true;
     return json(payload);
   }
 

@@ -46,6 +46,9 @@ export function validateConfig(config, filename) {
   if (typeof config.copy?.paymentsPending !== "string" || !config.copy.paymentsPending.trim()) {
     throw new Error(`tenant ${config.slug} copy.paymentsPending must be a non-empty string`);
   }
+  if (config.demo !== undefined && config.showcase !== undefined) {
+    throw new Error(`tenant ${config.slug} demo and showcase are mutually exclusive`);
+  }
   if (!Array.isArray(config.embedOrigins) || config.embedOrigins.some((origin) => typeof origin !== "string")) {
     throw new Error(`tenant ${config.slug} embedOrigins must be an array of strings`);
   }
@@ -53,6 +56,25 @@ export function validateConfig(config, filename) {
       (!Array.isArray(config.contact.dashboardEmails) ||
        config.contact.dashboardEmails.some((email) => typeof email !== "string" || !EMAIL_PATTERN.test(email.trim())))) {
     throw new Error(`tenant ${config.slug} contact.dashboardEmails must be an array of email addresses`);
+  }
+  if (config.demo !== undefined) {
+    const demo = config.demo;
+    if (!demo || typeof demo !== "object" || Array.isArray(demo)) {
+      throw new Error(`tenant ${config.slug} demo must be an object`);
+    }
+    for (const key of ["sport", "kicker", "headline", "body", "bidNotice"]) {
+      if (!nonEmptyString(demo[key])) {
+        throw new Error(`tenant ${config.slug} demo.${key} must be a non-empty string`);
+      }
+    }
+    if (demo.cta !== undefined) {
+      const { cta } = demo;
+      if (!cta || typeof cta !== "object" || Array.isArray(cta) ||
+          !nonEmptyString(cta.label) || !nonEmptyString(cta.href) ||
+          (!cta.href.startsWith("/") && !cta.href.startsWith("https://"))) {
+        throw new Error(`tenant ${config.slug} demo.cta needs a non-empty label and an href beginning with / or https://`);
+      }
+    }
   }
   if (config.showcase !== undefined) {
     const showcase = config.showcase;

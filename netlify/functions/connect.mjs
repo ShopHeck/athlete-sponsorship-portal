@@ -20,6 +20,7 @@ export default async function connectEndpoint(req, context) {
   const action = context.params?.action || "";
   const tenant = await getTenant(slug);
   if (!tenant) return json({ error: "Tenant not found." }, 404);
+  if (tenant.demo) return json({ error: "Demo portals cannot use Stripe Connect." }, 409);
   if (tenant.payments.mode !== "connect") return json({ error: "Tenant does not use Stripe Connect." }, 400);
 
   const url = new URL(req.url);
