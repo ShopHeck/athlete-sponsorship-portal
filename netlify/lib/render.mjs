@@ -41,10 +41,21 @@ export function renderPortal(config, { template, version, portalUrl }) {
     minBid: currency(tenant.pricing.minBid),
     increment: currency(tenant.pricing.increment)
   };
-  const firstPlacement = tenant.garments[0].placements[0];
+  const allPlacements = tenant.garments.flatMap((garment) => garment.placements);
+  const firstPlacement = tenant.showcase
+    ? allPlacements.find((placement) => Object.hasOwn(tenant.sold || {}, placement.id)) || allPlacements[0]
+    : allPlacements[0];
+  const initialGarment = tenant.garments.find((garment) => garment.placements.includes(firstPlacement)) || tenant.garments[0];
+  const initialSold = tenant.sold?.[firstPlacement.id];
+  const initialSelectionStatus = tenant.showcase && initialSold ? tenant.copy.soldStatus : tenant.copy.availableStatus;
+  const initialSelectionDescription = tenant.showcase && initialSold
+    ? formatTemplate(tenant.copy.soldDescription, { name: firstPlacement.name, sponsor: initialSold.sponsor })
+    : firstPlacement.detail;
   const initialBidNote = formatTemplate(tenant.copy.bidNoteInitial, copyValues);
-  const garmentTabs = tenant.garments.map((garment, index) =>
-    `<button class="garment-tab${index === 0 ? " is-active" : ""}" data-garment="${escapeHtml(garment.id)}" role="tab" aria-selected="${index === 0}">${escapeHtml(garment.tab)}</button>`
+  const garmentTabs = tenant.garments.map((garment) => {
+    const active = garment.id === initialGarment.id;
+    return `<button class="garment-tab${active ? " is-active" : ""}" data-garment="${escapeHtml(garment.id)}" role="tab" aria-selected="${active}">${escapeHtml(garment.tab)}</button>`;
+  }
   ).join("\n          ");
   const benefitItems = tenant.benefits.map((benefit) => `<li>${escapeHtml(benefit)}</li>`).join("\n                ");
   const posterPreload = tenant.poster
@@ -83,9 +94,26 @@ export function renderPortal(config, { template, version, portalUrl }) {
   const studioAssets = ["athlete", "operator"].includes(tenant.studio?.mode)
     ? `<link rel="stylesheet" href="/studio.css?v=${escapeHtml(version)}"><script type="module" src="/studio.js?v=${escapeHtml(version)}"></script>`
     : "";
+  const showcasePanel = tenant.showcase
+    ? `<section class="showcase-panel" aria-labelledby="showcaseHeadline">
+            <p class="showcase-kicker">${escapeHtml(tenant.showcase.kicker)}</p>
+            <h2 id="showcaseHeadline">${escapeHtml(tenant.showcase.headline)}</h2>
+            <p class="showcase-body">${escapeHtml(tenant.showcase.body)}</p>
+            <div class="showcase-stats">${tenant.showcase.stats.map((stat) =>
+              `<div class="showcase-stat"><strong>${escapeHtml(stat.value)}</strong><span>${escapeHtml(stat.label)}</span></div>`
+            ).join("")}</div>
+            ${tenant.showcase.cta
+              ? `<a class="primary-cta showcase-cta" href="${escapeHtml(tenant.showcase.cta.href)}" target="_top">${escapeHtml(tenant.showcase.cta.label)}</a>`
+              : ""}
+            <a class="showcase-contact" href="mailto:${escapeHtml(tenant.contact.notifyEmail)}" target="_top">${escapeHtml(tenant.contact.contactLinkText)}</a>
+          </section>`
+    : "";
   const context = {
     ...tenant,
     firstPlacement,
+    initialGarment,
+    initialSelectionStatus,
+    initialSelectionDescription,
     version,
     portalUrl,
     posterPreload,
@@ -96,6 +124,8 @@ export function renderPortal(config, { template, version, portalUrl }) {
     stageBackdrop,
     posterDialog,
     studioAssets,
+    showcasePanel,
+    showcaseBodyClass: tenant.showcase ? ' class="is-showcase"' : "",
     garmentTabs,
     benefitItems,
     initialBidNote,

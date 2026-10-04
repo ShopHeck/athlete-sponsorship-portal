@@ -2,7 +2,7 @@
 # End-to-end smoke test of the bidding API against a local `netlify dev` that is pointed at
 # scripts/mock-services.mjs. Nothing real is created. Works with macOS bash 3.2.
 #
-#   Build the tenant registry first: npm run build
+#   Build the test registry first: INCLUDE_TEST_TENANTS=1 npm run build
 #   Terminal 1:  MOCK_PORT=4343 node scripts/mock-services.mjs
 #   Terminal 2:  STRIPE_SECRET_KEY=sk_test_mock STRIPE_API_BASE=http://127.0.0.1:4343 \
 #                STRIPE_WEBHOOK_SECRET=whsec_platform_test STRIPE_CONNECT_WEBHOOK_SECRET=whsec_connect_test \
@@ -10,12 +10,12 @@
 #                RESEND_API_KEY=re_mock RESEND_API_BASE=http://127.0.0.1:4343 \
 #                PLATFORM_URL=http://localhost:8890 ADMIN_TOKEN=devtoken PREVIEW_TOKEN=devpreview \
 #                npx netlify dev --offline --port 8890
-#   Terminal 3:  scripts/smoke-test.sh [base-url] [slug] [open-placement-A] [open-placement-B]
+#   Terminal 3:  scripts/smoke-test.sh http://localhost:8890 platform-fixture SB-R1 TF-12
 #
 # Pick two placements defined in the tenant config, absent from its `sold` map, and with no record in
 # the local Blobs sandbox (delete .netlify/blobs-serve to reset). Exit code is non-zero on any failed expectation.
 set -u
-BASE="${1:-http://localhost:8890}"; SLUG="${2:-michael-heckert}"; A="${3:-SB-R1}"; B="${4:-TF-12}"; TOKEN="${ADMIN_TOKEN:-devtoken}"
+BASE="${1:-http://localhost:8890}"; SLUG="${2:-platform-fixture}"; A="${3:-SB-R1}"; B="${4:-TF-12}"; TOKEN="${ADMIN_TOKEN:-devtoken}"
 fail=0
 
 json() { printf '{"id":"%s","type":"%s","amount":%s,"company":"%s","name":"%s","email":"%s","phone":"%s"}' "$1" "$2" "$3" "$4" "$5" "$6" "${7:-}"; }
