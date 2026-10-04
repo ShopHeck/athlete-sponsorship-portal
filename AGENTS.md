@@ -12,13 +12,14 @@ operating one. `reference/gotchas.md` first when debugging.
 - Build and validate every tenant: `npm run build`
 - Dev server (functions + Blobs sandbox): run `npm run build` first, then `npx netlify dev`
 - End-to-end test, no real Stripe/Resend:
+  First build the test-only tenant registry with `INCLUDE_TEST_TENANTS=1 npm run build`.
   `MOCK_PORT=4343 node scripts/mock-services.mjs &` then `netlify dev` with
   `STRIPE_API_BASE`/`RESEND_API_BASE=http://127.0.0.1:4343`, `PLATFORM_URL=http://localhost:8890`,
   `PREVIEW_TOKEN=devpreview`, `ADMIN_TOKEN=devtoken`, `STRIPE_WEBHOOK_SECRET=whsec_platform_test`, and
   `STRIPE_CONNECT_WEBHOOK_SECRET=whsec_connect_test`, `DASHBOARD_SECRET=devdashboard`,
   `OPERATOR_EMAIL=ops@example.test`, `MESHY_API_KEY=mock_key`, and
   `MESHY_API_BASE=http://127.0.0.1:4343` (see `scripts/smoke-test.sh` header), then
-  `scripts/smoke-test.sh http://localhost:8890 michael-heckert <OPEN-ID-A> <OPEN-ID-B>` and
+  `scripts/smoke-test.sh http://localhost:8890 platform-fixture SB-R1 TF-12` and
   `scripts/tenant-test.sh http://localhost:8890` and
   `scripts/connect-test.sh http://localhost:8890` and
   `scripts/webhook-test.sh http://localhost:8890` and

@@ -14,16 +14,22 @@ const MODEL_HEIGHT = 1.86;
 const THREE_ADDONS = "/vendor/three-0.170.0/addons/";
 const config = JSON.parse(document.getElementById("portal-config").textContent);
 const isStudio = Boolean(config.studio);
+const isShowcase = Boolean(config.showcase) && !isStudio;
 const garments = config.garments;
 const allPlacements = garments.flatMap((garment) => garment.placements);
+const isConfiguredSold = (id) => Object.hasOwn(config.sold || {}, id);
+const showcasePlacements = isShowcase ? allPlacements.filter((spot) => isConfiguredSold(spot.id)) : [];
+const garmentPlacements = (garment) => isShowcase
+  ? garment.placements.filter((spot) => isConfiguredSold(spot.id))
+  : garment.placements;
 const garmentConfig = (id) => garments.find((garment) => garment.id === id);
 const garmentOf = (id) => garments.find((garment) => garment.placements.some((spot) => spot.id === id))?.id || garments[0].id;
-const firstPlacement = allPlacements[0];
+const firstPlacement = isShowcase ? showcasePlacements[0] || null : allPlacements[0];
 const accentColor = new THREE.Color(config.brand.accent);
 const formatCopy = (template, values = {}) => String(template).replace(/\{([A-Za-z][A-Za-z0-9]*)\}/g, (_, key) => values[key] ?? "");
 
 const SIDE_AZIMUTH = { front: 0, back: Math.PI, left: Math.PI / 2, right: -Math.PI / 2 };
-const state = { garment: garments[0].id, selected: firstPlacement.id, hovered: null, logos: {}, logoImages: {}, sold: {}, soldImages: {}, bidImages: {}, azimuth: 0, bids: {}, auction: { minBid: config.pricing.minBid, increment: config.pricing.increment, lockPrice: config.pricing.lockPrice, deadline: config.pricing.deadline, online: false, paymentsReady: true } };
+const state = { garment: firstPlacement ? garmentOf(firstPlacement.id) : garments[0].id, selected: firstPlacement?.id || null, hovered: null, logos: {}, logoImages: {}, sold: {}, soldImages: {}, bidImages: {}, azimuth: 0, bids: {}, auction: { minBid: config.pricing.minBid, increment: config.pricing.increment, lockPrice: config.pricing.lockPrice, deadline: config.pricing.deadline, online: false, paymentsReady: true } };
 const BIDS_URL = `/api/${config.slug}/bids`;
 const previewHeaders = config.previewToken ? { "x-preview-token": config.previewToken } : {};
 const isLocked = (id) => Boolean(state.bids[id]?.locked || state.bids[id]?.closed);
@@ -291,7 +297,7 @@ function makeSlot(spot, side, meshes) {
 
 function buildSlots(meshes) {
   const missing = [];
-  allPlacements.forEach((spot) => {
+  (isShowcase ? showcasePlacements : allPlacements).forEach((spot) => {
     const failedSides = [];
     for (const side of new Set([spot.side, spot.mirror].filter(Boolean))) {
       if (!makeSlot(spot, side, meshes)) failedSides.push(side);
@@ -389,15 +395,16 @@ function firstRender() {
   return Promise.all([sponsorsReady, bidsReady]).then(() => { selectInitial(); renderAll(); scrollSelectedIntoView(); });
 }
 const LANDING_ORDER = ["front", "back", "lateral"].flatMap((view) => garments.flatMap((garment) =>
-  garment.placements.filter((spot) => view === "lateral" ? spot.side === "left" || spot.side === "right" : spot.side === view)
+  garmentPlacements(garment).filter((spot) => view === "lateral" ? spot.side === "left" || spot.side === "right" : spot.side === view)
 ));
 let linkedPlacement = null;
 function selectInitial() {
   const wanted = decodeURIComponent(location.hash.slice(1)).toUpperCase();
-  linkedPlacement = allPlacements.find((p) => p.id === wanted) || null;
-  const spot = linkedPlacement || LANDING_ORDER.find((p) => !isSold(p.id)) || firstPlacement;
-  state.selected = spot.id;
-  state.garment = garmentOf(spot.id);
+  const eligible = isShowcase ? showcasePlacements : allPlacements;
+  linkedPlacement = eligible.find((p) => p.id === wanted) || null;
+  const spot = linkedPlacement || (isShowcase ? firstPlacement : LANDING_ORDER.find((p) => !isSold(p.id)) || firstPlacement);
+  state.selected = spot?.id || null;
+  state.garment = spot ? garmentOf(spot.id) : garments[0].id;
 }
 
 /* ----------------------------------------------------------- UI logic */
@@ -410,11 +417,12 @@ function currentSide() {
 function visiblePlacements() {
   const side = currentSide();
   const garment = garmentConfig(state.garment);
-  const onSide = garment.placements.filter((spot) => spot.side === side);
-  const lateral = garment.placements.filter((spot) => spot.side === "left" || spot.side === "right");
+  const placements = garmentPlacements(garment);
+  const onSide = placements.filter((spot) => spot.side === side);
+  const lateral = placements.filter((spot) => spot.side === "left" || spot.side === "right");
   return [...onSide, ...lateral.filter((spot) => !onSide.includes(spot))];
 }
-const findPlacement = () => allPlacements.find((p) => p.id === state.selected) || allPlacements[0];
+const findPlacement = () => allPlacements.find((p) => p.id === state.selected) || (isShowcase ? null : allPlacements[0]);
 
 function renderInventory() {
   const side = currentSide();
@@ -422,6 +430,7 @@ function renderInventory() {
   const label = side === "front" ? config.copy.frontView : side === "back" ? config.copy.backView : garment.lateralLabel;
   inventoryTitle.textContent = `${garment.label} · ${label}`;
   document.querySelectorAll("[data-view]").forEach((b) => b.classList.toggle("is-active", b.dataset.view === side));
+  availabilityEl.hidden = isShowcase;
   const items = visiblePlacements();
   inventoryList.replaceChildren();
   if (!items.length) {
@@ -466,6 +475,13 @@ function isDarkArtwork(img) {
 }
 function renderSelection() {
   const spot = findPlacement();
+  if (!spot) {
+    selectionCard.hidden = true;
+    renderCalloutText();
+    invalidate();
+    return;
+  }
+  selectionCard.hidden = false;
   const sold = state.sold[spot.id];
   const bid = state.bids[spot.id];
   const locked = !sold && (bid?.locked || bid?.closed);
@@ -496,8 +512,8 @@ function renderSelection() {
     sponsorLogoEl.alt = `${sold ? sold.sponsor : holder || config.copy.sponsorFallback} logo`;
     sponsorLogoEl.classList.toggle("is-dark-art", isDarkArtwork(cardLogo));
   }
-  const anyOpen = allPlacements.some((p) => !isSold(p.id));
-  openPlacementsBtn.hidden = !sold || !anyOpen;
+  const anyOpen = !isShowcase && allPlacements.some((p) => !isSold(p.id));
+  openPlacementsBtn.hidden = isShowcase || !sold || !anyOpen;
   renderSpecs(spot);
   renderCalloutText();
   invalidate();
@@ -572,7 +588,9 @@ function setGarment(garment) {
   state.garment = garment;
   const g = garmentConfig(garment);
   const onThisSide = visiblePlacements(); // same rules as the inventory list (state.garment already updated)
-  const spot = firstOpen(onThisSide) || firstOpen(g.placements) || firstOpen(allPlacements) || firstPlacement.id;
+  const spot = isShowcase
+    ? garmentPlacements(g)[0]?.id || null
+    : firstOpen(onThisSide) || firstOpen(g.placements) || firstOpen(allPlacements) || firstPlacement.id;
   state.selected = spot;
   const target = allPlacements.find((p) => p.id === spot);
   if (target && !onThisSide.some((p) => p.id === spot)) flyTo({ az: SIDE_AZIMUTH[target.side], ...homeFraming() });
@@ -706,7 +724,7 @@ openPlacementsBtn.addEventListener("click", () => {
 });
 /* ------------------------------------------------------------ bidding */
 async function loadBids() {
-  if (isStudio) return;
+  if (isStudio || isShowcase) return;
   try {
     const res = await fetch(BIDS_URL, { cache: "no-store", headers: previewHeaders, signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(8000) : undefined });
     if (!res.ok) throw new Error(res.statusText);
@@ -733,8 +751,8 @@ async function loadBidLogos() {
 }
 // Gate the first render on live bids so we never land on a locked placement, but only briefly:
 // a slow or stalled API must not keep the viewer hidden. Polling keeps refreshing afterwards.
-const bidsReady = isStudio ? Promise.resolve() : Promise.race([loadBids(), new Promise((r) => setTimeout(r, 4000))]);
-if (!isStudio) setInterval(loadBids, 30000);
+const bidsReady = isStudio || isShowcase ? Promise.resolve() : Promise.race([loadBids(), new Promise((r) => setTimeout(r, 4000))]);
+if (!isStudio && !isShowcase) setInterval(loadBids, 30000);
 
 // Rasterise the previewed logo (max 800px, PNG) so it travels with the bid and survives a refresh.
 function logoDataUrl(id) {
@@ -771,6 +789,7 @@ function showBidSuccess(spot, data, locked, email) {
   bidSuccess.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 async function submitBid(type) {
+  if (isStudio || isShowcase) return;
   const spot = findPlacement();
   if (isSold(spot.id)) return;
   const f = bidForm.elements;
@@ -807,12 +826,13 @@ async function submitBid(type) {
     bidButton.disabled = lockButton.disabled = !state.auction.online || !state.auction.paymentsReady;
   }
 }
-bidForm.addEventListener("submit", (e) => { e.preventDefault(); if (!isStudio) submitBid("bid"); });
-lockButton.addEventListener("click", () => submitBid("lock"));
+bidForm.addEventListener("submit", (e) => { e.preventDefault(); if (!isStudio && !isShowcase) submitBid("bid"); });
+lockButton.addEventListener("click", () => { if (!isShowcase) submitBid("lock"); });
 
 // Hash edits after load (e.g. the host page forwarding a new /#ID into the embed) select that placement.
 window.addEventListener("hashchange", () => {
-  const spot = allPlacements.find((p) => p.id === decodeURIComponent(location.hash.slice(1)).toUpperCase());
+  const spot = (isShowcase ? showcasePlacements : allPlacements)
+    .find((p) => p.id === decodeURIComponent(location.hash.slice(1)).toUpperCase());
   if (spot) selectPlacement(spot.id, true);
 });
 
@@ -906,6 +926,10 @@ const projected = new THREE.Vector3();
 const toCamera = new THREE.Vector3();
 function renderCalloutText() {
   const spot = findPlacement();
+  if (!spot) {
+    callout.classList.remove("is-visible");
+    return;
+  }
   const sold = state.sold[spot.id];
   const bid = state.bids[spot.id];
   calloutCode.textContent = `${spot.id} · ${printSize(spot)}`;
@@ -917,7 +941,8 @@ function renderCalloutText() {
   callout.classList.toggle("is-sold", Boolean(sold || bid?.locked || bid?.closed));
 }
 function positionCallout() {
-  const slot = slotFor(findPlacement());
+  const spot = findPlacement();
+  const slot = spot ? slotFor(spot) : null;
   const ready = stage.classList.contains("is-ready") && !(tween && tween.duration > 2);
   if (!slot || !ready) { callout.classList.remove("is-visible"); return; }
   toCamera.copy(camera.position).sub(slot.point).normalize();

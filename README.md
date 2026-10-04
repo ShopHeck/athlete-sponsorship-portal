@@ -49,9 +49,11 @@ tenant pages are rendered per request.
 
 ## Local integration tests
 
-Use the mock Stripe and Resend endpoints; do not use real credentials:
+Build the test-only platform tenant before running the payment-flow tests; production builds omit it. Use the mock
+Stripe and Resend endpoints and do not use real credentials:
 
 ```bash
+INCLUDE_TEST_TENANTS=1 npm run build
 MOCK_PORT=4343 node scripts/mock-services.mjs
 ```
 
@@ -67,7 +69,7 @@ npx netlify dev --offline --port 8890
 Reset only this checkout's Blobs sandbox with `rm -rf .netlify/blobs-serve` before each test:
 
 ```bash
-scripts/smoke-test.sh http://localhost:8890 michael-heckert SB-R1 TF-12
+scripts/smoke-test.sh http://localhost:8890 platform-fixture SB-R1 TF-12
 scripts/tenant-test.sh http://localhost:8890
 scripts/connect-test.sh http://localhost:8890
 ```

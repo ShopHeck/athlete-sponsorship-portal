@@ -26,6 +26,39 @@ check "Michael page returns 200" "$LIVE_CODE" "200"
 if grep -q 'id="portal-config"' "$TMP_DIR/michael.html"; then echo "  ok   Michael HTML embeds config"; else echo "  FAIL Michael HTML embeds config"; FAIL=1; fi
 if grep -qi 'teamheck\.netlify\.app' "$TMP_DIR/michael.headers"; then echo "  ok   Michael CSP allows Team Heck"; else echo "  FAIL Michael CSP allows Team Heck"; FAIL=1; fi
 if grep -q '"previewToken"' "$TMP_DIR/michael.html"; then echo "  FAIL live Michael config omits previewToken"; FAIL=1; else echo "  ok   live Michael config omits previewToken"; fi
+if grep -Fq "Sold out before fight night." "$TMP_DIR/michael.html"; then echo "  ok   Michael page includes case-study headline"; else echo "  FAIL Michael page includes case-study headline"; FAIL=1; fi
+if grep -Fq 'class="showcase-panel"' "$TMP_DIR/michael.html"; then echo "  ok   Michael page renders showcase panel"; else echo "  FAIL Michael page renders showcase panel"; FAIL=1; fi
+
+echo "1a. closed Michael showcase"
+MICHAEL_GET=$(curl -sS "$BASE/api/michael-heckert/bids")
+if printf '%s' "$MICHAEL_GET" | grep -Fq '"closed":true'; then echo "  ok   Michael bid summary is closed"; else echo "  FAIL Michael bid summary is closed"; FAIL=1; fi
+MICHAEL_BID_CODE=$(curl -sS -o "$TMP_DIR/michael-bid.json" -w '%{http_code}' -X POST "$BASE/api/michael-heckert/bids" \
+  -H 'content-type: application/json' -d '{"id":"SB-R1","type":"bid","amount":500,"company":"Test Co","name":"Tester","email":"tester@example.test"}')
+check "Michael bid is rejected" "$MICHAEL_BID_CODE" "409"
+MICHAEL_LOCK_CODE=$(curl -sS -o "$TMP_DIR/michael-lock.json" -w '%{http_code}' -X POST "$BASE/api/michael-heckert/bids" \
+  -H 'content-type: application/json' -d '{"id":"TF-12","type":"lock","amount":0,"company":"Test Co","name":"Tester","email":"tester@example.test"}')
+check "Michael lock is rejected" "$MICHAEL_LOCK_CODE" "409"
+if grep -Fq '"error":"Sponsorship for this event has closed."' "$TMP_DIR/michael-bid.json" &&
+   grep -Fq '"error":"Sponsorship for this event has closed."' "$TMP_DIR/michael-lock.json"; then
+  echo "  ok   Michael closed responses use the case-study message"
+else
+  echo "  FAIL Michael closed responses use the case-study message"
+  FAIL=1
+fi
+MICHAEL_AFTER=$(curl -sS "$BASE/api/michael-heckert/bids")
+if printf '%s' "$MICHAEL_AFTER" | grep -Eq '"(SB-R1|TF-12)"'; then
+  echo "  FAIL rejected Michael requests create no placement records"
+  FAIL=1
+else
+  echo "  ok   rejected Michael requests create no placement records"
+fi
+FIXTURE_PAGE=$(curl -sS "$BASE/platform-fixture")
+if printf '%s' "$FIXTURE_PAGE" | grep -Fq 'showcase-panel'; then
+  echo "  FAIL platform fixture omits showcase panel"
+  FAIL=1
+else
+  echo "  ok   platform fixture omits showcase panel"
+fi
 
 check "draft tenant hidden" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/jordan-reyes")" "404"
 PREVIEW_CODE=$(curl -sS -o "$TMP_DIR/jordan-preview.html" -w '%{http_code}' --get --data-urlencode "preview=$PREVIEW_TOKEN" "$BASE/jordan-reyes")
@@ -59,14 +92,14 @@ check "Jordan GET requires preview token" "$(curl -sS -o /dev/null -w '%{http_co
 JORDAN_RESPONSE=$(curl -sS -X POST "$BASE/api/jordan-reyes/bids" -H 'content-type: application/json' -H "x-preview-token: $PREVIEW_TOKEN" -d "$JORDAN_BODY")
 check "Jordan TR-L1 bid accepted" "$(printf '%s' "$JORDAN_RESPONSE" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).ok?"200":"invalid")}catch{process.stdout.write("invalid")}})')" "200"
 JORDAN_GET=$(curl -sS -H "x-preview-token: $PREVIEW_TOKEN" "$BASE/api/jordan-reyes/bids")
-MICHAEL_GET=$(curl -sS "$BASE/api/michael-heckert/bids")
+FIXTURE_GET=$(curl -sS "$BASE/api/platform-fixture/bids")
 if printf '%s' "$JORDAN_GET" | grep -q '"TR-L1"'; then echo "  ok   Jordan GET includes TR-L1"; else echo "  FAIL Jordan GET includes TR-L1"; FAIL=1; fi
-if printf '%s' "$MICHAEL_GET" | grep -q '"TR-L1"'; then echo "  FAIL Michael GET excludes Jordan TR-L1"; FAIL=1; else echo "  ok   Michael GET excludes Jordan TR-L1"; fi
+if printf '%s' "$FIXTURE_GET" | grep -q '"TR-L1"'; then echo "  FAIL platform fixture GET excludes Jordan TR-L1"; FAIL=1; else echo "  ok   platform fixture GET excludes Jordan TR-L1"; fi
 check "Jordan logo requires preview token" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/jordan-reyes/logos/TR-L1")" "404"
 check "Jordan logo accepts preview query" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/jordan-reyes/logos/TR-L1?preview=$PREVIEW_TOKEN")" "200"
 check "Jordan logo accepts preview header" "$(curl -sS -o /dev/null -w '%{http_code}' -H "x-preview-token: $PREVIEW_TOKEN" "$BASE/api/jordan-reyes/logos/TR-L1")" "200"
 check "Jordan rejects Michael SF-L1" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/jordan-reyes/bids" -H 'content-type: application/json' -H "x-preview-token: $PREVIEW_TOKEN" -d '{"id":"SF-L1","type":"bid","amount":250,"company":"Test","name":"Tester","email":"tester@example.test"}')" "400"
-check "Michael rejects Jordan TR-L1" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/michael-heckert/bids" -H 'content-type: application/json' -d '{"id":"TR-L1","type":"bid","amount":500,"company":"Test","name":"Tester","email":"tester@example.test"}')" "400"
+check "platform fixture rejects Jordan TR-L1" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/platform-fixture/bids" -H 'content-type: application/json' -d '{"id":"TR-L1","type":"bid","amount":500,"company":"Test","name":"Tester","email":"tester@example.test"}')" "400"
 
 if [ -f "$MOCK_LOG" ] && node -e '
   const fs = require("fs");

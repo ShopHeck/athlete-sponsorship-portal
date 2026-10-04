@@ -32,7 +32,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css?v={{version}}">
 {{{studioAssets}}}</head>
-<body>
+<body{{{showcaseBodyClass}}}>
   <main class="portal-shell">
     <header class="topbar">
       <a class="brand" href="{{homeUrl}}" target="_top" aria-label="{{copy.brandAriaLabel}}">
@@ -73,14 +73,14 @@
 
       <aside class="inventory-panel">
         <div class="inventory-heading">
-          <div><p class="eyebrow">{{copy.inventoryEyebrow}}</p><h2 id="inventoryTitle">{{garments.0.label}} · {{copy.frontView}}</h2></div>
+          <div><p class="eyebrow">{{copy.inventoryEyebrow}}</p><h2 id="inventoryTitle">{{initialGarment.label}} · {{copy.frontView}}</h2></div>
           <span class="availability" id="availability"><i></i> {{copy.available}}</span>
         </div>
         <div class="inventory-list" id="inventoryList"></div>
         <div class="selection-card" id="selectionCard">
-          <div class="selection-top"><span id="selectionCode">{{firstPlacement.id}}</span><span id="selectionStatus">{{copy.availableStatus}}</span></div>
+          <div class="selection-top"><span id="selectionCode">{{firstPlacement.id}}</span><span id="selectionStatus">{{initialSelectionStatus}}</span></div>
           <h3 id="selectionName">{{firstPlacement.name}}</h3>
-          <p id="selectionDescription">{{firstPlacement.detail}}</p>
+          <p id="selectionDescription">{{initialSelectionDescription}}</p>
           <div class="spec-row" id="specRow"></div>
           <img class="sponsor-logo" id="sponsorLogo" alt="" hidden>
           <button class="secondary-cta" id="openPlacements" hidden>{{copy.openPlacements}}</button>
@@ -124,7 +124,7 @@
               </ul>
             </details>
             <p class="bid-note" id="bidNote">{{initialBidNote}} <a href="mailto:{{contact.notifyEmail}}" id="contactLink" target="_top">{{contact.contactLinkText}}</a></p>
-          </div>
+          </div>{{{showcasePanel}}}
           <p class="privacy-note">{{copy.privacyNote}}</p>
         </div>
       </aside>

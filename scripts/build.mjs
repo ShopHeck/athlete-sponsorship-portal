@@ -10,14 +10,21 @@ const template = readFileSync(path.join(root, "src/index.template.html"), "utf8"
 const generatedPlatform = path.join(root, "netlify/lib/platform.generated.json");
 const mediapipeSource = path.join(root, "node_modules/@mediapipe/tasks-vision");
 const mediapipeTarget = path.join(root, "public/vendor/mediapipe");
-const tenantFiles = readdirSync(tenantsDirectory)
+const tenantSources = readdirSync(tenantsDirectory)
   .filter((filename) => filename.endsWith(".json"))
-  .sort();
+  .map((filename) => ({ directory: tenantsDirectory, filename }));
+if (process.env.INCLUDE_TEST_TENANTS === "1") {
+  const fixturesDirectory = path.join(root, "scripts/fixtures/tenants");
+  tenantSources.push(...readdirSync(fixturesDirectory)
+    .filter((filename) => filename.endsWith(".json"))
+    .map((filename) => ({ directory: fixturesDirectory, filename })));
+}
+tenantSources.sort((a, b) => a.filename.localeCompare(b.filename));
 
-if (tenantFiles.length === 0) throw new Error("tenants/ must contain at least one JSON config");
+if (tenantSources.length === 0) throw new Error("tenants/ must contain at least one JSON config");
 
-const tenants = tenantFiles.map((filename) => {
-  const config = JSON.parse(readFileSync(path.join(tenantsDirectory, filename), "utf8"));
+const tenants = tenantSources.map(({ directory, filename }) => {
+  const config = JSON.parse(readFileSync(path.join(directory, filename), "utf8"));
   return validateConfig(config, filename);
 });
 const version = String(process.env.COMMIT_REF || process.env.DEPLOY_ID || Date.now()).slice(0, 10);

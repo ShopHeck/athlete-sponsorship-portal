@@ -1,5 +1,5 @@
 {
-  "slug": "michael-heckert",
+  "slug": "platform-fixture",
   "status": "live",
   "embedOrigins": [
     "https://teamheck.netlify.app",
@@ -25,34 +25,23 @@
   },
   "seo": {
     "title": "Michael Heckert Sponsorship Portal",
-    "description": "Every sponsorship placement on Michael “King Killer” Heckert's fight shorts and walkout T-shirt sold out for BKFC Fight Night Clearwater. Explore every sponsor in 360°.",
+    "description": "Bid on or lock in a logo placement on Michael “King Killer” Heckert's fight shorts and walkout T-shirt for BKFC Fight Night Clearwater, Oct 23. Heckert vs McConnico.",
     "siteName": "Michael Heckert Sponsorship Portal",
-    "ogTitle": "Sold out: Michael Heckert · BKFC Fight Night Clearwater",
-    "ogDescription": "12 of 12 placements sold, $13K+ raised. Explore every sponsor in 360°.",
+    "ogTitle": "Sponsor Michael Heckert · BKFC Fight Night Clearwater · Oct 23",
+    "ogDescription": "Put your logo on the fight shorts and walkout T-shirt. Explore the 360° model, bid from $500 or lock a placement for $2,500.",
     "ogImageAlt": "BKFC Fight Night Clearwater poster: Heckert vs McConnico, October 23",
-    "twitterDescription": "12 of 12 placements sold, $13K+ raised. Explore every sponsor in 360°."
+    "twitterDescription": "Put your logo on the fight shorts and walkout T-shirt. Bid from $500 or lock a placement for $2,500."
   },
   "hero": {
-    "eyebrow": "SOLD OUT · FIGHT NIGHT",
-    "titleHtml": "Every placement<br><em>sold.</em>",
-    "intro": "Rotate Michael to see every sponsor on his fight shorts and walkout T-shirt for BKFC Fight Night Clearwater."
-  },
-  "showcase": {
-    "kicker": "CASE STUDY · BKFC CLEARWATER",
-    "headline": "Sold out before fight night.",
-    "body": "Michael sold every sponsorship placement on his fight shorts and walkout T-shirt for BKFC Fight Night Clearwater — even though the portal launched late in the campaign.",
-    "stats": [
-      {"value": "12/12", "label": "Placements sold"},
-      {"value": "$1,100", "label": "Average per placement"},
-      {"value": "$13K+", "label": "Sponsorship raised"}
-    ],
-    "cta": {"label": "Get a portal like this", "href": "/"}
+    "eyebrow": "YOUR BRAND. FIGHT NIGHT.",
+    "titleHtml": "Choose your<br><em>position.</em>",
+    "intro": "Rotate Michael to explore every available placement. Switch apparel, select a position, and preview your logo."
   },
   "poster": {
-    "card": "backdrop/fight-poster.webp",
-    "stage900": "backdrop/stage-900.webp",
-    "stage1500": "backdrop/stage-1500.webp",
-    "ogImage": "backdrop/og-image.jpg",
+    "card": "/tenants/michael-heckert/backdrop/fight-poster.webp",
+    "stage900": "/tenants/michael-heckert/backdrop/stage-900.webp",
+    "stage1500": "/tenants/michael-heckert/backdrop/stage-1500.webp",
+    "ogImage": "/tenants/michael-heckert/backdrop/og-image.jpg",
     "alt": "BKFC Fight Night Clearwater poster — Heckert vs McConnico",
     "dialogAlt": "BKFC Fight Night Clearwater poster — Heckert vs McConnico, October 23",
     "kicker": "BKFC Fight Night · Clearwater",
@@ -69,7 +58,7 @@
     "accentPanel": "#1a1512",
     "accentGradient": "#1d120b"
   },
-  "model": "models/heckert.glb",
+  "model": "/tenants/michael-heckert/models/heckert.glb",
   "ring": {
     "enabled": true,
     "padText": "BKFC",
@@ -96,8 +85,8 @@
     "mode": "platform"
   },
   "contact": {
-    "notifyEmail": "michaelheckert@heckholdings.com",
-    "notifyFrom": "Team Heck Sponsorships <sponsors@michaelheckert.com>",
+    "notifyEmail": "owner@example.test",
+    "notifyFrom": "Fixture <sponsors@example.test>",
     "contactLinkText": "Questions? Email Michael."
   },
   "packageName": "Champion package",
@@ -583,71 +572,71 @@
   "sold": {
     "SF-L1": {
       "sponsor": "Boxrope",
-      "logo": "sponsors/boxrope.png"
+      "logo": "/tenants/michael-heckert/sponsors/boxrope.png"
     },
     "SF-L2": {
       "sponsor": "LJC Construction",
-      "logo": "sponsors/ljc-construction.png"
+      "logo": "/tenants/michael-heckert/sponsors/ljc-construction.png"
     },
     "SF-L3": {
       "sponsor": "Nitro",
-      "logo": "sponsors/nitro.png"
+      "logo": "/tenants/michael-heckert/sponsors/nitro.png"
     },
     "SF-R1": {
       "sponsor": "Tummo Studios",
-      "logo": "sponsors/tummo-studios.png"
+      "logo": "/tenants/michael-heckert/sponsors/tummo-studios.png"
     },
     "SF-R2": {
       "sponsor": "Sammy Sharks",
-      "logo": "sponsors/sammy-sharks.png"
+      "logo": "/tenants/michael-heckert/sponsors/sammy-sharks.png"
     },
     "SF-R3": {
       "sponsor": "BluefitMD",
-      "logo": "sponsors/bluefitmd.png"
+      "logo": "/tenants/michael-heckert/sponsors/bluefitmd.png"
     },
     "TF-01": {
       "sponsor": "Boxrope",
-      "logo": "sponsors/boxrope-white.png"
+      "logo": "/tenants/michael-heckert/sponsors/boxrope-white.png"
     },
     "TF-02": {
       "sponsor": "LJC Construction",
-      "logo": "sponsors/ljc-construction.png"
+      "logo": "/tenants/michael-heckert/sponsors/ljc-construction.png"
     },
     "TF-03": {
       "sponsor": "Nitro",
-      "logo": "sponsors/nitro.png"
+      "logo": "/tenants/michael-heckert/sponsors/nitro.png"
     },
     "TF-04": {
       "sponsor": "Tummo Studios",
-      "logo": "sponsors/tummo-studios.png"
+      "logo": "/tenants/michael-heckert/sponsors/tummo-studios.png"
     },
     "TF-05": {
       "sponsor": "Sammy Sharks",
-      "logo": "sponsors/sammy-sharks.png"
+      "logo": "/tenants/michael-heckert/sponsors/sammy-sharks.png"
     },
     "TF-06": {
       "sponsor": "BluefitMD",
-      "logo": "sponsors/bluefitmd.png"
+      "logo": "/tenants/michael-heckert/sponsors/bluefitmd.png"
     },
     "SB-L1": {
       "sponsor": "Mekkalabs",
-      "logo": "sponsors/mekkalabs.png"
+      "logo": "/tenants/michael-heckert/sponsors/mekkalabs.png"
     },
     "SB-L2": {
       "sponsor": "BabySNEK",
-      "logo": "sponsors/babysnek.png"
+      "logo": "/tenants/michael-heckert/sponsors/babysnek.png"
     },
     "TS-01": {
       "sponsor": "Mekkalabs",
-      "logo": "sponsors/mekkalabs.png"
+      "logo": "/tenants/michael-heckert/sponsors/mekkalabs.png"
     },
     "TS-02": {
       "sponsor": "BabySNEK",
-      "logo": "sponsors/babysnek.png"
+      "logo": "/tenants/michael-heckert/sponsors/babysnek.png"
     },
     "TB-01": {
       "sponsor": "Watchmen",
-      "logo": "sponsors/watchmen.png"
+      "logo": "/tenants/michael-heckert/sponsors/watchmen.png"
     }
   }
 }

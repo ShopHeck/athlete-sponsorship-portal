@@ -34,11 +34,11 @@ check "Jordan bid is blocked before payouts are ready" "$JORDAN_CODE" "409"
 if grep -Fq "Jordan is finishing payout setup" "$TMP_DIR/blocked.json"; then echo "  ok   Jordan receives paymentsPending copy"; else echo "  FAIL Jordan receives paymentsPending copy"; FAIL=1; fi
 JORDAN_GET=$(curl -sS -H "x-preview-token: $PREVIEW_TOKEN" "$BASE/api/jordan-reyes/bids")
 if printf '%s' "$JORDAN_GET" | grep -q '"TR-L1"'; then echo "  FAIL rejected Jordan bid is not stored"; FAIL=1; else echo "  ok   rejected Jordan bid is not stored"; fi
-MICHAEL_GET=$(curl -sS "$BASE/api/michael-heckert/bids")
-if node -e 'const j=JSON.parse(process.argv[1]);process.exit(j.paymentsReady===true?0:1)' "$MICHAEL_GET"; then
-  echo "  ok   Michael platform payments are ready"
+FIXTURE_GET=$(curl -sS "$BASE/api/platform-fixture/bids")
+if node -e 'const j=JSON.parse(process.argv[1]);process.exit(j.paymentsReady===true?0:1)' "$FIXTURE_GET"; then
+  echo "  ok   platform fixture payments are ready"
 else
-  echo "  FAIL Michael platform payments are ready"
+  echo "  FAIL platform fixture payments are ready"
   FAIL=1
 fi
 
@@ -46,8 +46,8 @@ echo "2. admin onboarding and route access"
 check "onboard without auth is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/jordan-reyes/connect/onboard")" "401"
 check "onboard with wrong token is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/jordan-reyes/connect/onboard" -H 'authorization: Bearer wrong')" "401"
 check "unknown tenant is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/nope/connect/onboard" -H "authorization: Bearer $ADMIN_TOKEN")" "404"
-check "platform tenant is rejected" "$(curl -sS -o "$TMP_DIR/platform.json" -w '%{http_code}' -X POST "$BASE/api/michael-heckert/connect/onboard" -H "authorization: Bearer $ADMIN_TOKEN")" "400"
-if grep -Fq "Tenant does not use Stripe Connect." "$TMP_DIR/platform.json"; then echo "  ok   platform tenant error is clear"; else echo "  FAIL platform tenant error is clear"; FAIL=1; fi
+check "platform fixture is rejected" "$(curl -sS -o "$TMP_DIR/platform.json" -w '%{http_code}' -X POST "$BASE/api/platform-fixture/connect/onboard" -H "authorization: Bearer $ADMIN_TOKEN")" "400"
+if grep -Fq "Tenant does not use Stripe Connect." "$TMP_DIR/platform.json"; then echo "  ok   platform fixture error is clear"; else echo "  FAIL platform fixture error is clear"; FAIL=1; fi
 
 ONBOARD_CODE=$(curl -sS -o "$TMP_DIR/onboard.json" -w '%{http_code}' -X POST "$BASE/api/jordan-reyes/connect/onboard" -H "authorization: Bearer $ADMIN_TOKEN")
 check "Jordan onboarding succeeds" "$ONBOARD_CODE" "200"
@@ -165,9 +165,9 @@ check "ready Jordan bid is accepted" "$JORDAN_CODE" "200"
 JORDAN_LOCK='{"id":"TR-R1","type":"lock","amount":0,"company":"Jordan Lock Co","name":"Jordan Locker","email":"jordan-lock@example.test"}'
 JORDAN_LOCK_CODE=$(curl -sS -o "$TMP_DIR/jordan-lock.json" -w '%{http_code}' -X POST "$BASE/api/jordan-reyes/bids" -H 'content-type: application/json' -H "x-preview-token: $PREVIEW_TOKEN" -d "$JORDAN_LOCK")
 check "ready Jordan lock succeeds" "$JORDAN_LOCK_CODE" "200"
-MICHAEL_LOCK='{"id":"SB-R1","type":"lock","amount":0,"company":"Michael Lock Co","name":"Michael Locker","email":"michael-lock@example.test"}'
-MICHAEL_LOCK_CODE=$(curl -sS -o "$TMP_DIR/michael-lock.json" -w '%{http_code}' -X POST "$BASE/api/michael-heckert/bids" -H 'content-type: application/json' -d "$MICHAEL_LOCK")
-check "Michael platform lock succeeds" "$MICHAEL_LOCK_CODE" "200"
+FIXTURE_LOCK='{"id":"SB-R1","type":"lock","amount":0,"company":"Fixture Lock Co","name":"Fixture Locker","email":"fixture-lock@example.test"}'
+FIXTURE_LOCK_CODE=$(curl -sS -o "$TMP_DIR/fixture-lock.json" -w '%{http_code}' -X POST "$BASE/api/platform-fixture/bids" -H 'content-type: application/json' -d "$FIXTURE_LOCK")
+check "platform fixture lock succeeds" "$FIXTURE_LOCK_CODE" "200"
 if node - "$MOCK_LOG" "$ACCOUNT_ID" <<'NODE'
 const fs = require("fs");
 const [file, accountId] = process.argv.slice(2);
@@ -178,26 +178,26 @@ const invoices = rows.filter((r) => r.method === "POST" && r.path === "/v1/invoi
 const invoiceItems = rows.filter((r) => r.method === "POST" && r.path === "/v1/invoiceitems");
 const finalizes = rows.filter((r) => r.method === "POST" && /^\/v1\/invoices\/in_\d+\/finalize$/.test(r.path));
 const jordan = invoices.find((r) => r.body?.["metadata[tenant]"] === "jordan-reyes");
-const michael = invoices.find((r) => r.body?.["metadata[tenant]"] === "michael-heckert");
+const fixture = invoices.find((r) => r.body?.["metadata[tenant]"] === "platform-fixture");
 const jordanCustomer = customers.find((r) => r.body?.["metadata[tenant]"] === "jordan-reyes");
-const michaelCustomer = customers.find((r) => r.body?.["metadata[tenant]"] === "michael-heckert");
+const fixtureCustomer = customers.find((r) => r.body?.["metadata[tenant]"] === "platform-fixture");
 const jordanItem = invoiceItems.find((r) => r.body?.["metadata[tenant]"] === "jordan-reyes");
-const michaelItem = invoiceItems.find((r) => r.body?.["metadata[tenant]"] === "michael-heckert");
-if (searches.length !== 2 || !jordanCustomer || !michaelCustomer || !jordan || !michael ||
-    !jordanItem || !michaelItem || finalizes.length !== 2) process.exit(1);
+const fixtureItem = invoiceItems.find((r) => r.body?.["metadata[tenant]"] === "platform-fixture");
+if (searches.length !== 2 || !jordanCustomer || !fixtureCustomer || !jordan || !fixture ||
+    !jordanItem || !fixtureItem || finalizes.length !== 2) process.exit(1);
 if ([searches[0], jordanCustomer, jordan, jordanItem, finalizes[0]].some((r) => r.stripeAccount !== accountId)) process.exit(1);
-if ([searches[1], michaelCustomer, michael, michaelItem, finalizes[1]].some((r) => r.stripeAccount !== null)) process.exit(1);
+if ([searches[1], fixtureCustomer, fixture, fixtureItem, finalizes[1]].some((r) => r.stripeAccount !== null)) process.exit(1);
 if (jordan.body?.application_fee_amount !== "15000" ||
     jordan.body?.["metadata[connected_account]"] !== accountId ||
     jordan.body?.["metadata[platform_fee_percent]"] !== "10" ||
     Object.hasOwn(jordan.body || {}, "transfer_data[destination]")) process.exit(1);
-if (Object.hasOwn(michael.body || {}, "transfer_data[destination]") ||
-    Object.hasOwn(michael.body || {}, "application_fee_amount") ||
-    Object.hasOwn(michael.body || {}, "metadata[connected_account]") ||
-    Object.hasOwn(michael.body || {}, "metadata[platform_fee_percent]")) process.exit(1);
+if (Object.hasOwn(fixture.body || {}, "transfer_data[destination]") ||
+    Object.hasOwn(fixture.body || {}, "application_fee_amount") ||
+    Object.hasOwn(fixture.body || {}, "metadata[connected_account]") ||
+    Object.hasOwn(fixture.body || {}, "metadata[platform_fee_percent]")) process.exit(1);
 NODE
 then
-  echo "  ok   Connect Stripe calls are account-scoped with a 10% fee; Michael stays platform-only"
+  echo "  ok   Connect Stripe calls are account-scoped with a 10% fee; fixture stays platform-only"
 else
   echo "  FAIL Connect vs platform Stripe call parameters"
   FAIL=1

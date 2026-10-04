@@ -190,25 +190,37 @@ check "Jordan session redirects to Jordan dashboard" "$JORDAN_LOCATION" "/dashbo
 JORDAN_COOKIE=$(awk 'tolower($1)=="set-cookie:" {sub(/^asp_dash=/,"",$2); sub(/;.*/,"",$2); gsub("\r","",$2); print $2; exit}' "$TMP_DIR/jordan-session.headers")
 check "Jordan draft summary is accessible" "$(curl -sS -o "$TMP_DIR/jordan-summary.json" -w '%{http_code}' -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/api/dashboard/jordan-reyes/summary")" "200"
 
+FIXTURE_LINK_CODE=$(curl -sS -o "$TMP_DIR/fixture-link.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/link" \
+  -H "Origin: $BASE" -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{}')
+check "admin can create a platform fixture login link" "$FIXTURE_LINK_CODE" "200"
+FIXTURE_JSON_TOKEN=$(node -e 'const x=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(new URL(x.url).searchParams.get("token")||"")' "$TMP_DIR/fixture-link.json")
+FIXTURE_SESSION_CODE=$(curl -sS -o "$TMP_DIR/fixture-session.json" -D "$TMP_DIR/fixture-session.headers" -w '%{http_code}' \
+  -X POST "$BASE/api/dashboard/session" -H "Origin: $BASE" \
+  -H 'content-type: application/json' -d "{\"token\":\"$FIXTURE_JSON_TOKEN\"}")
+check "platform fixture session exchange succeeds" "$FIXTURE_SESSION_CODE" "200"
+json_check "fixture session identifies platform fixture" "$TMP_DIR/fixture-session.json" \
+  'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).slug==="platform-fixture"?0:1)'
+FIXTURE_COOKIE=$(awk 'tolower($1)=="set-cookie:" {sub(/^asp_dash=/,"",$2); sub(/;.*/,"",$2); gsub("\r","",$2); print $2; exit}' "$TMP_DIR/fixture-session.headers")
+
 echo "3. summary, public bids, CSV, and offline sales"
-BID_CODE=$(curl -sS -o "$TMP_DIR/bid.json" -w '%{http_code}' -X POST "$BASE/api/michael-heckert/bids" \
+BID_CODE=$(curl -sS -o "$TMP_DIR/bid.json" -w '%{http_code}' -X POST "$BASE/api/platform-fixture/bids" \
   -H "Origin: $BASE" -H 'content-type: application/json' \
   -d '{"id":"SB-R1","type":"bid","amount":500,"company":"=HYPERLINK(\"x\")","name":"Dashboard Bidder","email":"dashboard-bidder@example.test","phone":"555-0101","note":"First dashboard test bid"}')
-check "public Michael bid is accepted" "$BID_CODE" "200"
-MICHAEL_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/michael-summary.json" -w '%{http_code}' -H "Cookie: asp_dash=$MICHAEL_COOKIE" "$BASE/api/dashboard/michael-heckert/summary")
-check "Michael summary is available" "$MICHAEL_SUMMARY_CODE" "200"
-json_check "summary includes contact, portal and payment fields without preview token" "$TMP_DIR/michael-summary.json" 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const p=s.placements.find(x=>x.id==="SB-R1");process.exit(p?.state==="bidding"&&p.bidder?.email==="dashboard-bidder@example.test"&&p.bidder?.phone==="555-0101"&&s.tenant?.portalUrl&&s.payments?.mode==="platform"&&!JSON.stringify(s).includes("devpreview")?0:1)'
+check "public platform fixture bid is accepted" "$BID_CODE" "200"
+FIXTURE_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/fixture-summary.json" -w '%{http_code}' -H "Cookie: asp_dash=$FIXTURE_COOKIE" "$BASE/api/dashboard/platform-fixture/summary")
+check "platform fixture summary is available" "$FIXTURE_SUMMARY_CODE" "200"
+json_check "summary includes contact, portal and payment fields without preview token" "$TMP_DIR/fixture-summary.json" 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const p=s.placements.find(x=>x.id==="SB-R1");process.exit(p?.state==="bidding"&&p.bidder?.email==="dashboard-bidder@example.test"&&p.bidder?.phone==="555-0101"&&s.tenant?.portalUrl&&s.payments?.mode==="platform"&&!JSON.stringify(s).includes("devpreview")?0:1)'
 
-PUBLIC_GET=$(curl -sS "$BASE/api/michael-heckert/bids")
+PUBLIC_GET=$(curl -sS "$BASE/api/platform-fixture/bids")
 if printf '%s' "$PUBLIC_GET" | grep -Fq 'dashboard-bidder@example.test'; then echo "  FAIL public bid API hides email"; FAIL=1; else echo "  ok   public bid API hides email"; fi
 if printf '%s' "$PUBLIC_GET" | grep -Fq '555-0101'; then echo "  FAIL public bid API hides phone"; FAIL=1; else echo "  ok   public bid API hides phone"; fi
 
 CSV_CODE=$(curl -sS -o "$TMP_DIR/bids.csv" -D "$TMP_DIR/csv.headers" -w '%{http_code}' \
-  -H "Cookie: asp_dash=$MICHAEL_COOKIE" "$BASE/api/dashboard/michael-heckert/export.csv")
+  -H "Cookie: asp_dash=$FIXTURE_COOKIE" "$BASE/api/dashboard/platform-fixture/export.csv")
 check "CSV export is available" "$CSV_CODE" "200"
 HEADER=$(head -n 1 "$TMP_DIR/bids.csv" | tr -d '\r')
 check "CSV has required header row" "$HEADER" "placement_id,placement_label,at,type,amount,company,contact_name,email,phone,note,is_current_high,invoice_status,paid_at"
-if grep -qi 'content-disposition: attachment; filename="michael-heckert-bids.csv"' "$TMP_DIR/csv.headers"; then
+if grep -qi 'content-disposition: attachment; filename="platform-fixture-bids.csv"' "$TMP_DIR/csv.headers"; then
   echo "  ok   CSV download filename is set"
 else
   echo "  FAIL CSV download filename is set"
@@ -224,18 +236,18 @@ fi
 if grep -Fq "'=HYPERLINK" "$TMP_DIR/bids.csv"; then echo "  ok   CSV prefixes formula-like company"; else echo "  FAIL CSV prefixes formula-like company"; FAIL=1; fi
 if grep -Fq 'dashboard-bidder@example.test' "$TMP_DIR/bids.csv"; then echo "  ok   CSV includes the bid row"; else echo "  FAIL CSV includes the bid row"; FAIL=1; fi
 
-SOLD_CODE=$(curl -sS -o "$TMP_DIR/sold.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/michael-heckert/placements/TF-12/sold" \
-  -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE" -H 'content-type: application/json' \
+SOLD_CODE=$(curl -sS -o "$TMP_DIR/sold.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/TF-12/sold" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE" -H 'content-type: application/json' \
   -d '{"sponsor":"Offline Sponsor","amount":1250,"note":"Confirmed offline"}')
 check "no-bid placement can be marked sold" "$SOLD_CODE" "200"
 json_check "sold response uses dashboard placement shape" "$TMP_DIR/sold.json" 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).placement;process.exit(p?.state==="sold"&&p.sponsor==="Offline Sponsor"&&p.soldAmount===1250&&p.soldSource==="dashboard"?0:1)'
-PUBLIC_GET=$(curl -sS "$BASE/api/michael-heckert/bids")
+PUBLIC_GET=$(curl -sS "$BASE/api/platform-fixture/bids")
 printf '%s' "$PUBLIC_GET" > "$TMP_DIR/public-sold.json"
 json_check "public bid view shows dashboard placement as sold without details" "$TMP_DIR/public-sold.json" 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).placements["TF-12"];process.exit(p?.locked===true&&p.closed===true&&p.lockedBy==="Offline Sponsor"&&p.sold===true&&!Object.hasOwn(p,"email")&&!Object.hasOwn(p,"phone")&&!Object.hasOwn(p,"amount")?0:1)'
-check "public bid on sold placement is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/michael-heckert/bids" -H "Origin: $BASE" -H 'content-type: application/json' -d '{"id":"TF-12","type":"bid","amount":500,"company":"Blocked Co","name":"Blocked Bidder","email":"blocked@example.test"}')" "409"
-check "marking placement with bids sold is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/dashboard/michael-heckert/placements/SB-R1/sold" -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE" -H 'content-type: application/json' -d '{"sponsor":"Too Late"}')" "409"
-check "marking config-sold placement sold is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/dashboard/michael-heckert/placements/SF-L1/sold" -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE" -H 'content-type: application/json' -d '{"sponsor":"Already Sold"}')" "409"
-CSV_CODE=$(curl -sS -o "$TMP_DIR/sold.csv" -w '%{http_code}' -H "Cookie: asp_dash=$MICHAEL_COOKIE" "$BASE/api/dashboard/michael-heckert/export.csv")
+check "public bid on sold placement is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/platform-fixture/bids" -H "Origin: $BASE" -H 'content-type: application/json' -d '{"id":"TF-12","type":"bid","amount":500,"company":"Blocked Co","name":"Blocked Bidder","email":"blocked@example.test"}')" "409"
+check "marking placement with bids sold is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/SB-R1/sold" -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE" -H 'content-type: application/json' -d '{"sponsor":"Too Late"}')" "409"
+check "marking config-sold placement sold is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/SF-L1/sold" -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE" -H 'content-type: application/json' -d '{"sponsor":"Already Sold"}')" "409"
+CSV_CODE=$(curl -sS -o "$TMP_DIR/sold.csv" -w '%{http_code}' -H "Cookie: asp_dash=$FIXTURE_COOKIE" "$BASE/api/dashboard/platform-fixture/export.csv")
 check "CSV export includes offline sale" "$CSV_CODE" "200"
 if grep -Fq 'offline_sale' "$TMP_DIR/sold.csv" && grep -Fq 'Offline Sponsor' "$TMP_DIR/sold.csv"; then
   echo "  ok   dashboard sale is exported as offline_sale"
@@ -243,27 +255,27 @@ else
   echo "  FAIL dashboard sale is exported as offline_sale"
   FAIL=1
 fi
-RELEASE_CODE=$(curl -sS -o "$TMP_DIR/release.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/michael-heckert/placements/TF-12/release" \
-  -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE")
+RELEASE_CODE=$(curl -sS -o "$TMP_DIR/release.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/TF-12/release" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE")
 check "dashboard sale can be released" "$RELEASE_CODE" "200"
-check "release of config-sold placement is rejected" "$(curl -sS -o "$TMP_DIR/release-config.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/michael-heckert/placements/SF-L1/release" -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE")" "409"
+check "release of config-sold placement is rejected" "$(curl -sS -o "$TMP_DIR/release-config.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/SF-L1/release" -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE")" "409"
 if grep -Fq 'This sale is set in the tenant config; contact support to change it.' "$TMP_DIR/release-config.json"; then
   echo "  ok   config-sold release explains the restriction"
 else
   echo "  FAIL config-sold release explains the restriction"
   FAIL=1
 fi
-MICHAEL_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/released-summary.json" -w '%{http_code}' \
-  -H "Cookie: asp_dash=$MICHAEL_COOKIE" "$BASE/api/dashboard/michael-heckert/summary")
+FIXTURE_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/released-summary.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$FIXTURE_COOKIE" "$BASE/api/dashboard/platform-fixture/summary")
 check "released placement returns to open state" "$(node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(s.placements.find(x=>x.id==="TF-12")?.state||"missing")' "$TMP_DIR/released-summary.json")" "open"
-check "released placement accepts a bid" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/michael-heckert/bids" -H "Origin: $BASE" -H 'content-type: application/json' -d '{"id":"TF-12","type":"bid","amount":500,"company":"After Release Co","name":"After Release Bidder","email":"after-release@example.test"}')" "200"
+check "released placement accepts a bid" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/platform-fixture/bids" -H "Origin: $BASE" -H 'content-type: application/json' -d '{"id":"TF-12","type":"bid","amount":500,"company":"After Release Co","name":"After Release Bidder","email":"after-release@example.test"}')" "200"
 
 echo "4. dashboard sale export, Connect onboarding, and logout"
 JORDAN_CONNECT_CODE=$(curl -sS -o "$TMP_DIR/jordan-connect.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/jordan-reyes/connect/onboard" \
   -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE")
 check "Jordan gets a Stripe onboarding URL" "$JORDAN_CONNECT_CODE" "200"
 if grep -Fq 'https://connect.stripe.com/setup/mock/' "$TMP_DIR/jordan-connect.json"; then echo "  ok   Jordan URL comes from the mock"; else echo "  FAIL Jordan URL comes from the mock"; FAIL=1; fi
-check "Michael platform tenant cannot onboard" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/dashboard/michael-heckert/connect/onboard" -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE")" "400"
+check "platform fixture tenant cannot onboard" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/connect/onboard" -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE")" "400"
 
 LOGOUT_CODE=$(curl -sS -o "$TMP_DIR/logout.json" -D "$TMP_DIR/logout.headers" -w '%{http_code}' \
   -X POST "$BASE/api/dashboard/logout" -H "Origin: $BASE" -H "Cookie: asp_dash=$MICHAEL_COOKIE" \
