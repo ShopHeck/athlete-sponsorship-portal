@@ -13,6 +13,7 @@ import { DecalGeometry } from "three/addons/geometries/DecalGeometry.js";
 const MODEL_HEIGHT = 1.86;
 const THREE_CDN = "https://unpkg.com/three@0.170.0/examples/jsm/";
 const config = JSON.parse(document.getElementById("portal-config").textContent);
+const isStudio = Boolean(config.studio);
 const garments = config.garments;
 const allPlacements = garments.flatMap((garment) => garment.placements);
 const garmentConfig = (id) => garments.find((garment) => garment.id === id);
@@ -56,6 +57,11 @@ const bidButton = document.getElementById("bidButton");
 const lockButton = document.getElementById("lockButton");
 const bidNote = document.getElementById("bidNote");
 const bidNoteText = document.getElementById("bidNote").firstChild;
+if (isStudio) {
+  bidNoteText.data = "Preview only — bidding is disabled. ";
+  bidForm.querySelectorAll("input,button").forEach((control) => { control.disabled = true; });
+  lockButton.disabled = true;
+}
 const lockPriceEl = document.getElementById("lockPrice");
 const lockLabel = document.getElementById("lockLabel");
 const bidSuccess = document.getElementById("bidSuccess");
@@ -228,10 +234,19 @@ function makeSlot(spot, side, meshes) {
 }
 
 function buildSlots(meshes) {
+  const missing = [];
   allPlacements.forEach((spot) => {
-    makeSlot(spot, spot.side, meshes);
-    if (spot.mirror) makeSlot(spot, spot.mirror, meshes);
+    const failedSides = [];
+    for (const side of new Set([spot.side, spot.mirror].filter(Boolean))) {
+      if (!makeSlot(spot, side, meshes)) failedSides.push(side);
+    }
+    if (failedSides.length) missing.push({ id: spot.id, sides: failedSides });
   });
+  if (isStudio) {
+    window.dispatchEvent(new CustomEvent("studio:fit", {
+      detail: { total: allPlacements.length, missing }
+    }));
+  }
 }
 
 /* --------------------------------------------------------------- model */
@@ -305,6 +320,7 @@ loader.load(
     console.error(err);
     stage.classList.add("has-error");
     loadingEl.textContent = config.copy.modelLoadError;
+    if (isStudio) window.dispatchEvent(new CustomEvent("studio:fit", { detail: { error: true } }));
     firstRender();
   }
 );
@@ -427,7 +443,9 @@ function renderSlots() { slotMeshes.forEach(drawSlot); }
 function renderBidPanel(spot, bid) {
   const { minBid, increment, lockPrice, online, paymentsReady } = state.auction;
   const floor = minimumBid(spot.id);
-  if (!paymentsReady) {
+  if (isStudio) {
+    bidMeta.textContent = "Preview only — bidding is disabled";
+  } else if (!paymentsReady) {
     bidMeta.textContent = config.copy.paymentsPending;
   } else if (bid?.high) {
     bidHigh.textContent = usd(bid.high);
@@ -444,10 +462,10 @@ function renderBidPanel(spot, bid) {
   lockPriceEl.textContent = usd(lockPrice);
   if (!submitBid.busy) {
     lockLabel.textContent = formatCopy(config.copy.lockLabel, { price: usd(lockPrice) });
-    bidButton.disabled = lockButton.disabled = !online || !paymentsReady;
+    bidButton.disabled = lockButton.disabled = isStudio || !online || !paymentsReady;
   }
   if (switched) bidError.hidden = true;
-  if (state.auction.deadline) {
+  if (state.auction.deadline && !isStudio) {
     const d = new Date(state.auction.deadline);
     bidNoteText.textContent = `${formatCopy(config.copy.bidNote, {
       minBid: usd(minBid),
@@ -579,6 +597,7 @@ openPlacementsBtn.addEventListener("click", () => {
 });
 /* ------------------------------------------------------------ bidding */
 async function loadBids() {
+  if (isStudio) return;
   try {
     const res = await fetch(BIDS_URL, { cache: "no-store", headers: previewHeaders, signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(8000) : undefined });
     if (!res.ok) throw new Error(res.statusText);
@@ -605,8 +624,8 @@ async function loadBidLogos() {
 }
 // Gate the first render on live bids so we never land on a locked placement, but only briefly:
 // a slow or stalled API must not keep the viewer hidden. Polling keeps refreshing afterwards.
-const bidsReady = Promise.race([loadBids(), new Promise((r) => setTimeout(r, 4000))]);
-setInterval(loadBids, 30000);
+const bidsReady = isStudio ? Promise.resolve() : Promise.race([loadBids(), new Promise((r) => setTimeout(r, 4000))]);
+if (!isStudio) setInterval(loadBids, 30000);
 
 // Rasterise the previewed logo (max 800px, PNG) so it travels with the bid and survives a refresh.
 function logoDataUrl(id) {
@@ -679,7 +698,7 @@ async function submitBid(type) {
     bidButton.disabled = lockButton.disabled = !state.auction.online || !state.auction.paymentsReady;
   }
 }
-bidForm.addEventListener("submit", (e) => { e.preventDefault(); submitBid("bid"); });
+bidForm.addEventListener("submit", (e) => { e.preventDefault(); if (!isStudio) submitBid("bid"); });
 lockButton.addEventListener("click", () => submitBid("lock"));
 
 // Hash edits after load (e.g. the host page forwarding a new /#ID into the embed) select that placement.

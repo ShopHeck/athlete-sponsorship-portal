@@ -93,10 +93,12 @@ export async function loadViews(tenant, {
 } = {}) {
   const store = storeForTenant();
   const slug = tenant.slug;
-  const [job, storedDecision] = await Promise.all([
+  const [job, storedDecision, live] = await Promise.all([
     store.get(jobKey(slug), { type: "json" }),
-    store.get(`${slug}/views/decision`, { type: "json" })
+    store.get(`${slug}/views/decision`, { type: "json" }),
+    store.get(`${slug}/live/current`, { type: "json" })
   ]);
+  const hasTenantModel = ownModel || Boolean(live);
   const attempt = job?.attempt || 0;
   const shared = {
     jobId: job?.id ?? null,
@@ -110,7 +112,7 @@ export async function loadViews(tenant, {
       at: storedDecision.at
     } : null
   };
-  if (!submitted || ownModel) return { status: "locked", ...shared, angles: null, decision: null };
+  if (!submitted || hasTenantModel) return { status: "locked", ...shared, angles: null, decision: null };
   if (!job) return { status: "not_started", ...shared, angles: null, decision: null };
 
   const records = await Promise.all(ANGLES.map(async (angle) => {

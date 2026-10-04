@@ -1,4 +1,5 @@
 import platform from "../lib/platform.generated.json";
+import { getLivePointer } from "../lib/model-review.mjs";
 import { renderPortal } from "../lib/render.mjs";
 import { getTenant, previewTokenMatches } from "../lib/tenants.mjs";
 
@@ -25,7 +26,15 @@ export default async function portal(req, context) {
 
   const platformUrl = (process.env.PLATFORM_URL || url.origin).replace(/\/+$/, "");
   const portalUrl = `${platformUrl}/${slug}`;
-  const renderConfig = preview ? { ...tenant, previewToken } : tenant;
+  let renderConfig = preview ? { ...tenant, previewToken } : tenant;
+  const live = await getLivePointer(tenant);
+  if (live?.jobId) {
+    const previewQuery = preview ? `&preview=${encodeURIComponent(previewToken)}` : "";
+    renderConfig = {
+      ...renderConfig,
+      model: `/api/${encodeURIComponent(slug)}/model.glb?v=${encodeURIComponent(live.jobId)}${previewQuery}`
+    };
+  }
   const html = renderPortal(renderConfig, {
     template: platform.template,
     version: platform.version,
@@ -46,4 +55,8 @@ export default async function portal(req, context) {
   return new Response(html, { headers });
 }
 
-export const config = { path: ["/:slug", "/:slug/"], excludedPath: ["/dashboard", "/dashboard/"], preferStatic: true };
+export const config = {
+  path: ["/:slug", "/:slug/"],
+  excludedPath: ["/dashboard", "/dashboard/", "/admin", "/admin/"],
+  preferStatic: true
+};

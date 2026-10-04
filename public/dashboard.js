@@ -138,6 +138,7 @@ function renderModel() {
   const model = summary.model || {};
   const viewsStatus = model.views?.status;
   const buildStatus = model.build?.status;
+  const reviewStatus = model.review?.status;
   const badge = viewsStatus === "generating"
     ? ["warn", "Generating views"]
     : viewsStatus === "review"
@@ -146,8 +147,16 @@ function renderModel() {
         ? ["warn", "Views need attention"]
         : ["building", "processing"].includes(buildStatus)
           ? ["warn", "Building your model"]
-          : buildStatus === "ready"
-            ? ["accent", "Model ready"]
+          : reviewStatus === "athlete_review"
+            ? ["accent", "Review your model"]
+            : reviewStatus === "operator_review"
+              ? ["warn", "With our team for sign-off"]
+              : reviewStatus === "sent_back"
+                ? ["warn", "Changes requested"]
+                : reviewStatus === "live"
+                  ? ["ok", "Model live"]
+                  : buildStatus === "ready"
+                    ? ["accent", "Model ready"]
             : model.status === "ready"
               ? ["ok", "Live"]
               : model.status === "submitted"
@@ -155,19 +164,33 @@ function renderModel() {
                 : model.status === "collecting"
                   ? ["warn", `${model.photoCount || 0} of 5 photos`]
                   : ["warn", "Not started"];
+  const studioUrl = `/dashboard/${encodeURIComponent(summary.tenant.slug)}/model/studio`;
+  const reviewCopy = {
+    athlete_review: "Your model is ready for a private review.",
+    operator_review: "Your model is with our team for sign-off.",
+    sent_back: "Changes were requested on your model.",
+    live: "Your approved model is live."
+  }[reviewStatus];
   return el("section", { class: "card", "data-tour": "model" },
     el("div", { class: "card-head" }, el("h2", { text: "Your 3D likeness" }), el("span", { class: `badge badge-${badge[0]}`, text: badge[1] })),
     el("p", { class: "muted", text: "Sponsors see a 360° 3D model of you. Take 5 quick photos and we'll build it." }),
+    reviewCopy ? el("p", { class: "muted", text: reviewCopy }) : null,
     el("a", {
       class: "btn btn-primary",
-      href: `/dashboard/${encodeURIComponent(summary.tenant.slug)}/model`,
-      text: viewsStatus === "review"
-        ? "Approve your views"
-        : ["failed", "rejected"].includes(viewsStatus)
-          ? "Open model studio"
-          : buildStatus === "ready"
-            ? "See your model"
-            : model.status === "collecting" ? "Continue" : "Open model studio"
+      href: ["athlete_review", "operator_review", "sent_back", "live"].includes(reviewStatus)
+        ? studioUrl
+        : `/dashboard/${encodeURIComponent(summary.tenant.slug)}/model`,
+      text: reviewStatus === "athlete_review"
+        ? "Open preview"
+        : ["operator_review", "sent_back", "live"].includes(reviewStatus)
+          ? "Open studio preview"
+          : viewsStatus === "review"
+            ? "Approve your views"
+            : ["failed", "rejected"].includes(viewsStatus)
+              ? "Open model studio"
+              : buildStatus === "ready"
+                ? "See your model"
+                : model.status === "collecting" ? "Continue" : "Open model studio"
     }));
 }
 
@@ -1236,7 +1259,19 @@ function renderBuildSection() {
         alt: "Thumbnail of your 3D model"
       }));
     }
-    section.append(el("p", { class: "notice notice-ok", text: "Your 3D model is built. We'll check it and set up your 360° preview with your sponsor placements next." }));
+    const reviewCopy = {
+      athlete_review: "Your model is ready for a private review.",
+      operator_review: "Your model is with our team for sign-off.",
+      sent_back: `Changes requested: ${modelStudio.review?.operator?.note || "Please review the note in your private preview."}`,
+      live: "Your model is live on your portal."
+    }[modelStudio.review?.status] || "Your 3D model is built and ready for review.";
+    section.append(
+      el("p", { class: "notice notice-ok", text: reviewCopy }),
+      el("a", {
+        class: "btn btn-primary",
+        href: `/dashboard/${encodeURIComponent(slug)}/model/studio`,
+        text: "Open studio preview"
+      }));
   } else if (build.status === "failed") {
     section.append(el("p", { class: "notice notice-error", role: "alert", text: "Something went wrong building your model." }));
     if (build.attemptsLeft > 0) {
@@ -1258,7 +1293,7 @@ function renderModelStudio() {
   const root = document.getElementById("modelStudio");
   if (!root || !modelStudio) return;
   root.setAttribute("aria-busy", "false");
-  if (modelStudio.status === "ready") {
+  if (modelStudio.status === "ready" && !modelStudio.build?.jobId) {
     stopViewPolling();
     root.replaceChildren(el("section", { class: "card model-ready" },
       el("p", { class: "model-ready-copy", text: "Your 3D model is live on your portal." }),

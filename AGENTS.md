@@ -16,12 +16,14 @@ operating one. `reference/gotchas.md` first when debugging.
   `STRIPE_API_BASE`/`RESEND_API_BASE=http://127.0.0.1:4343`, `PLATFORM_URL=http://localhost:8890`,
   `PREVIEW_TOKEN=devpreview`, `ADMIN_TOKEN=devtoken`, `STRIPE_WEBHOOK_SECRET=whsec_platform_test`, and
   `STRIPE_CONNECT_WEBHOOK_SECRET=whsec_connect_test`, `DASHBOARD_SECRET=devdashboard`,
-  `MESHY_API_KEY=mock_key`, and `MESHY_API_BASE=http://127.0.0.1:4343` (see `scripts/smoke-test.sh` header), then
+  `OPERATOR_EMAIL=ops@example.test`, `MESHY_API_KEY=mock_key`, and
+  `MESHY_API_BASE=http://127.0.0.1:4343` (see `scripts/smoke-test.sh` header), then
   `scripts/smoke-test.sh http://localhost:8890 michael-heckert <OPEN-ID-A> <OPEN-ID-B>` and
   `scripts/tenant-test.sh http://localhost:8890` and
   `scripts/connect-test.sh http://localhost:8890` and
   `scripts/webhook-test.sh http://localhost:8890` and
-  `scripts/dashboard-test.sh http://localhost:8890`
+  `scripts/dashboard-test.sh http://localhost:8890` and
+  `scripts/studio-test.sh http://localhost:8890`
   → must print `SMOKE TEST PASSED`, `TENANT TEST PASSED`, `CONNECT TEST PASSED`, `WEBHOOK TEST PASSED`,
   and `DASHBOARD TEST PASSED`.
   Reset the sandbox with `rm -rf .netlify/blobs-serve` and restart the mock service before each script.
@@ -38,14 +40,21 @@ operating one. `reference/gotchas.md` first when debugging.
   Stripe webhooks use `/api/stripe/webhook`. Dashboard APIs are `/api/dashboard/login`, `/session`, `/logout`,
   `/:slug/link`, `/:slug/summary`, `/:slug/export.csv`, `/:slug/placements/:id/{sold,release}`, and
   `/:slug/connect/onboard`, `/:slug/model`, `/:slug/model/{consent,kit,submit}`,
-  `/:slug/model/photos/:angle`, `/:slug/model/views/{generate,decision,:angle}`, and
-  `/:slug/model/build/{start,model.glb,thumbnail}`; they require `DASHBOARD_SECRET`, and POSTs require a
-  same-origin `Origin`. Model Studio Phases B–C use `MESHY_API_KEY` and optional `MESHY_API_BASE` (default
-  `https://api.meshy.ai`); local tests must override both to use the fake Meshy service. Phase C builds only from
-  approved views and stores GLBs privately in the `model-studio` Blobs store. The
-  `model-build-background` function externalizes `sharp` and `draco3dgltf`. Blobs records are tenant-prefixed.
+  `/:slug/model/photos/:angle`, `/:slug/model/views/{generate,decision,:angle}`,
+  `/:slug/model/build/{start,model.glb,thumbnail}`, and `/:slug/model/review`; they require
+  `DASHBOARD_SECRET`, and POSTs require a same-origin `Origin`. Athlete previews are at
+  `/dashboard/:slug/model/studio`. Operator pages and APIs are `/admin`, `/admin/:slug/studio`,
+  `/api/admin/session`, `/api/admin/logout`, `/api/admin/reviews`, and
+  `/api/admin/:slug/model/{publish,send-back,unpublish}`. Versioned public models use
+  `/api/:slug/model.glb?v=<job-id>`. Model Studio Phases B–D use `MESHY_API_KEY` and optional `MESHY_API_BASE`
+  (default `https://api.meshy.ai`); local tests must override both to use the fake Meshy service. Phase C builds
+  only from approved views and stores GLBs privately. Phase D stores athlete/operator review records and
+  published-model pointers/assets in the strong-consistency `model-studio` Blobs store; publishing does not edit
+  tenant JSON. The `model-build-background` function alone externalizes `sharp` and `draco3dgltf`; dashboard-api,
+  portal, and admin functions must not bundle them. Blobs records are tenant-prefixed.
 - Secrets only via `netlify env:set … --secret`; never in chat, code or commits. Set `DASHBOARD_SECRET` and
-  `MESHY_API_KEY` as Netlify secrets for deployed dashboard and Model Studio APIs.
+  `MESHY_API_KEY` as Netlify secrets for deployed dashboard and Model Studio APIs. `OPERATOR_EMAIL` is optional
+  and receives athlete model-approval notifications.
 - Blobs deletions are destructive: confirm the placement ID and back up first.
 - Real test emails / locks need explicit confirmation and the owner's own address.
 - Address every automated PR-review comment before calling a PR mergeable.
