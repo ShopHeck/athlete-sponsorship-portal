@@ -23,9 +23,10 @@ operating one. `reference/gotchas.md` first when debugging.
   `scripts/connect-test.sh http://localhost:8890` and
   `scripts/webhook-test.sh http://localhost:8890` and
   `scripts/dashboard-test.sh http://localhost:8890` and
-  `scripts/studio-test.sh http://localhost:8890`
+  `scripts/studio-test.sh http://localhost:8890` and
+  `scripts/apply-test.sh http://localhost:8890`
   → must print `SMOKE TEST PASSED`, `TENANT TEST PASSED`, `CONNECT TEST PASSED`, `WEBHOOK TEST PASSED`,
-  and `DASHBOARD TEST PASSED`.
+  `DASHBOARD TEST PASSED`, and `APPLY TEST PASSED`.
   Reset the sandbox with `rm -rf .netlify/blobs-serve` and restart the mock service before each script.
 - Syntax check: `for f in public/app.js public/arena.js netlify/lib/*.mjs netlify/functions/*.mjs scripts/*.mjs; do node --check "$f" || exit 1; done; for f in scripts/*.sh; do bash -n "$f" || exit 1; done`
 - Package the skill for Claude / Codex / ChatGPT: `scripts/package-skill.sh` → `dist/skill/`
@@ -36,6 +37,8 @@ operating one. `reference/gotchas.md` first when debugging.
 - Placement IDs and labels live only in `tenants/<slug>.json` under `garments[].placements`; the build generates the server allowlist and labels from these configs.
 - Add a tenant with `tenants/<slug>.json` and `public/tenants/<slug>/` assets. Set `status` to `draft`, preview with `?preview=$PREVIEW_TOKEN`, and change it to `live` after approval. Draft preview pages pass the token to bid APIs; preview bids are real records scoped to that tenant.
 - Every tenant config requires `payments.mode` (`platform` or `connect`); Connect mode also sets `feePercent` and optional two-letter country. Connect uses direct charges; account creation requests `card_payments` and `transfers` because Stripe requires both. Bidding stays closed until charges are enabled and `card_payments` is active.
+- `POST /api/apply` stores founding-athlete applications in the strong-consistency `applications` Blobs store;
+  hourly rate-limit keys contain only a SHA-256 hash of the client IP.
 - Tenant API routes are `/api/<slug>/bids`, `/api/<slug>/logos/<id>`, and `/api/<slug>/connect/{onboard,status}`;
   Stripe webhooks use `/api/stripe/webhook`. Dashboard APIs are `/api/dashboard/login`, `/session`, `/logout`,
   `/:slug/link`, `/:slug/summary`, `/:slug/export.csv`, `/:slug/placements/:id/{sold,release}`, and

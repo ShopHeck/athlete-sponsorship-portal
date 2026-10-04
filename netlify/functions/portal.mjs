@@ -3,7 +3,7 @@ import { getLivePointer } from "../lib/model-review.mjs";
 import { renderPortal } from "../lib/render.mjs";
 import { getTenant, previewTokenMatches } from "../lib/tenants.mjs";
 
-const RESERVED_SLUGS = new Set(["api", "tenants", "assets", "admin", "dashboard", "static"]);
+const RESERVED_SLUGS = new Set(["api", "tenants", "assets", "admin", "dashboard", "static", "terms", "privacy"]);
 const notFoundHtml = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Portal not found</title></head>
 <body><main><h1>Portal not found</h1></main></body></html>`;

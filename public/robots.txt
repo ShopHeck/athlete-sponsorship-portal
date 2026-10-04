@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /api/
+
+Sitemap: https://athletes.michaelheckert.com/sitemap.xml
