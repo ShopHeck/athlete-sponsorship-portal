@@ -43,4 +43,18 @@ writeFileSync(generatedPlatform, `${JSON.stringify(platform, null, 2)}\n`);
 mkdirSync(mediapipeTarget, { recursive: true });
 copyFileSync(path.join(mediapipeSource, "vision_bundle.mjs"), path.join(mediapipeTarget, "vision_bundle.mjs"));
 cpSync(path.join(mediapipeSource, "wasm"), path.join(mediapipeTarget, "wasm"), { recursive: true });
+const threeSource = path.join(root, "node_modules/three");
+const threeVersion = JSON.parse(readFileSync(path.join(threeSource, "package.json"), "utf8")).version;
+const threeTarget = path.join(root, `public/vendor/three-${threeVersion}`);
+mkdirSync(threeTarget, { recursive: true });
+copyFileSync(path.join(threeSource, "build/three.module.min.js"), path.join(threeTarget, "three.module.js"));
+for (const addon of [
+  "controls/OrbitControls.js", "environments/RoomEnvironment.js", "geometries/DecalGeometry.js",
+  "loaders/GLTFLoader.js", "loaders/DRACOLoader.js", "utils/BufferGeometryUtils.js",
+  "libs/draco/draco_decoder.js", "libs/draco/draco_decoder.wasm", "libs/draco/draco_wasm_wrapper.js"
+]) {
+  const target = path.join(threeTarget, "addons", addon);
+  mkdirSync(path.dirname(target), { recursive: true });
+  copyFileSync(path.join(threeSource, "examples/jsm", addon), target);
+}
 console.log(`Built tenant registry with ${tenants.length} tenants (version ${version}).`);
