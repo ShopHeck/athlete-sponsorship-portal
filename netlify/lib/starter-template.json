@@ -1,0 +1,40 @@
+{
+  "seo": {
+    "title": "{{FULLNAME}} Sponsorship Portal",
+    "description": "Choose a logo placement on {{fullName}}'s fight apparel.",
+    "siteName": "{{FULLNAME}} Sponsorship Portal",
+    "ogTitle": "Sponsor {{fullName}} · {{eventName}} · {{eventDateShort}}",
+    "ogDescription": "Explore the 360° model, bid from {{minBid}} or lock a placement for {{lockPrice}}.",
+    "ogImageAlt": "{{fullName}} sponsorship portal",
+    "twitterDescription": "Explore the 360° model, bid from {{minBid}} or lock a placement for {{lockPrice}}."
+  },
+  "hero": {
+    "eyebrow": "YOUR BRAND. FIGHT NIGHT.",
+    "titleHtml": "Choose your<br><em>position.</em>",
+    "intro": "Rotate {{firstName}} to explore every available placement. Switch apparel, select a position, and preview your logo."
+  },
+  "benefits": [
+    "Your logo on {{fullName}}'s fight apparel at {{eventName}}",
+    "Social media promotion and a post-fight interview shout-out",
+    "A post-fight branded media kit",
+    "Two VIP ringside tickets"
+  ],
+  "packageName": "Fight Night package",
+  "athlete": {
+    "footerLine": "PROFESSIONAL ATHLETE · FIGHT NIGHT SPONSORSHIP"
+  },
+  "event": {
+    "portalSubtitle": "{{FULLNAME}} SPONSORSHIP PORTAL",
+    "lockupKicker": "FIGHT NIGHT"
+  },
+  "copy": {
+    "brandAriaLabel": "{{FULLNAME}} home",
+    "canvasLabel": "Interactive 3D model of {{fullName}} in fight apparel. Use the arrow keys to rotate.",
+    "paymentsPending": "Bidding opens soon — {{firstName}} is finishing payout setup.",
+    "embedEyebrow": "EMBED {{FULLNAME}}",
+    "embedTitle": "{{fullName}} sponsorship portal",
+    "emailOutro": "Once payment clears, {{firstName}} will reach out for your final artwork and the {{eventName}} package details.",
+    "invoiceSource": "the {{fullName}} sponsorship portal",
+    "dashboardSiteName": "{{firstName}}-portal"
+  }
+}

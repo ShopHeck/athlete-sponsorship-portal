@@ -41,6 +41,11 @@ function queuePage() {
 </header>
 <main class="dash">
   <div class="dash-head"><div><p class="eyebrow">MODEL STUDIO</p><h1>Review queue</h1></div></div>
+  <section class="card" id="adminApplicationsSection">
+    <div class="card-head"><h2>Applications</h2><span class="badge badge-accent" id="adminApplicationsCount">Loading</span></div>
+    <p class="notice" id="adminApplicationsStatus" role="status">Loading applications…</p>
+    <div id="adminApplications" class="stack"></div>
+  </section>
   <p class="notice" id="adminQueueStatus" role="status">Loading review queue…</p>
   <div id="adminReviewQueue" class="admin-review-queue"></div>
 </main>`

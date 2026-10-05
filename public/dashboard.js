@@ -194,6 +194,134 @@ function renderModel() {
     }));
 }
 
+function localDateTimeValue(iso) {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return "";
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function renderSettings() {
+  const settings = summary.settings || { editable: false, scope: "none", reason: "Managed by the platform team", values: {}, kit: null };
+  const values = settings.values || {};
+  const readOnly = !settings.editable;
+  const locked = settings.scope === "copy";
+  const field = (label, control) => el("label", { class: "stack settings-field" }, el("span", { text: label }), control);
+  if (readOnly) {
+    return el("section", { class: "card settings-card", "data-tour": "settings" },
+      el("div", { class: "card-head" }, el("h2", { text: "Portal settings" }), el("span", { class: "badge badge-warn", text: "Read only" })),
+      el("p", { class: "muted", text: settings.reason || "Managed by the platform team." }));
+  }
+  const form = el("form", { class: "settings-form", "data-tour": "settings", novalidate: true });
+  const eventName = el("input", { name: "eventName", maxlength: "80", value: values.eventName || "" });
+  const eventDate = el("input", { name: "eventDate", type: "date", value: values.eventDate || "" });
+  const timeZone = el("select", { name: "timeZone" });
+  ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London"]
+    .forEach((zone) => { const option = el("option", { value: zone, text: zone }); option.selected = zone === values.timeZone; timeZone.append(option); });
+  const deadline = el("input", { name: "deadline", type: "datetime-local", value: localDateTimeValue(values.deadline) });
+  const minBid = el("input", { name: "minBid", type: "number", min: "50", max: "100000", value: values.minBid });
+  const increment = el("input", { name: "increment", type: "number", min: "5", value: values.increment });
+  const lockPrice = el("input", { name: "lockPrice", type: "number", min: "1", max: "250000", value: values.lockPrice });
+  const packageName = el("input", { name: "packageName", maxlength: "60", value: values.packageName || "" });
+  const benefits = el("textarea", { name: "benefits", rows: "5", maxlength: "1200", text: (values.benefits || []).join("\n") });
+  const intro = el("textarea", { name: "intro", rows: "3", maxlength: "400", text: values.intro || "" });
+  const accent = el("input", { name: "accent", type: "color", value: /^#[0-9a-f]{6}$/i.test(values.accent || "") ? values.accent : "#2f7bff" });
+  [eventDate, timeZone, deadline, minBid, increment, lockPrice].forEach((control) => { control.disabled = locked; });
+  const placements = el("div", { class: "placement-options" });
+  const grouped = new Map();
+  for (const placement of settings.kit?.placements || []) {
+    if (!grouped.has(placement.garmentName)) grouped.set(placement.garmentName, []);
+    grouped.get(placement.garmentName).push(placement);
+  }
+  for (const [garment, entries] of grouped) {
+    const group = el("fieldset", { class: "placement-group" }, el("legend", { text: garment }));
+    for (const placement of entries) {
+      const checkbox = el("input", { type: "checkbox", name: "offeredPlacementIds", value: placement.id });
+      checkbox.checked = (values.offeredPlacementIds || []).includes(placement.id);
+      checkbox.disabled = locked;
+      group.append(el("label", { class: "check-row" }, checkbox, el("span", { text: placement.label })));
+    }
+    placements.append(group);
+  }
+  const error = el("p", { class: "notice notice-error", role: "alert", hidden: true });
+  const save = el("button", { class: "btn btn-primary", type: "submit", text: "Save settings" });
+  form.append(
+    field("Event name", eventName),
+    field("Event date", eventDate),
+    field("Timezone", timeZone),
+    field("Bidding deadline", deadline),
+    el("div", { class: "settings-grid" },
+      field("Minimum bid", minBid), field("Increment", increment), field("Lock price", lockPrice)),
+    field("Package name", packageName),
+    field("Benefits (one per line)", benefits),
+    field("Intro", intro),
+    field("Accent", accent),
+    el("div", {}, el("p", { class: "eyebrow", text: "Offered placements" }), placements),
+    error,
+    el("div", { class: "actions" }, save)
+  );
+  if (locked) form.insertBefore(el("p", { class: "notice", text: "Pricing, dates and placements are locked after launch." }), form.firstChild);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    save.disabled = true; error.hidden = true;
+    const body = {
+      eventName: eventName.value.trim(),
+      eventDate: eventDate.value,
+      timeZone: timeZone.value,
+      deadline: deadline.value ? new Date(deadline.value).toISOString() : "",
+      minBid: Number(minBid.value),
+      increment: Number(increment.value),
+      lockPrice: Number(lockPrice.value),
+      packageName: packageName.value.trim(),
+      benefits: benefits.value.split("\n").map((item) => item.trim()).filter(Boolean),
+      intro: intro.value,
+      accent: accent.value,
+      offeredPlacementIds: [...form.querySelectorAll('input[name="offeredPlacementIds"]:checked')].map((input) => input.value)
+    };
+    try {
+      await api(`/api/dashboard/${encodeURIComponent(slug)}/settings`, { method: "POST", body });
+      toast("Portal settings saved");
+      await load();
+    } catch (err) {
+      error.textContent = err.message; error.hidden = false; save.disabled = false;
+    }
+  });
+  return el("section", { class: "card settings-card" },
+    el("div", { class: "card-head" }, el("h2", { text: "Portal settings" }), el("span", { class: `badge badge-${locked ? "ok" : "accent"}`, text: locked ? "Copy only" : "Draft" })),
+    form);
+}
+
+function renderLaunch() {
+  if (!summary.launch?.available) return null;
+  const checks = summary.launch.checks || [];
+  const allReady = checks.every((check) => check.ok);
+  const list = el("ul", { class: "launch-checks" }, checks.map((check) =>
+    el("li", { class: check.ok ? "is-ok" : "is-failed" },
+      el("span", { "aria-hidden": "true", text: check.ok ? "✓" : "!" }),
+      el("span", {}, el("strong", { text: check.label }), el("small", { class: "muted", text: check.detail })))));
+  const error = el("p", { class: "notice notice-error", role: "alert", hidden: true });
+  const launchButton = el("button", { class: "btn btn-primary", type: "button", text: "Go live", disabled: !allReady });
+  launchButton.addEventListener("click", async () => {
+    if (!window.confirm("Go live now? Your portal will become public.")) return;
+    launchButton.disabled = true; error.hidden = true;
+    try {
+      const result = await api(`/api/dashboard/${encodeURIComponent(slug)}/launch`, { method: "POST", body: {} });
+      toast("Your portal is live");
+      if (result.portalUrl) window.open(result.portalUrl, "_blank", "noopener");
+      await load();
+    } catch (err) {
+      error.textContent = err.message; error.hidden = false; launchButton.disabled = false;
+    }
+  });
+  const preview = summary.tenant.previewUrl
+    ? el("a", { class: "btn btn-ghost", href: summary.tenant.previewUrl, target: "_blank", rel: "noopener", text: "Preview portal" })
+    : null;
+  return el("section", { class: "card launch-card", "data-tour": "launch" },
+    el("div", { class: "card-head" }, el("h2", { text: "Go live" }), el("span", { class: `badge badge-${allReady ? "ok" : "warn"}`, text: allReady ? "Ready" : "Checks needed" })),
+    el("p", { class: "muted", text: "Complete every readiness check, then press Go live when you are ready to make the portal public." }),
+    list, error, el("div", { class: "actions" }, preview, launchButton));
+}
+
 async function startPayouts(button) {
   if (button) button.disabled = true;
   try {
@@ -297,15 +425,18 @@ function renderPlacements() {
 function render() {
   const checklist = renderChecklist();
   const showGuide = !checklist && summary.onboarding?.checklistDismissedAt && !setupComplete();
-  dash.replaceChildren(
+  dash.replaceChildren(...[
     el("div", { class: "dash-head" }, el("div", {}, el("p", { class: "eyebrow", text: summary.tenant.eventName }), el("h1", { text: "Sponsorship dashboard" })),
       el("div", { class: "head-actions" },
         showGuide ? el("button", { class: "btn btn-ghost", type: "button", text: "Show setup guide", onclick: () => track("checklist_restored") }) : null,
         el("button", { class: "btn btn-ghost", type: "button", text: "Refresh", onclick: load }))),
     checklist,
     renderStats(),
+    renderSettings(),
+    renderLaunch(),
     el("div", { class: "grid" }, renderPayments(), renderModel(), renderShare()),
-    renderPlacements());
+    renderPlacements()
+  ].filter(Boolean));
 }
 
 function openSoldDialog(p) {
@@ -401,9 +532,11 @@ function setupSteps() {
       done: Boolean(onboarding.previewedAt),
       title: "See your 3D portal",
       body: tenant.status === "draft"
-        ? "Your 360° portal goes public once it's approved. You can preview it from the link we sent you."
+        ? "Your private 360° portal is ready to preview before you press Go live."
         : "Spin the 360° model and preview a logo on your kit the way sponsors will.",
-      action: tenant.status === "draft" ? null : { label: "Open portal", run: () => { window.open(tenant.portalUrl, "_blank", "noopener"); track("portal_previewed"); } }
+      action: tenant.status === "draft"
+        ? (tenant.previewUrl ? { label: "Preview portal", run: () => { window.open(tenant.previewUrl, "_blank", "noopener"); track("portal_previewed"); } } : null)
+        : { label: "Open portal", run: () => { window.open(tenant.portalUrl, "_blank", "noopener"); track("portal_previewed"); } }
     },
     {
       id: "share",
