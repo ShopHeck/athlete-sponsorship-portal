@@ -278,6 +278,9 @@ function renderSettings() {
       accent: accent.value,
       offeredPlacementIds: [...form.querySelectorAll('input[name="offeredPlacementIds"]:checked')].map((input) => input.value)
     };
+    if (locked) {
+      for (const key of ["eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds"]) delete body[key];
+    }
     try {
       await api(`/api/dashboard/${encodeURIComponent(slug)}/settings`, { method: "POST", body });
       toast("Portal settings saved");
