@@ -16,7 +16,11 @@ const config = JSON.parse(document.getElementById("portal-config").textContent);
 const isStudio = Boolean(config.studio);
 const isShowcase = Boolean(config.showcase) && !isStudio;
 const isDemo = Boolean(config.demo) && !isStudio;
+const isCardCapture = isDemo && new URLSearchParams(location.search).get("capture") === "card";
+if (isCardCapture) document.documentElement.classList.add("is-card-capture");
 const garments = config.garments;
+const garmentTabs = document.querySelector(".garment-tabs");
+if (garmentTabs) garmentTabs.hidden = garments.length === 1;
 const allPlacements = garments.flatMap((garment) => garment.placements);
 const isConfiguredSold = (id) => Object.hasOwn(config.sold || {}, id);
 const showcasePlacements = isShowcase ? allPlacements.filter((spot) => isConfiguredSold(spot.id)) : [];
@@ -115,9 +119,11 @@ scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.55;
 
 const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 40);
-const HOME = { dist: 3.05, polar: 1.57, targetY: 0.95 };
+const HOME = isCardCapture
+  ? { dist: 2.4, polar: 1.5, targetY: 1.6, az: -0.75 }
+  : { dist: 3.05, polar: 1.57, targetY: 0.95, az: 0 };
 const TARGET = new THREE.Vector3(0, HOME.targetY, 0);
-camera.position.setFromSpherical(new THREE.Spherical(HOME.dist, HOME.polar, 0)).add(TARGET);
+camera.position.setFromSpherical(new THREE.Spherical(HOME.dist, HOME.polar, HOME.az)).add(TARGET);
 
 const controls = new OrbitControls(camera, canvas);
 controls.target.copy(TARGET);
@@ -293,6 +299,7 @@ function makeSlot(spot, side, meshes) {
   const geo = new DecalGeometry(hit.object, hit.point, orientation, new THREE.Vector3(spec.w, spec.h, 0.10));
   const { canvas: c, tex } = slotTexture(spec);
   const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, ...decalMaterialBase }));
+  mesh.visible = !isCardCapture;
   mesh.userData.spotId = spot.id;
   mesh.renderOrder = 2;
   athlete.add(mesh);
@@ -655,6 +662,7 @@ function flyToPlacement(spot) {
 }
 // Opening shot: start tight on the face, then pull back to the full athlete and begin a slow turntable.
 function playIntro() {
+  if (isCardCapture) { controls.autoRotate = false; invalidate(); return; }
   const spot = linkedPlacement;
   if (spot) { flyToPlacement(spot); return; }
   if (prefersReducedMotion) { invalidate(); return; }

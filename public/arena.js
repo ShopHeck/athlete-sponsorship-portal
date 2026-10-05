@@ -259,9 +259,241 @@ function buildOctagonArena(scene, ringConfig, { accentColor = "#14a3a8", maxAnis
   return { group, update() {} };
 }
 
+function surfaceTexture(base, grain, vignette) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 512;
+  const context = canvas.getContext("2d");
+  const image = context.createImageData(canvas.width, canvas.height);
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      const index = (y * canvas.width + x) * 4;
+      const dx = (x / (canvas.width - 1)) * 2 - 1;
+      const dz = (y / (canvas.height - 1)) * 2 - 1;
+      const edge = 1 - vignette * Math.min(1, dx * dx + dz * dz);
+      const seed = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+      const noise = (seed - Math.floor(seed)) * grain * 2 - grain;
+      image.data[index] = base[0] * edge + noise;
+      image.data[index + 1] = base[1] * edge + noise;
+      image.data[index + 2] = base[2] * edge + noise;
+      image.data[index + 3] = 255;
+    }
+  }
+  context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(3, 3);
+  return texture;
+}
+
+function squareBandGeometry(inner, outer) {
+  const shape = new THREE.Shape();
+  shape.moveTo(-outer, -outer);
+  shape.lineTo(outer, -outer);
+  shape.lineTo(outer, outer);
+  shape.lineTo(-outer, outer);
+  shape.closePath();
+  const hole = new THREE.Path();
+  hole.moveTo(-inner, -inner);
+  hole.lineTo(-inner, inner);
+  hole.lineTo(inner, inner);
+  hole.lineTo(inner, -inner);
+  hole.closePath();
+  shape.holes.push(hole);
+  const geometry = new THREE.ShapeGeometry(shape);
+  geometry.rotateX(-Math.PI / 2);
+  return geometry;
+}
+
+function boxingCanvasTexture() {
+  return surfaceTexture([132, 133, 134], 3, 0.1);
+}
+
+function foamTexture() {
+  return surfaceTexture([236, 237, 238], 3, 0.06);
+}
+
+function squareSideGeometry(halfWidth, top, bottom) {
+  const corners = [
+    [-halfWidth, -halfWidth],
+    [halfWidth, -halfWidth],
+    [halfWidth, halfWidth],
+    [-halfWidth, halfWidth]
+  ];
+  const positions = [];
+  for (let index = 0; index < corners.length; index++) {
+    const [x1, z1] = corners[index];
+    const [x2, z2] = corners[(index + 1) % corners.length];
+    positions.push(
+      x1, bottom, z1, x2, bottom, z2, x2, top, z2,
+      x1, bottom, z1, x2, top, z2, x1, top, z1
+    );
+  }
+  return geometryFromPositions(positions);
+}
+
+function buildBoxingArena(scene, ringConfig, { accentColor = "#14a3a8" } = {}) {
+  const group = new THREE.Group();
+  group.name = "ring";
+  const postOffset = ROPE_RADIUS + 0.14;
+  const ropeHalfWidth = ROPE_RADIUS + 0.02;
+  const corners = [
+    { x: postOffset, z: postOffset },
+    { x: -postOffset, z: postOffset },
+    { x: -postOffset, z: -postOffset },
+    { x: postOffset, z: -postOffset }
+  ];
+  const steelMat = new THREE.MeshStandardMaterial({ color: 0x8b8f92, roughness: 0.38, metalness: 0.86 });
+  const postGeometry = new THREE.CylinderGeometry(0.055, 0.055, 1.62, 12);
+  const posts = new THREE.InstancedMesh(postGeometry, steelMat, corners.length);
+  const dummy = new THREE.Object3D();
+  for (let index = 0; index < corners.length; index++) {
+    dummy.position.set(corners[index].x, 0.81, corners[index].z);
+    dummy.rotation.set(0, 0, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    posts.setMatrixAt(index, dummy.matrix);
+  }
+  posts.instanceMatrix.needsUpdate = true;
+  posts.castShadow = true;
+  posts.receiveShadow = true;
+  group.add(posts);
+
+  const cornerColors = ringConfig.cornerColors || ["#c8202f", "#1f4fbf"];
+  const padColors = [cornerColors[0], ringConfig.padColor, cornerColors[1], ringConfig.padColor];
+  const padGeometry = new THREE.BoxGeometry(0.22, 1.15, 0.12);
+  const padMaterials = new Map();
+  const inwardAxis = new THREE.Vector3(0, 0, 1);
+  for (let index = 0; index < corners.length; index++) {
+    const color = padColors[index];
+    if (!padMaterials.has(color)) {
+      const map = padTexture(color, "#f4efe6", ringConfig.padText);
+      padMaterials.set(color, new THREE.MeshStandardMaterial({ ...(map ? { map } : { color }), roughness: 0.92 }));
+    }
+    const corner = corners[index];
+    const inward = new THREE.Vector3(-corner.x, 0, -corner.z).normalize();
+    const pad = new THREE.Mesh(padGeometry, padMaterials.get(color));
+    pad.position.set(corner.x + inward.x * 0.08, 0.81, corner.z + inward.z * 0.08);
+    pad.quaternion.setFromUnitVectors(inwardAxis, inward);
+    pad.castShadow = true;
+    pad.receiveShadow = true;
+    group.add(pad);
+  }
+
+  const sideCorners = [
+    [{ x: -ropeHalfWidth, z: -ropeHalfWidth }, { x: ropeHalfWidth, z: -ropeHalfWidth }],
+    [{ x: ropeHalfWidth, z: -ropeHalfWidth }, { x: ropeHalfWidth, z: ropeHalfWidth }],
+    [{ x: ropeHalfWidth, z: ropeHalfWidth }, { x: -ropeHalfWidth, z: ropeHalfWidth }],
+    [{ x: -ropeHalfWidth, z: ropeHalfWidth }, { x: -ropeHalfWidth, z: -ropeHalfWidth }]
+  ];
+  const ropeGeometry = new THREE.CylinderGeometry(0.032, 0.032, ropeHalfWidth * 2, 10);
+  const verticalAxis = new THREE.Vector3(0, 1, 0);
+  for (let index = 0; index < ROPE_HEIGHTS.length; index++) {
+    const rope = new THREE.InstancedMesh(
+      ropeGeometry,
+      new THREE.MeshStandardMaterial({ color: ringConfig.ropeColors[index], roughness: 0.95 }),
+      sideCorners.length
+    );
+    for (let side = 0; side < sideCorners.length; side++) {
+      const [start, end] = sideCorners[side];
+      const direction = new THREE.Vector3(end.x - start.x, 0, end.z - start.z).normalize();
+      dummy.position.set((start.x + end.x) / 2, ROPE_HEIGHTS[index], (start.z + end.z) / 2);
+      dummy.quaternion.setFromUnitVectors(verticalAxis, direction);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      rope.setMatrixAt(side, dummy.matrix);
+    }
+    rope.instanceMatrix.needsUpdate = true;
+    rope.castShadow = true;
+    group.add(rope);
+  }
+
+  const strapGeometry = new THREE.BoxGeometry(0.06, ROPE_HEIGHTS[3] - ROPE_HEIGHTS[0] + 0.12, 0.025);
+  const straps = new THREE.InstancedMesh(
+    strapGeometry,
+    new THREE.MeshStandardMaterial({ color: 0xe3e0d8, roughness: 0.92 }),
+    sideCorners.length
+  );
+  const horizontalAxis = new THREE.Vector3(1, 0, 0);
+  for (let side = 0; side < sideCorners.length; side++) {
+    const [start, end] = sideCorners[side];
+    const direction = new THREE.Vector3(end.x - start.x, 0, end.z - start.z).normalize();
+    dummy.position.set((start.x + end.x) / 2, (ROPE_HEIGHTS[0] + ROPE_HEIGHTS[3]) / 2, (start.z + end.z) / 2);
+    dummy.quaternion.setFromUnitVectors(horizontalAxis, direction);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    straps.setMatrixAt(side, dummy.matrix);
+  }
+  straps.instanceMatrix.needsUpdate = true;
+  group.add(straps);
+
+  const floorHalfWidth = postOffset + 0.25;
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(floorHalfWidth * 2, floorHalfWidth * 2),
+    new THREE.MeshStandardMaterial({ map: boxingCanvasTexture(), roughness: 0.96, metalness: 0.01, side: THREE.DoubleSide })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -0.003;
+  floor.receiveShadow = true;
+  group.add(floor);
+
+  const borderOuter = ROPE_RADIUS - 0.07;
+  const border = new THREE.Mesh(
+    squareBandGeometry(borderOuter - 0.024, borderOuter),
+    new THREE.MeshBasicMaterial({ color: accentColor, transparent: true, opacity: 0.76, depthWrite: false, side: THREE.DoubleSide, toneMapped: false })
+  );
+  border.position.y = -0.0015;
+  group.add(border);
+
+  scene.add(group);
+  return { group, update() {} };
+}
+
+function buildMatArena(scene, ringConfig) {
+  const group = new THREE.Group();
+  group.name = "ring";
+  const colors = ringConfig.matColors ?? ["#1f3d8a", "#d9ad2b"];
+  const competitionHalfWidth = RING_RADIUS - 0.45;
+  const borderHalfWidth = RING_RADIUS;
+  const safetyHalfWidth = RING_RADIUS + 1.2;
+  const top = -0.003;
+  const bottom = top - 0.08;
+  const texture = foamTexture();
+  const mainMaterial = new THREE.MeshStandardMaterial({ color: colors[0], map: texture, roughness: 0.97, metalness: 0.01 });
+  const borderMaterial = new THREE.MeshStandardMaterial({ color: colors[1], map: texture, roughness: 0.97, metalness: 0.01 });
+  const sideMaterial = new THREE.MeshStandardMaterial({ color: colors[0], roughness: 0.96, metalness: 0.01, side: THREE.DoubleSide });
+  const sideWalls = new THREE.Mesh(squareSideGeometry(safetyHalfWidth, top, bottom), sideMaterial);
+  sideWalls.receiveShadow = true;
+  group.add(sideWalls);
+
+  const safety = new THREE.Mesh(squareBandGeometry(borderHalfWidth, safetyHalfWidth), mainMaterial);
+  safety.position.y = top;
+  safety.receiveShadow = true;
+  group.add(safety);
+
+  const border = new THREE.Mesh(squareBandGeometry(competitionHalfWidth, borderHalfWidth), borderMaterial);
+  border.position.y = top;
+  border.receiveShadow = true;
+  group.add(border);
+
+  const competition = new THREE.Mesh(
+    new THREE.PlaneGeometry(competitionHalfWidth * 2, competitionHalfWidth * 2),
+    mainMaterial
+  );
+  competition.rotation.x = -Math.PI / 2;
+  competition.position.y = top;
+  competition.receiveShadow = true;
+  group.add(competition);
+
+  scene.add(group);
+  return { group, update() {} };
+}
+
 export function buildArena(scene, ringConfig, options = {}) {
   if (!ringConfig.enabled) return { update() {} };
   if (ringConfig.style === "octagon") return buildOctagonArena(scene, ringConfig, options);
+  if (ringConfig.style === "boxing") return buildBoxingArena(scene, ringConfig, options);
+  if (ringConfig.style === "mat") return buildMatArena(scene, ringConfig);
 
   const ropeColors = ringConfig.ropeColors;
   const group = new THREE.Group();

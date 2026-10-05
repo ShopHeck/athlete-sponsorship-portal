@@ -107,3 +107,9 @@ body.is-showcase #bidPanel,body.is-showcase .logo-upload,body.is-showcase .previ
 .showcase-contact{justify-self:center;color:var(--muted);font-size:10px;line-height:1.4;text-decoration:underline;text-underline-offset:3px}
 .showcase-contact:hover{color:var(--ink)}
 @media(max-width:480px){.showcase-panel,.demo-panel{gap:9px;padding:12px}.showcase-stats{gap:6px}.showcase-stat{padding:8px 4px}.showcase-stat span{font-size:7px;letter-spacing:.1em}.demo-badge{top:14px;left:14px;max-width:calc(100% - 100px);padding:7px 8px;font-size:10px}}
+.garment-tabs[hidden]{display:none}
+html.is-card-capture,html.is-card-capture body{height:100%;min-height:100%;overflow:hidden}
+html.is-card-capture .portal-shell{height:100vh;min-height:100vh;overflow:hidden}
+html.is-card-capture .topbar,html.is-card-capture .intro-panel,html.is-card-capture .inventory-panel,html.is-card-capture .portal-footer,html.is-card-capture .demo-badge,html.is-card-capture .stage-glow,html.is-card-capture .viewer-loading,html.is-card-capture .rotate-button,html.is-card-capture .orientation,html.is-card-capture .model-credit,html.is-card-capture .garment-overlay,html.is-card-capture .spot-callout{display:none!important}
+html.is-card-capture .experience{display:block;height:100vh;min-height:100vh}
+html.is-card-capture .model-stage{width:100vw;height:100vh;min-height:0;cursor:default}

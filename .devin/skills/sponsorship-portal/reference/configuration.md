@@ -149,9 +149,10 @@ Set `poster` to `null` to omit the card, dialog, backdrop, image preload, and po
 `model` points to a GLB. For consistent decal projection, the model should have a similar stance and face +Z.
 Optional `modelFacing` is `"auto"` (the default), `"positive-z"`, or `"negative-z"`; set a direction if the
 automatic pose detection does not orient a model correctly. Ring configuration controls whether the arena is shown,
-pad text, rope colors, corner colors, and pad color. Optional
-`ring.style` is `"ropes"` (the default) or `"octagon"`. `ring.backdrop` points to a tenant asset used as the stage
-background when there is no poster; a configured poster takes precedence.
+pad text, rope colors, corner colors, and pad color. Optional `ring.style` is `"ropes"` (the default), `"octagon"`,
+`"boxing"`, or `"mat"`. `ring.backdrop` points to a tenant asset used as the stage background when there is no
+poster; a configured poster takes precedence. For `"mat"` style, optional `ring.matColors` is an array of two
+`#rrggbb` colors for the competition surface and border, defaulting to `["#1f3d8a", "#d9ad2b"]`.
 
 ## Adding and previewing a tenant
 

@@ -36,7 +36,12 @@ const dataUri = (file) => `data:image/png;base64,${readFileSync(path.join(workDi
 async function poll(label, get, id, timeoutMs) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    const task = await get(id);
+    let task;
+    try { task = await get(id); } catch (error) {
+      if (error.status !== 429) throw error;
+      await sleep(10_000);
+      continue;
+    }
     const status = String(task?.status || "").toUpperCase();
     process.stdout.write(`\r${label}: ${status} ${task?.progress ?? 0}%   `);
     if (status === "SUCCEEDED") { process.stdout.write("\n"); return task; }

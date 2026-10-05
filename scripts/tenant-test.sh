@@ -73,23 +73,27 @@ else
 fi
 
 echo "1b. demo portal"
-DEMO_CODE=$(curl -sS -o "$TMP_DIR/demo.html" -w '%{http_code}' "$BASE/demo-mma-women")
-check "demo page returns 200" "$DEMO_CODE" "200"
-if grep -Fq 'class="is-demo"' "$TMP_DIR/demo.html" &&
-   grep -Fq 'class="demo-panel"' "$TMP_DIR/demo.html" &&
-   grep -Fq 'class="demo-badge"' "$TMP_DIR/demo.html"; then
-  echo "  ok   demo page renders its body class, panel, and badge"
-else
-  echo "  FAIL demo page renders its body class, panel, and badge"
-  FAIL=1
-fi
-if grep -Fq 'class="stage-backdrop is-arena"' "$TMP_DIR/demo.html" &&
-   grep -Fq '/tenants/demo-mma-women/arena.webp' "$TMP_DIR/demo.html"; then
-  echo "  ok   demo page renders its configured arena backdrop"
-else
-  echo "  FAIL demo page renders its configured arena backdrop"
-  FAIL=1
-fi
+DEMO_SLUGS=(demo-mma-women demo-boxing-men demo-boxing-women demo-bjj-gi-men demo-bjj-gi-women demo-nogi-men demo-nogi-women)
+for slug in "${DEMO_SLUGS[@]}"; do
+  page="$TMP_DIR/$slug.html"
+  code=$(curl -sS -o "$page" -w '%{http_code}' "$BASE/$slug")
+  check "$slug page returns 200" "$code" "200"
+  if grep -Fq 'class="is-demo"' "$page" &&
+     grep -Fq 'class="demo-panel"' "$page" &&
+     grep -Fq 'class="demo-badge"' "$page"; then
+    echo "  ok   $slug page renders its body class, panel, and badge"
+  else
+    echo "  FAIL $slug page renders its body class, panel, and badge"
+    FAIL=1
+  fi
+  if grep -Fq 'class="stage-backdrop is-arena"' "$page" &&
+     grep -Fq "/tenants/$slug/arena.webp" "$page"; then
+    echo "  ok   $slug page renders its configured arena backdrop"
+  else
+    echo "  FAIL $slug page renders its configured arena backdrop"
+    FAIL=1
+  fi
+done
 
 if node --input-type=module -e '
   import { readFileSync } from "node:fs";
@@ -117,6 +121,14 @@ if node --input-type=module -e '
   } catch (error) {
     if (!error.message.includes("ring.style")) process.exit(1);
   }
+  const invalidMatColors = JSON.parse(JSON.stringify(demo));
+  invalidMatColors.ring.matColors = ["blue", "#ffffff"];
+  try {
+    validateConfig(invalidMatColors);
+    process.exit(1);
+  } catch (error) {
+    if (!error.message.includes("ring.matColors")) process.exit(1);
+  }
   const invalidModelFacing = JSON.parse(JSON.stringify(demo));
   invalidModelFacing.modelFacing = "sideways";
   try {
@@ -126,9 +138,9 @@ if node --input-type=module -e '
     if (!error.message.includes("modelFacing")) process.exit(1);
   }
 '; then
-  echo "  ok   demo schema rejects showcase overlap, missing copy, invalid ring style, and invalid model facing"
+  echo "  ok   demo schema rejects showcase overlap, missing copy, invalid ring style/mat colors, and invalid model facing"
 else
-  echo "  FAIL demo schema rejects showcase overlap, missing copy, invalid ring style, and invalid model facing"
+  echo "  FAIL demo schema rejects showcase overlap, missing copy, invalid ring style/mat colors, and invalid model facing"
   FAIL=1
 fi
 
@@ -152,6 +164,19 @@ if grep -Fq '"error":"This is a demo portal — bidding is disabled."' "$TMP_DIR
   echo "  ok   demo bid and lock use the disabled message"
 else
   echo "  FAIL demo bid and lock use the disabled message"
+  FAIL=1
+fi
+BOXING_DEMO_BID_CODE=$(curl -sS -o "$TMP_DIR/boxing-demo-bid.json" -w '%{http_code}' -X POST "$BASE/api/demo-boxing-men/bids" \
+  -H 'content-type: application/json' -d '{"id":"WB-F1","type":"bid","amount":500,"company":"Demo Test Co","name":"Demo Tester","email":"demo-tester@example.test"}')
+BOXING_DEMO_LOCK_CODE=$(curl -sS -o "$TMP_DIR/boxing-demo-lock.json" -w '%{http_code}' -X POST "$BASE/api/demo-boxing-men/bids" \
+  -H 'content-type: application/json' -d '{"id":"SF-L1","type":"lock","amount":0,"company":"Demo Test Co","name":"Demo Tester","email":"demo-tester@example.test"}')
+check "boxing demo bid is rejected" "$BOXING_DEMO_BID_CODE" "409"
+check "boxing demo lock is rejected" "$BOXING_DEMO_LOCK_CODE" "409"
+if grep -Fq '"error":"This is a demo portal — bidding is disabled."' "$TMP_DIR/boxing-demo-bid.json" &&
+   grep -Fq '"error":"This is a demo portal — bidding is disabled."' "$TMP_DIR/boxing-demo-lock.json"; then
+  echo "  ok   boxing demo bid and lock use the disabled message"
+else
+  echo "  FAIL boxing demo bid and lock use the disabled message"
   FAIL=1
 fi
 
