@@ -94,6 +94,13 @@ request_json() {
 
 email="michaelheckert@heckholdings.com"
 echo "1. dashboard login and one-time sessions"
+shared_email="sponsors@michaelheckert.com"
+SHARED_BEFORE=$(login_email_count "$shared_email")
+request_json POST "$BASE/api/dashboard/login" "{\"email\":\"$shared_email\"}" "$TMP_DIR/shared-login.json"
+check "shared-address login receives generic success" "$LAST_CODE" "200"
+SHARED_AFTER=$(login_email_count "$shared_email")
+check "one shared-address request sends seven tenant login emails" "$((SHARED_AFTER - SHARED_BEFORE))" "7"
+
 UNKNOWN_BEFORE=$(login_email_count unknown-dashboard@example.test)
 request_json POST "$BASE/api/dashboard/login" '{"email":"unknown-dashboard@example.test"}' "$TMP_DIR/unknown.json"
 check "unknown email receives generic success" "$LAST_CODE" "200"

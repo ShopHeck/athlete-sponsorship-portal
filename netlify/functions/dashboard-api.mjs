@@ -101,21 +101,30 @@ async function login(req) {
   if (!EMAIL.test(email)) return json({ error: "A valid email address is required." }, 400);
 
   const base = platformUrl(req);
-  for (const tenant of await listTenants()) {
-    if (!dashboardEmailsFor(tenant).includes(email)) continue;
+  const tenants = (await listTenants()).filter((tenant) => dashboardEmailsFor(tenant).includes(email));
+  let allowed = false;
+  if (tenants.length) {
     try {
-      if (!(await allowLoginEmail(email))) continue;
-      const { nonce } = await createLoginToken(tenant.slug, email);
-      const link = `${base}/dashboard/auth?token=${nonce}`;
-      const services = forTenant(tenant, { portalUrl: `${base}/${tenant.slug}` });
-      await services.tryEmail({
-        to: email,
-        subject: `Your ${tenant.athlete.displayName} sponsorship dashboard`,
-        text: `Sign in to the ${tenant.athlete.displayName} sponsorship dashboard using this link:\n${link}\n\nThis link expires in 15 minutes.`,
-        html: `<p>Sign in to the ${escapeHtml(tenant.athlete.displayName)} sponsorship dashboard using this link:</p><p><a href="${escapeHtml(link)}">Open dashboard</a></p><p>This link expires in 15 minutes.</p>`
-      });
+      allowed = await allowLoginEmail(email);
     } catch (err) {
-      console.error("Dashboard login email failed", tenant.slug, err);
+      console.error("Dashboard login rate limit failed", err);
+    }
+  }
+  if (allowed) {
+    for (const tenant of tenants) {
+      try {
+        const { nonce } = await createLoginToken(tenant.slug, email);
+        const link = `${base}/dashboard/auth?token=${nonce}`;
+        const services = forTenant(tenant, { portalUrl: `${base}/${tenant.slug}` });
+        await services.tryEmail({
+          to: email,
+          subject: `Your ${tenant.athlete.displayName} sponsorship dashboard`,
+          text: `Sign in to the ${tenant.athlete.displayName} sponsorship dashboard using this link:\n${link}\n\nThis link expires in 15 minutes.`,
+          html: `<p>Sign in to the ${escapeHtml(tenant.athlete.displayName)} sponsorship dashboard using this link:</p><p><a href="${escapeHtml(link)}">Open dashboard</a></p><p>This link expires in 15 minutes.</p>`
+        });
+      } catch (err) {
+        console.error("Dashboard login email failed", tenant.slug, err);
+      }
     }
   }
   return json({ ok: true });
@@ -457,6 +466,7 @@ async function exportCsv(req, slug) {
 async function markSold(req, slug, id) {
   const tenant = await getTenant(slug);
   if (!tenant) return json({ error: "Tenant not found." }, 404);
+  if (tenant.demo) return json({ error: "Demo portals cannot change placements." }, 409);
   const session = sessionFor(req, slug);
   if (!session) return json({ error: "Sign in required" }, 401);
   let body;
@@ -502,6 +512,7 @@ async function markSold(req, slug, id) {
 async function releaseSale(req, slug, id) {
   const tenant = await getTenant(slug);
   if (!tenant) return json({ error: "Tenant not found." }, 404);
+  if (tenant.demo) return json({ error: "Demo portals cannot change placements." }, 409);
   const session = sessionFor(req, slug);
   if (!session) return json({ error: "Sign in required" }, 401);
   if (Object.hasOwn(tenant.sold || {}, id)) {
@@ -520,6 +531,7 @@ async function releaseSale(req, slug, id) {
 async function connectOnboard(req, slug) {
   const tenant = await getTenant(slug);
   if (!tenant) return json({ error: "Tenant not found." }, 404);
+  if (tenant.demo) return json({ error: "Demo portals cannot use Stripe Connect." }, 409);
   if (!sessionFor(req, slug)) return json({ error: "Sign in required" }, 401);
   if (tenant.payments.mode !== "connect") return json({ error: "Tenant does not use Stripe Connect." }, 400);
   const services = forTenant(tenant, { portalUrl: `${platformUrl(req)}/${tenant.slug}` });
@@ -572,6 +584,7 @@ async function updateOnboarding(req, slug) {
 async function modelAccess(req, slug, { allowAdmin = false } = {}) {
   const tenant = await getTenant(slug);
   if (!tenant) return { response: json({ error: "Tenant not found." }, 404) };
+  if (tenant.demo) return { response: json({ error: "Demo portals do not support Model Studio." }, 409) };
   const session = sessionFor(req, slug);
   if (!session && !(allowAdmin && readAdminSession(req))) {
     return { response: json({ error: "Sign in required" }, 401) };

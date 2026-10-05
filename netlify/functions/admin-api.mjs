@@ -106,6 +106,7 @@ async function modelAction(req, slug, action) {
   if (access.response) return access.response;
   const tenant = await getTenant(slug);
   if (!tenant) return json({ error: "Tenant not found." }, 404);
+  if (tenant.demo) return json({ error: "Demo portals do not support Model Studio." }, 409);
 
   let body = {};
   if (action !== "unpublish") {

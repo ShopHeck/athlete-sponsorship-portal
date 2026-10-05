@@ -19,6 +19,30 @@ test recipients. Draft tenants remain excluded from the scheduled close job.
 and the slug. `publicUrl` is optional: it is the athlete's marketing page used for sponsor placement deep links.
 If omitted, those links use the derived portal URL.
 
+## Demo portals
+
+A prospect-facing demo uses an optional `demo` object instead of `showcase`; the two fields are mutually exclusive.
+`sport`, `kicker`, `headline`, `body`, and `bidNotice` must be non-empty strings. An optional CTA has a non-empty
+`label` and an `href` beginning with `/` or `https://`:
+
+```json
+{
+  "demo": {
+    "sport": "Women's MMA",
+    "kicker": "DEMO PORTAL · WOMEN'S MMA",
+    "headline": "This could be your portal.",
+    "body": "A fictional athlete showing how an MMA fighter's kit sells on the platform.",
+    "bidNotice": "Demo portal — bidding and Lock It Now are switched off.",
+    "cta": { "label": "Get a portal like this", "href": "/#apply" }
+  }
+}
+```
+
+Demo rendering is config-driven: the page adds a sport badge and demo panel, keeps every configured placement
+visible, and allows local logo previews without saving them. The client skips bids and polling; bid POSTs return
+HTTP 409 before storage or payment/email work. Configure demo tenants with platform payments. Connect onboarding,
+dashboard sale changes, Model Studio writes, and close-auction invoicing are also blocked for demo tenants.
+
 ## Build and asset paths
 
 ```bash
@@ -122,8 +146,13 @@ Global environment variables are reserved for platform/service operation: `STRIP
 The optional `poster` object configures the card image, two stage backdrop sizes, share image, alt text, and copy.
 Set `poster` to `null` to omit the card, dialog, backdrop, image preload, and poster-based Open Graph image.
 
-`model` points to a GLB. For consistent decal projection, the model should have a similar stance and face +Z. Ring
-configuration controls whether the arena is shown, pad text, rope colors, corner colors, and pad color.
+`model` points to a GLB. For consistent decal projection, the model should have a similar stance and face +Z.
+Optional `modelFacing` is `"auto"` (the default), `"positive-z"`, or `"negative-z"`; set a direction if the
+automatic pose detection does not orient a model correctly. Ring configuration controls whether the arena is shown,
+pad text, rope colors, corner colors, and pad color. Optional `ring.style` is `"ropes"` (the default), `"octagon"`,
+`"boxing"`, or `"mat"`. `ring.backdrop` points to a tenant asset used as the stage background when there is no
+poster; a configured poster takes precedence. For `"mat"` style, optional `ring.matColors` is an array of two
+`#rrggbb` colors for the competition surface and border, defaulting to `["#1f3d8a", "#d9ad2b"]`.
 
 ## Adding and previewing a tenant
 

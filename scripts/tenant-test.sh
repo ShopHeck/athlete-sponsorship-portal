@@ -20,6 +20,18 @@ check() {
   fi
 }
 
+mock_payment_email_calls() {
+  if [ ! -f "$MOCK_LOG" ]; then
+    printf '0'
+    return
+  fi
+  node -e '
+    const fs = require("fs");
+    const rows = fs.readFileSync(process.argv[1], "utf8").split("\n").filter(Boolean).map(JSON.parse);
+    process.stdout.write(String(rows.filter((row) => row.path === "/emails" || row.path.startsWith("/v1/")).length));
+  ' "$MOCK_LOG"
+}
+
 echo "1. tenant page routing"
 LIVE_CODE=$(curl -sS -o "$TMP_DIR/michael.html" -D "$TMP_DIR/michael.headers" -w '%{http_code}' "$BASE/michael-heckert")
 check "Michael page returns 200" "$LIVE_CODE" "200"
@@ -59,6 +71,145 @@ if printf '%s' "$FIXTURE_PAGE" | grep -Fq 'showcase-panel'; then
 else
   echo "  ok   platform fixture omits showcase panel"
 fi
+
+echo "1b. demo portal"
+DEMO_SLUGS=(demo-mma-women demo-boxing-men demo-boxing-women demo-bjj-gi-men demo-bjj-gi-women demo-nogi-men demo-nogi-women)
+for slug in "${DEMO_SLUGS[@]}"; do
+  page="$TMP_DIR/$slug.html"
+  code=$(curl -sS -o "$page" -w '%{http_code}' "$BASE/$slug")
+  check "$slug page returns 200" "$code" "200"
+  if grep -Fq 'class="is-demo"' "$page" &&
+     grep -Fq 'class="demo-panel"' "$page" &&
+     grep -Fq 'class="demo-badge"' "$page"; then
+    echo "  ok   $slug page renders its body class, panel, and badge"
+  else
+    echo "  FAIL $slug page renders its body class, panel, and badge"
+    FAIL=1
+  fi
+  if grep -Fq 'class="stage-backdrop is-arena"' "$page" &&
+     grep -Fq "/tenants/$slug/arena.webp" "$page"; then
+    echo "  ok   $slug page renders its configured arena backdrop"
+  else
+    echo "  FAIL $slug page renders its configured arena backdrop"
+    FAIL=1
+  fi
+done
+
+if node --input-type=module -e '
+  import { readFileSync } from "node:fs";
+  import { validateConfig } from "./netlify/lib/validate.mjs";
+  const demo = JSON.parse(readFileSync("./tenants/demo-mma-women.json", "utf8"));
+  try {
+    validateConfig({ ...demo, showcase: {} });
+    process.exit(1);
+  } catch (error) {
+    if (!error.message.includes("demo and showcase are mutually exclusive")) process.exit(1);
+  }
+  const invalid = JSON.parse(JSON.stringify(demo));
+  delete invalid.demo.bidNotice;
+  try {
+    validateConfig(invalid);
+    process.exit(1);
+  } catch (error) {
+    if (!error.message.includes("demo.bidNotice")) process.exit(1);
+  }
+  const invalidRing = JSON.parse(JSON.stringify(demo));
+  invalidRing.ring.style = "hexagon";
+  try {
+    validateConfig(invalidRing);
+    process.exit(1);
+  } catch (error) {
+    if (!error.message.includes("ring.style")) process.exit(1);
+  }
+  const invalidMatColors = JSON.parse(JSON.stringify(demo));
+  invalidMatColors.ring.matColors = ["blue", "#ffffff"];
+  try {
+    validateConfig(invalidMatColors);
+    process.exit(1);
+  } catch (error) {
+    if (!error.message.includes("ring.matColors")) process.exit(1);
+  }
+  const invalidModelFacing = JSON.parse(JSON.stringify(demo));
+  invalidModelFacing.modelFacing = "sideways";
+  try {
+    validateConfig(invalidModelFacing);
+    process.exit(1);
+  } catch (error) {
+    if (!error.message.includes("modelFacing")) process.exit(1);
+  }
+'; then
+  echo "  ok   demo schema rejects showcase overlap, missing copy, invalid ring style/mat colors, and invalid model facing"
+else
+  echo "  FAIL demo schema rejects showcase overlap, missing copy, invalid ring style/mat colors, and invalid model facing"
+  FAIL=1
+fi
+
+DEMO_GET=$(curl -sS "$BASE/api/demo-mma-women/bids")
+if printf '%s' "$DEMO_GET" | grep -Fq '"demo":true'; then
+  echo "  ok   demo bid summary marks the portal as a demo"
+else
+  echo "  FAIL demo bid summary marks the portal as a demo"
+  FAIL=1
+fi
+
+DEMO_CALLS_BEFORE=$(mock_payment_email_calls)
+DEMO_BID_CODE=$(curl -sS -o "$TMP_DIR/demo-bid.json" -w '%{http_code}' -X POST "$BASE/api/demo-mma-women/bids" \
+  -H 'content-type: application/json' -d '{"id":"SF-L1","type":"bid","amount":500,"company":"Demo Test Co","name":"Demo Tester","email":"demo-tester@example.test"}')
+DEMO_LOCK_CODE=$(curl -sS -o "$TMP_DIR/demo-lock.json" -w '%{http_code}' -X POST "$BASE/api/demo-mma-women/bids" \
+  -H 'content-type: application/json' -d '{"id":"TF-01","type":"lock","amount":0,"company":"Demo Test Co","name":"Demo Tester","email":"demo-tester@example.test"}')
+check "demo bid is rejected" "$DEMO_BID_CODE" "409"
+check "demo lock is rejected" "$DEMO_LOCK_CODE" "409"
+if grep -Fq '"error":"This is a demo portal — bidding is disabled."' "$TMP_DIR/demo-bid.json" &&
+   grep -Fq '"error":"This is a demo portal — bidding is disabled."' "$TMP_DIR/demo-lock.json"; then
+  echo "  ok   demo bid and lock use the disabled message"
+else
+  echo "  FAIL demo bid and lock use the disabled message"
+  FAIL=1
+fi
+BOXING_DEMO_BID_CODE=$(curl -sS -o "$TMP_DIR/boxing-demo-bid.json" -w '%{http_code}' -X POST "$BASE/api/demo-boxing-men/bids" \
+  -H 'content-type: application/json' -d '{"id":"WB-F1","type":"bid","amount":500,"company":"Demo Test Co","name":"Demo Tester","email":"demo-tester@example.test"}')
+BOXING_DEMO_LOCK_CODE=$(curl -sS -o "$TMP_DIR/boxing-demo-lock.json" -w '%{http_code}' -X POST "$BASE/api/demo-boxing-men/bids" \
+  -H 'content-type: application/json' -d '{"id":"SF-L1","type":"lock","amount":0,"company":"Demo Test Co","name":"Demo Tester","email":"demo-tester@example.test"}')
+check "boxing demo bid is rejected" "$BOXING_DEMO_BID_CODE" "409"
+check "boxing demo lock is rejected" "$BOXING_DEMO_LOCK_CODE" "409"
+if grep -Fq '"error":"This is a demo portal — bidding is disabled."' "$TMP_DIR/boxing-demo-bid.json" &&
+   grep -Fq '"error":"This is a demo portal — bidding is disabled."' "$TMP_DIR/boxing-demo-lock.json"; then
+  echo "  ok   boxing demo bid and lock use the disabled message"
+else
+  echo "  FAIL boxing demo bid and lock use the disabled message"
+  FAIL=1
+fi
+
+DEMO_CONNECT_CODE=$(curl -sS -o "$TMP_DIR/demo-connect.json" -w '%{http_code}' -X POST "$BASE/api/demo-mma-women/connect/onboard" \
+  -H "authorization: Bearer $ADMIN_TOKEN")
+check "demo Connect onboarding is rejected" "$DEMO_CONNECT_CODE" "409"
+DEMO_CLOSE_CODE=$(curl -sS -o "$TMP_DIR/demo-close.json" -w '%{http_code}' -X POST \
+  "$BASE/api/close-auction?tenant=demo-mma-women&force=1" -H "authorization: Bearer $ADMIN_TOKEN")
+check "demo close-auction request returns 200" "$DEMO_CLOSE_CODE" "200"
+if node -e '
+  const result = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  process.exit(result.stripe === false && result.invoiced?.length === 0 && result.retried?.length === 0 ? 0 : 1);
+' "$TMP_DIR/demo-close.json"; then
+  echo "  ok   demo close-auction skips Stripe and invoices"
+else
+  echo "  FAIL demo close-auction skips Stripe and invoices"
+  FAIL=1
+fi
+DEMO_AFTER=$(curl -sS "$BASE/api/demo-mma-women/bids")
+if printf '%s' "$DEMO_AFTER" | node -e '
+  let input = "";
+  process.stdin.on("data", (chunk) => input += chunk).on("end", () => {
+    try { process.exit(Object.keys(JSON.parse(input).placements || {}).length === 0 ? 0 : 1); }
+    catch { process.exit(1); }
+  });
+'; then
+  echo "  ok   rejected demo requests create no placement records"
+else
+  echo "  FAIL rejected demo requests create no placement records"
+  FAIL=1
+fi
+DEMO_CALLS_AFTER=$(mock_payment_email_calls)
+check "demo bids, Connect, and close make no Stripe or Resend calls" "$DEMO_CALLS_AFTER" "$DEMO_CALLS_BEFORE"
 
 check "draft tenant hidden" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/jordan-reyes")" "404"
 PREVIEW_CODE=$(curl -sS -o "$TMP_DIR/jordan-preview.html" -w '%{http_code}' --get --data-urlencode "preview=$PREVIEW_TOKEN" "$BASE/jordan-reyes")

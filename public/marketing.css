@@ -83,3 +83,14 @@ h1 em,h2 em{font-style:normal;color:var(--accent)}
 .apply-form{grid-template-columns:1fr}.apply-form .btn{width:100%;min-width:0}.faq summary{font-size:17px;padding:18px 48px 18px 18px}.faq details p{padding:0 18px 18px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
 .apply-form[hidden]{display:none}
+.demo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:22px}
+.demo-card{min-width:0;border:1px solid var(--line);background:var(--panel)}
+.demo-card__image{display:block;aspect-ratio:4/5;overflow:hidden;background:var(--panel-2)}
+.demo-card__image img{display:block;width:100%;height:100%;object-fit:cover;transition:transform .3s}
+.demo-card:hover .demo-card__image img{transform:scale(1.025)}
+.demo-card__copy{display:grid;justify-items:start;gap:10px;padding:20px}
+.demo-card__category{margin:0;color:var(--muted);font:700 11px/1.2 var(--display);letter-spacing:.14em;text-transform:uppercase}
+.demo-card__title{margin:0;font:800 clamp(27px,3vw,36px)/.95 var(--display);text-transform:uppercase}
+.demo-card__tag{padding:6px 9px;border:1px solid rgba(var(--accent-rgb),.35);color:var(--accent);font:700 10px/1 var(--display);letter-spacing:.1em;text-transform:uppercase}
+.demo-card__link{margin-top:4px;color:var(--ink);font:800 13px/1 var(--display);letter-spacing:.1em;text-decoration:none;text-transform:uppercase}
+.demo-card__link:hover{color:var(--accent)}

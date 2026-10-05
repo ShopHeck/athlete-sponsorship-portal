@@ -32,7 +32,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css?v={{version}}">
 {{{studioAssets}}}</head>
-<body{{{showcaseBodyClass}}}>
+<body{{{portalBodyClass}}}>
   <main class="portal-shell">
     <header class="topbar">
       <a class="brand" href="{{homeUrl}}" target="_top" aria-label="{{copy.brandAriaLabel}}">
@@ -61,7 +61,7 @@
       </aside>
 
       <div class="model-stage" id="modelStage">
-        {{{stageBackdrop}}}
+        {{{stageBackdrop}}}{{{demoBadge}}}
         <div class="stage-glow"></div>
         <canvas id="viewer" class="viewer-canvas" tabindex="0" aria-label="{{copy.canvasLabel}}" role="img"></canvas>
         <div class="viewer-loading" id="viewerLoading" aria-live="polite"><span class="spinner"></span><span id="loadingText">{{copy.loading}}</span><span class="load-bar" aria-hidden="true"><i id="loadBar"></i></span></div>
@@ -124,7 +124,7 @@
               </ul>
             </details>
             <p class="bid-note" id="bidNote">{{initialBidNote}} <a href="mailto:{{contact.notifyEmail}}" id="contactLink" target="_top">{{contact.contactLinkText}}</a></p>
-          </div>{{{showcasePanel}}}
+          </div>{{{showcasePanel}}}{{{demoPanel}}}
           <p class="privacy-note">{{copy.privacyNote}}</p>
         </div>
       </aside>

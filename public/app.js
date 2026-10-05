@@ -15,7 +15,12 @@ const THREE_ADDONS = "/vendor/three-0.170.0/addons/";
 const config = JSON.parse(document.getElementById("portal-config").textContent);
 const isStudio = Boolean(config.studio);
 const isShowcase = Boolean(config.showcase) && !isStudio;
+const isDemo = Boolean(config.demo) && !isStudio;
+const isCardCapture = isDemo && new URLSearchParams(location.search).get("capture") === "card";
+if (isCardCapture) document.documentElement.classList.add("is-card-capture");
 const garments = config.garments;
+const garmentTabs = document.querySelector(".garment-tabs");
+if (garmentTabs) garmentTabs.hidden = garments.length === 1;
 const allPlacements = garments.flatMap((garment) => garment.placements);
 const isConfiguredSold = (id) => Object.hasOwn(config.sold || {}, id);
 const showcasePlacements = isShowcase ? allPlacements.filter((spot) => isConfiguredSold(spot.id)) : [];
@@ -69,6 +74,9 @@ if (isStudio) {
   bidNoteText.data = "Preview only — bidding is disabled. ";
   bidForm.querySelectorAll("input,button").forEach((control) => { control.disabled = true; });
   lockButton.disabled = true;
+} else if (isDemo) {
+  bidForm.querySelectorAll("input,button").forEach((control) => { control.disabled = true; });
+  lockButton.disabled = true;
 }
 const lockPriceEl = document.getElementById("lockPrice");
 const lockLabel = document.getElementById("lockLabel");
@@ -111,9 +119,11 @@ scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.55;
 
 const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 40);
-const HOME = { dist: 3.05, polar: 1.57, targetY: 0.95 };
+const HOME = isCardCapture
+  ? { dist: 2.4, polar: 1.5, targetY: 1.6, az: -0.75 }
+  : { dist: 3.05, polar: 1.57, targetY: 0.95, az: 0 };
 const TARGET = new THREE.Vector3(0, HOME.targetY, 0);
-camera.position.setFromSpherical(new THREE.Spherical(HOME.dist, HOME.polar, 0)).add(TARGET);
+camera.position.setFromSpherical(new THREE.Spherical(HOME.dist, HOME.polar, HOME.az)).add(TARGET);
 
 const controls = new OrbitControls(camera, canvas);
 controls.target.copy(TARGET);
@@ -130,7 +140,10 @@ let userInteracted = false;
 controls.addEventListener("start", () => { controls.autoRotate = false; userInteracted = true; tween = null; });
 controls.addEventListener("change", invalidate);
 
-const arena = buildArena(scene, config.ring);
+const arena = buildArena(scene, config.ring, {
+  accentColor: config.brand.accent,
+  maxAnisotropy: renderer.capabilities.getMaxAnisotropy()
+});
 
 const key = new THREE.DirectionalLight(0xfff0dc, 2.5);
 key.position.set(2.5, 4.5, 3.5);
@@ -286,6 +299,7 @@ function makeSlot(spot, side, meshes) {
   const geo = new DecalGeometry(hit.object, hit.point, orientation, new THREE.Vector3(spec.w, spec.h, 0.10));
   const { canvas: c, tex } = slotTexture(spec);
   const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, ...decalMaterialBase }));
+  mesh.visible = !isCardCapture;
   mesh.userData.spotId = spot.id;
   mesh.renderOrder = 2;
   athlete.add(mesh);
@@ -371,7 +385,9 @@ loader.load(
     });
     athlete.add(root);
     normalise(root);
-    if (!facesPositiveZ(meshes)) { root.rotateY(Math.PI); normalise(root); }
+    const frontFacesPositiveZ = config.modelFacing === "positive-z" ||
+      (config.modelFacing !== "negative-z" && facesPositiveZ(meshes));
+    if (!frontFacesPositiveZ) { root.rotateY(Math.PI); normalise(root); }
     buildSlots(meshes);
     renderer.shadowMap.needsUpdate = true;
     firstRender().then(() => { stage.classList.add("is-ready"); playIntro(); });
@@ -534,7 +550,10 @@ function renderSlots() { slotMeshes.forEach(drawSlot); }
 function renderBidPanel(spot, bid) {
   const { minBid, increment, lockPrice, online, paymentsReady } = state.auction;
   const floor = minimumBid(spot.id);
-  if (isStudio) {
+  if (isDemo) {
+    bidHigh.textContent = config.copy.noBids;
+    bidMeta.textContent = `${formatCopy(config.copy.openingBid, { amount: usd(minBid) })} · ${config.demo.bidNotice}`;
+  } else if (isStudio) {
     bidMeta.textContent = "Preview only — bidding is disabled";
   } else if (!paymentsReady) {
     bidMeta.textContent = config.copy.paymentsPending;
@@ -553,10 +572,10 @@ function renderBidPanel(spot, bid) {
   lockPriceEl.textContent = usd(lockPrice);
   if (!submitBid.busy) {
     lockLabel.textContent = formatCopy(config.copy.lockLabel, { price: usd(lockPrice) });
-    bidButton.disabled = lockButton.disabled = isStudio || !online || !paymentsReady;
+    bidButton.disabled = lockButton.disabled = isStudio || isDemo || !online || !paymentsReady;
   }
   if (switched) bidError.hidden = true;
-  if (state.auction.deadline && !isStudio) {
+  if (state.auction.deadline && !isStudio && !isDemo) {
     const d = new Date(state.auction.deadline);
     bidNoteText.textContent = `${formatCopy(config.copy.bidNote, {
       minBid: usd(minBid),
@@ -643,6 +662,7 @@ function flyToPlacement(spot) {
 }
 // Opening shot: start tight on the face, then pull back to the full athlete and begin a slow turntable.
 function playIntro() {
+  if (isCardCapture) { controls.autoRotate = false; invalidate(); return; }
   const spot = linkedPlacement;
   if (spot) { flyToPlacement(spot); return; }
   if (prefersReducedMotion) { invalidate(); return; }
@@ -724,7 +744,7 @@ openPlacementsBtn.addEventListener("click", () => {
 });
 /* ------------------------------------------------------------ bidding */
 async function loadBids() {
-  if (isStudio || isShowcase) return;
+  if (isStudio || isShowcase || isDemo) return;
   try {
     const res = await fetch(BIDS_URL, { cache: "no-store", headers: previewHeaders, signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(8000) : undefined });
     if (!res.ok) throw new Error(res.statusText);
@@ -751,8 +771,8 @@ async function loadBidLogos() {
 }
 // Gate the first render on live bids so we never land on a locked placement, but only briefly:
 // a slow or stalled API must not keep the viewer hidden. Polling keeps refreshing afterwards.
-const bidsReady = isStudio || isShowcase ? Promise.resolve() : Promise.race([loadBids(), new Promise((r) => setTimeout(r, 4000))]);
-if (!isStudio && !isShowcase) setInterval(loadBids, 30000);
+const bidsReady = isStudio || isShowcase || isDemo ? Promise.resolve() : Promise.race([loadBids(), new Promise((r) => setTimeout(r, 4000))]);
+if (!isStudio && !isShowcase && !isDemo) setInterval(loadBids, 30000);
 
 // Rasterise the previewed logo (max 800px, PNG) so it travels with the bid and survives a refresh.
 function logoDataUrl(id) {
@@ -789,7 +809,7 @@ function showBidSuccess(spot, data, locked, email) {
   bidSuccess.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 async function submitBid(type) {
-  if (isStudio || isShowcase) return;
+  if (isStudio || isShowcase || isDemo) return;
   const spot = findPlacement();
   if (isSold(spot.id)) return;
   const f = bidForm.elements;

@@ -18,6 +18,9 @@ export function resolveTenantAssets(config) {
       resolved.poster[key] = resolveAsset(resolved.slug, resolved.poster[key]);
     }
   }
+  if (resolved.ring?.backdrop) {
+    resolved.ring.backdrop = resolveAsset(resolved.slug, resolved.ring.backdrop);
+  }
   for (const entry of Object.values(resolved.sold || {})) {
     if (entry.logo) entry.logo = resolveAsset(resolved.slug, entry.logo);
   }
@@ -60,6 +63,8 @@ export function renderPortal(config, { template, version, portalUrl }) {
   const benefitItems = tenant.benefits.map((benefit) => `<li>${escapeHtml(benefit)}</li>`).join("\n                ");
   const posterPreload = tenant.poster
     ? `<link rel="preload" as="image" href="${escapeHtml(tenant.poster.stage900)}" imagesrcset="${escapeHtml(tenant.poster.stage900)} 900w, ${escapeHtml(tenant.poster.stage1500)} 1500w" imagesizes="(max-width: 820px) 100vw, 50vw">`
+    : tenant.ring?.backdrop
+      ? `<link rel="preload" as="image" href="${escapeHtml(tenant.ring.backdrop)}">`
     : "";
   const modelPreload = tenant.model
     ? `<link rel="preload" as="fetch" href="${escapeHtml(tenant.model)}" crossorigin="anonymous">`
@@ -83,6 +88,10 @@ export function renderPortal(config, { template, version, portalUrl }) {
     ? `<div class="stage-backdrop" aria-hidden="true">
           <img src="${escapeHtml(tenant.poster.stage900)}" srcset="${escapeHtml(tenant.poster.stage900)} 900w, ${escapeHtml(tenant.poster.stage1500)} 1500w" sizes="(max-width: 820px) 100vw, 50vw" alt="" decoding="async" fetchpriority="high">
         </div>`
+    : tenant.ring?.backdrop
+      ? `<div class="stage-backdrop is-arena" aria-hidden="true">
+          <img src="${escapeHtml(tenant.ring.backdrop)}" alt="" decoding="async" fetchpriority="high">
+        </div>`
     : "";
   const posterDialog = tenant.poster
     ? `<dialog class="poster-dialog" id="posterDialog" aria-label="${escapeHtml(tenant.copy.posterDialogLabel)}">
@@ -93,6 +102,17 @@ export function renderPortal(config, { template, version, portalUrl }) {
   const configJson = JSON.stringify(tenant).replace(/</g, "\\u003c");
   const studioAssets = ["athlete", "operator"].includes(tenant.studio?.mode)
     ? `<link rel="stylesheet" href="/studio.css?v=${escapeHtml(version)}"><script type="module" src="/studio.js?v=${escapeHtml(version)}"></script>`
+    : "";
+  const demoPanel = tenant.demo
+    ? `<section class="demo-panel" aria-labelledby="demoHeadline">
+            <p class="showcase-kicker">${escapeHtml(tenant.demo.kicker)}</p>
+            <h2 id="demoHeadline">${escapeHtml(tenant.demo.headline)}</h2>
+            <p class="showcase-body">${escapeHtml(tenant.demo.body)}</p>
+            ${tenant.demo.cta
+              ? `<a class="primary-cta demo-cta" href="${escapeHtml(tenant.demo.cta.href)}" target="_top">${escapeHtml(tenant.demo.cta.label)}</a>`
+              : ""}
+            <a class="showcase-contact" href="mailto:${escapeHtml(tenant.contact.notifyEmail)}" target="_top">${escapeHtml(tenant.contact.contactLinkText)}</a>
+          </section>`
     : "";
   const showcasePanel = tenant.showcase
     ? `<section class="showcase-panel" aria-labelledby="showcaseHeadline">
@@ -107,6 +127,9 @@ export function renderPortal(config, { template, version, portalUrl }) {
               : ""}
             <a class="showcase-contact" href="mailto:${escapeHtml(tenant.contact.notifyEmail)}" target="_top">${escapeHtml(tenant.contact.contactLinkText)}</a>
           </section>`
+    : "";
+  const demoBadge = tenant.demo
+    ? `<div class="demo-badge">DEMO · ${escapeHtml(tenant.demo.sport)}</div>`
     : "";
   const context = {
     ...tenant,
@@ -124,8 +147,10 @@ export function renderPortal(config, { template, version, portalUrl }) {
     stageBackdrop,
     posterDialog,
     studioAssets,
+    demoBadge,
+    demoPanel,
     showcasePanel,
-    showcaseBodyClass: tenant.showcase ? ' class="is-showcase"' : "",
+    portalBodyClass: tenant.showcase ? ' class="is-showcase"' : tenant.demo ? ' class="is-demo"' : "",
     garmentTabs,
     benefitItems,
     initialBidNote,
