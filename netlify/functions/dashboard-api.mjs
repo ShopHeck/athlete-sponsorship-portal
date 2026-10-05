@@ -101,21 +101,30 @@ async function login(req) {
   if (!EMAIL.test(email)) return json({ error: "A valid email address is required." }, 400);
 
   const base = platformUrl(req);
-  for (const tenant of await listTenants()) {
-    if (!dashboardEmailsFor(tenant).includes(email)) continue;
+  const tenants = (await listTenants()).filter((tenant) => dashboardEmailsFor(tenant).includes(email));
+  let allowed = false;
+  if (tenants.length) {
     try {
-      if (!(await allowLoginEmail(email))) continue;
-      const { nonce } = await createLoginToken(tenant.slug, email);
-      const link = `${base}/dashboard/auth?token=${nonce}`;
-      const services = forTenant(tenant, { portalUrl: `${base}/${tenant.slug}` });
-      await services.tryEmail({
-        to: email,
-        subject: `Your ${tenant.athlete.displayName} sponsorship dashboard`,
-        text: `Sign in to the ${tenant.athlete.displayName} sponsorship dashboard using this link:\n${link}\n\nThis link expires in 15 minutes.`,
-        html: `<p>Sign in to the ${escapeHtml(tenant.athlete.displayName)} sponsorship dashboard using this link:</p><p><a href="${escapeHtml(link)}">Open dashboard</a></p><p>This link expires in 15 minutes.</p>`
-      });
+      allowed = await allowLoginEmail(email);
     } catch (err) {
-      console.error("Dashboard login email failed", tenant.slug, err);
+      console.error("Dashboard login rate limit failed", err);
+    }
+  }
+  if (allowed) {
+    for (const tenant of tenants) {
+      try {
+        const { nonce } = await createLoginToken(tenant.slug, email);
+        const link = `${base}/dashboard/auth?token=${nonce}`;
+        const services = forTenant(tenant, { portalUrl: `${base}/${tenant.slug}` });
+        await services.tryEmail({
+          to: email,
+          subject: `Your ${tenant.athlete.displayName} sponsorship dashboard`,
+          text: `Sign in to the ${tenant.athlete.displayName} sponsorship dashboard using this link:\n${link}\n\nThis link expires in 15 minutes.`,
+          html: `<p>Sign in to the ${escapeHtml(tenant.athlete.displayName)} sponsorship dashboard using this link:</p><p><a href="${escapeHtml(link)}">Open dashboard</a></p><p>This link expires in 15 minutes.</p>`
+        });
+      } catch (err) {
+        console.error("Dashboard login email failed", tenant.slug, err);
+      }
     }
   }
   return json({ ok: true });
