@@ -29,7 +29,7 @@
   "hero": {
     "eyebrow": "WOMEN'S BOXING · DEMO PORTAL",
     "titleHtml": "Choose your<br><em>position.</em>",
-    "intro": "Rotate Jada Monroe to explore every placement on her boxing trunks and a crop top. Switch garments, select a position and preview your logo."
+    "intro": "Rotate Jada Monroe to explore every placement on her boxing trunks and crop top. Switch garments, select a position and preview your logo."
   },
   "poster": null,
   "brand": {
@@ -77,7 +77,7 @@
   },
   "packageName": "Fight Night sponsorship package",
   "benefits": [
-    "Your logo on Jada Monroe's boxing trunks and a crop top at Demo Fight Night",
+    "Your logo on Jada Monroe's boxing trunks and crop top at Demo Fight Night",
     "Social media promotion and a post-fight interview shout-out",
     "A post-event branded media kit",
     "Two VIP ringside tickets"
@@ -116,7 +116,7 @@
     "inventoryEyebrow": "PLACEMENT INVENTORY",
     "dragInstruction": "Drag the athlete to rotate 360°",
     "modelCredit": "Real-time 3D · drag to rotate · scroll to zoom",
-    "canvasLabel": "Interactive 3D model of Jada Monroe in boxing trunks and a crop top. Use the arrow keys to rotate.",
+    "canvasLabel": "Interactive 3D model of Jada Monroe in boxing trunks and crop top. Use the arrow keys to rotate.",
     "loading": "Loading 3D model…",
     "modelLoadError": "The 3D model could not be loaded. Please refresh the page.",
     "modelLoadingProgress": "Loading 3D model… {percent}%",
@@ -198,7 +198,7 @@
     "emailViewPlacement": "View placement",
     "emailBidAgain": "Bid again",
     "emailOutro": "Once payment clears, Jada Monroe will reach out for your final artwork and the Fight Night package details.",
-    "invoiceFooter": "Includes the full Fight Night package: boxing trunks and a crop top logo placement, social media promotion, a post-fight interview shout-out, a branded media kit, and two VIP ringside tickets.",
+    "invoiceFooter": "Includes the full Fight Night package: boxing trunks and crop top logo placement, social media promotion, a post-fight interview shout-out, a branded media kit, and two VIP ringside tickets.",
     "invoiceSource": "the Jada Monroe sponsorship portal",
     "dashboardSiteName": "jada-monroe-demo",
     "emailInvoiceButton": "Pay {amount} invoice",
