@@ -61,7 +61,8 @@ export function renderPortal(config, { template, version, portalUrl }) {
   }
   ).join("\n          ");
   const benefitItems = tenant.benefits.map((benefit) => `<li>${escapeHtml(benefit)}</li>`).join("\n                ");
-  const posterPreload = tenant.poster
+  const posterBackdrop = tenant.poster && tenant.poster.asBackdrop !== false;
+  const posterPreload = posterBackdrop
     ? `<link rel="preload" as="image" href="${escapeHtml(tenant.poster.stage900)}" imagesrcset="${escapeHtml(tenant.poster.stage900)} 900w, ${escapeHtml(tenant.poster.stage1500)} 1500w" imagesizes="(max-width: 820px) 100vw, 50vw">`
     : tenant.ring?.backdrop
       ? `<link rel="preload" as="image" href="${escapeHtml(tenant.ring.backdrop)}">`
@@ -84,7 +85,7 @@ export function renderPortal(config, { template, version, portalUrl }) {
           <span class="poster-card-text"><span class="poster-card-kicker">${escapeHtml(tenant.poster.kicker)}</span><strong>${escapeHtml(tenant.poster.title)}</strong><small>${escapeHtml(tenant.poster.subtitle)}</small></span>
         </button>`
     : "";
-  const stageBackdrop = tenant.poster
+  const stageBackdrop = posterBackdrop
     ? `<div class="stage-backdrop" aria-hidden="true">
           <img src="${escapeHtml(tenant.poster.stage900)}" srcset="${escapeHtml(tenant.poster.stage900)} 900w, ${escapeHtml(tenant.poster.stage1500)} 1500w" sizes="(max-width: 820px) 100vw, 50vw" alt="" decoding="async" fetchpriority="high">
         </div>`

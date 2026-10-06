@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { parseLogo } from "../lib/logo.mjs";
 import { forTenant, json } from "../lib/sponsorship.mjs";
 import { resolveTenantForApi } from "../lib/tenants.mjs";
 
@@ -32,18 +33,6 @@ const publicView = (slug, id, rec) => ({
 });
 
 const clean = (v, max = 120) => (typeof v === "string" ? v.trim().slice(0, max) : "");
-
-// Optional bidder logo, sent as a data URL the browser has already downscaled.
-const LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
-const LOGO_MAX_BYTES = 1.5 * 1024 * 1024;
-function parseLogo(v) {
-  if (typeof v !== "string" || !v.startsWith("data:image/")) return null;
-  const m = v.match(/^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/);
-  if (!m || !LOGO_TYPES.has(m[1])) return { error: "Logo must be a PNG, JPG or WebP image." };
-  const bytes = Buffer.from(m[2], "base64");
-  if (bytes.length > LOGO_MAX_BYTES) return { error: "Logo is too large — please use an image under 1.5 MB." };
-  return { type: m[1], bytes };
-}
 
 export default async (req, context) => {
   const slug = context.params?.slug || "";
@@ -94,7 +83,8 @@ export default async (req, context) => {
         locked: true,
         closed: true,
         lockedBy: detail.sponsor || null,
-        sold: true
+        sold: true,
+        logo: detail.logo || null
       };
     }
     const paymentsReady = (await services.connect.readiness()).ready;

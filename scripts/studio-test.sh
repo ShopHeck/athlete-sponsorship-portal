@@ -154,7 +154,7 @@ STUDIO_NO_SESSION=$(curl -sS -o /dev/null -D "$TMP_DIR/studio-no-session.headers
   "$BASE/dashboard/jordan-reyes/model/studio")
 check "studio redirects without a session" "$STUDIO_NO_SESSION" "303"
 STUDIO_LOCATION=$(awk 'tolower($1)=="location:" {gsub("\r","",$2); print $2; exit}' "$TMP_DIR/studio-no-session.headers")
-check "unauthenticated studio redirects to dashboard login" "$STUDIO_LOCATION" "/dashboard"
+check "unauthenticated studio redirects to dashboard login" "$STUDIO_LOCATION" "/dashboard?error=session"
 STUDIO_CODE=$(curl -sS -o "$TMP_DIR/athlete-studio.html" -D "$TMP_DIR/athlete-studio.headers" -w '%{http_code}' \
   -H "Cookie: asp_dash=$JORDAN_COOKIE" "$BASE/dashboard/jordan-reyes/model/studio")
 check "Jordan can open the private studio page" "$STUDIO_CODE" "200"

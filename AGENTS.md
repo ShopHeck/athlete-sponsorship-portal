@@ -47,12 +47,18 @@ operating one. `reference/gotchas.md` first when debugging.
   win conflicts; draft previews use slug-bound HMAC tokens, and athletes press Go live after launch checks pass.
   Event, pricing, dates and placements are locked after launch.
   Per-slug writes are serialized within an instance; cross-instance races are not prevented.
+- Dynamic dashboard settings may rename kit placements and select an arena/backdrop; placement IDs and geometry stay
+  kit-defined. Poster variants and offline-sale sponsor logos are stored in the strong-consistency `tenant-assets`
+  Blobs store under tenant-prefixed keys; poster metadata is written only by poster endpoints.
 - Tenant API routes are `/api/<slug>/bids`, `/api/<slug>/logos/<id>`, and `/api/<slug>/connect/{onboard,status}`;
+  public dynamic poster assets use `/api/<slug>/poster/:variant?v=<version>` and offline-sale sponsor logos use
+  `/api/<slug>/sponsor-logos/:id`;
   Stripe webhooks use `/api/stripe/webhook`. Dashboard APIs are `/api/dashboard/login`, `/session`, `/logout`,
   `/:slug/link`, `/:slug/summary`, `/:slug/export.csv`, `/:slug/placements/:id/{sold,release}`, and
   `/:slug/connect/onboard`, `/:slug/model`, `/:slug/model/{consent,kit,submit}`,
   `/:slug/model/photos/:angle`, `/:slug/model/views/{generate,decision,:angle}`,
-  `/:slug/model/build/{start,model.glb,thumbnail}`, `/:slug/model/review`, `/:slug/settings`, and
+  `/:slug/model/build/{start,model.glb,thumbnail}`, `/:slug/model/review`, `/:slug/settings`,
+  `/:slug/poster/:variant`, `/:slug/poster`, `/:slug/poster/remove`, and
   `/:slug/launch`; they require
   `DASHBOARD_SECRET`, and POSTs require a same-origin `Origin`. Athlete previews are at
   `/dashboard/:slug/model/studio`. Operator pages and APIs are `/admin`, `/admin/:slug/studio`,

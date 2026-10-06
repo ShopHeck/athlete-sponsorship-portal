@@ -25,6 +25,7 @@ function kitFromSource(definition) {
   const placements = garments.flatMap((garment) => garment.placements.map((placement) => ({
     id: placement.id,
     label: placement.label,
+    name: placement.name,
     garmentId: garment.id,
     garmentName: garment.label || garment.tab || garment.id
   })));
@@ -35,6 +36,7 @@ function kitFromSource(definition) {
     source: definition.source,
     garments,
     ring: clone(source.ring),
+    defaultArena: source.ring?.style || "ropes",
     model: source.model,
     modelFacing: source.modelFacing,
     pricing: {
@@ -49,6 +51,34 @@ function kitFromSource(definition) {
 const KIT_RECORDS = KIT_SOURCES.map(kitFromSource);
 
 export const STARTER_KITS = KIT_RECORDS.map(({ garments, ring, model, modelFacing, pricing, source, ...kit }) => kit);
+
+const boxingRing = sourceTenant("demo-boxing-men").ring;
+const octagonRing = sourceTenant("demo-mma-women").ring;
+const matRing = sourceTenant("demo-bjj-gi-men").ring;
+const michaelRing = sourceTenant("michael-heckert").ring;
+
+export const ARENAS = {
+  boxing: clone(boxingRing),
+  octagon: clone(octagonRing),
+  mat: clone(matRing),
+  ropes: {
+    ...clone(michaelRing),
+    padText: null,
+    backdrop: boxingRing.backdrop
+  }
+};
+
+export const ARENA_OPTIONS = [
+  { id: "boxing", name: "Pro boxing ring", thumbnail: "/assets/arenas/boxing.webp" },
+  { id: "octagon", name: "Octagon", thumbnail: "/assets/arenas/octagon.webp" },
+  { id: "mat", name: "Jiu-jitsu mat", thumbnail: "/assets/arenas/mat.webp" },
+  { id: "ropes", name: "Classic ropes ring", thumbnail: "/assets/arenas/ropes.webp" }
+];
+
+function arenaForKit(arenaId, kit) {
+  if (arenaId === "mat" && kit.ring?.style === "mat") return kit.ring;
+  return ARENAS[arenaId];
+}
 
 export function getStarterKit(kitId) {
   const kit = KIT_RECORDS.find((entry) => entry.id === kitId);
@@ -180,11 +210,22 @@ export function materializeConfig(settings, kitId) {
       ...source.hero,
       intro: settings.intro || source.hero.intro
     },
-    poster: null,
+    poster: settings.poster ? {
+      card: `/api/${settings.slug}/poster/card?v=${settings.poster.version}`,
+      stage900: `/api/${settings.slug}/poster/stage900?v=${settings.poster.version}`,
+      stage1500: `/api/${settings.slug}/poster/stage1500?v=${settings.poster.version}`,
+      ogImage: `/api/${settings.slug}/poster/og?v=${settings.poster.version}`,
+      alt: `${settings.poster.title} fight poster`,
+      dialogAlt: settings.poster.subtitle ? `${settings.poster.title} — ${settings.poster.subtitle}` : settings.poster.title,
+      kicker: settings.eventName,
+      title: settings.poster.title,
+      subtitle: settings.poster.subtitle,
+      asBackdrop: settings.backdrop !== "arena"
+    } : null,
     brand: deriveBrand(settings.accent),
     model: kit.model,
     ...(kit.modelFacing ? { modelFacing: kit.modelFacing } : {}),
-    ring: kit.ring,
+    ring: settings.arena ? arenaForKit(settings.arena, kit) : kit.ring,
     pricing: {
       minBid: settings.minBid,
       increment: settings.increment,
@@ -204,7 +245,18 @@ export function materializeConfig(settings, kitId) {
     garments: kit.garments
       .map((garment) => ({
         ...garment,
-        placements: garment.placements.filter((placement) => settings.offeredPlacementIds.includes(placement.id))
+        placements: garment.placements
+          .filter((placement) => settings.offeredPlacementIds.includes(placement.id))
+          .map((placement) => {
+            const custom = settings.placementNames?.[placement.id];
+            if (!custom) return placement;
+            const garmentName = garment.label || garment.tab || garment.id;
+            return {
+              ...placement,
+              name: custom,
+              label: `${garmentName} · ${custom}`
+            };
+          })
       }))
       .filter((garment) => garment.placements.length > 0),
     sold: {}

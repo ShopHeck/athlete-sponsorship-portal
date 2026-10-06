@@ -38,6 +38,18 @@ export default async function portal(req, context) {
   const platformUrl = (process.env.PLATFORM_URL || url.origin).replace(/\/+$/, "");
   const portalUrl = `${platformUrl}/${slug}`;
   let renderConfig = preview ? { ...tenant, previewToken } : tenant;
+  if (preview && renderConfig.poster) {
+    renderConfig = {
+      ...renderConfig,
+      poster: Object.fromEntries(Object.entries(renderConfig.poster).map(([key, value]) => [
+        key,
+        ["card", "stage900", "stage1500", "ogImage"].includes(key) &&
+          typeof value === "string" && value.startsWith("/api/")
+          ? `${value}&preview=${encodeURIComponent(previewToken)}`
+          : value
+      ]))
+    };
+  }
   const live = await getLivePointer(tenant);
   if (live?.jobId) {
     const previewQuery = preview ? `&preview=${encodeURIComponent(previewToken)}` : "";

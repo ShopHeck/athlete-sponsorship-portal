@@ -54,7 +54,10 @@ export function forTenant(config, { portalUrl }) {
         amount: record.amount ?? null,
         note: record.note || "",
         at: record.at || null,
-        source: "dashboard"
+        source: "dashboard",
+        ...(record.logo ? {
+          logo: `/api/${config.slug}/sponsor-logos/${id}?v=${encodeURIComponent(record.logo.at || record.at || "")}`
+        } : {})
       });
     }
     return details;

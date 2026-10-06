@@ -17,6 +17,70 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+function field(label, control) {
+  return el("label", { class: "stack settings-field" }, el("span", { text: label }), control);
+}
+
+function readDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Unable to read this image."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function canvasBlob(canvas, type, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Unable to process this image.")), type, quality);
+  });
+}
+
+async function posterVariant(bitmap, width, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const scale = Math.max(width / bitmap.width, height / bitmap.height);
+  const sourceWidth = width / scale;
+  const sourceHeight = height / scale;
+  const context = canvas.getContext("2d", { alpha: false });
+  context.drawImage(
+    bitmap,
+    (bitmap.width - sourceWidth) / 2,
+    (bitmap.height - sourceHeight) / 2,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    width,
+    height
+  );
+  for (let quality = 0.86; quality >= 0.5; quality -= 0.06) {
+    const blob = await canvasBlob(canvas, "image/jpeg", quality);
+    if (blob.size <= 1.9 * 1024 * 1024) return readDataUrl(blob);
+  }
+  throw new Error("This image is too large to prepare. Choose a smaller source image.");
+}
+
+async function sponsorLogoData(file) {
+  const allowed = ["image/png", "image/jpeg", "image/webp"];
+  if (!allowed.includes(file.type)) throw new Error("Use a JPG, PNG or WebP image.");
+  if (file.size <= 1.5 * 1024 * 1024) return readDataUrl(file);
+  const bitmap = await createImageBitmap(file);
+  let scale = Math.min(1, 1024 / Math.max(bitmap.width, bitmap.height));
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d", { alpha: file.type === "image/png" });
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await canvasBlob(canvas, file.type, file.type === "image/png" ? undefined : 0.88);
+    if (blob.size <= 1.5 * 1024 * 1024) return readDataUrl(blob);
+    scale *= 0.8;
+  }
+  throw new Error("Sponsor logo must be under 1.5 MB after resizing.");
+}
+
 async function api(path, { method = "GET", body } = {}) {
   const res = await fetch(path, {
     method,
@@ -206,7 +270,6 @@ function renderSettings() {
   const values = settings.values || {};
   const readOnly = !settings.editable;
   const locked = settings.scope === "copy";
-  const field = (label, control) => el("label", { class: "stack settings-field" }, el("span", { text: label }), control);
   if (readOnly) {
     return el("section", { class: "card settings-card", "data-tour": "settings" },
       el("div", { class: "card-head" }, el("h2", { text: "Portal settings" }), el("span", { class: "badge badge-warn", text: "Read only" })),
@@ -228,21 +291,74 @@ function renderSettings() {
   const accent = el("input", { name: "accent", type: "color", value: /^#[0-9a-f]{6}$/i.test(values.accent || "") ? values.accent : "#2f7bff" });
   [eventDate, timeZone, deadline, minBid, increment, lockPrice].forEach((control) => { control.disabled = locked; });
   const placements = el("div", { class: "placement-options" });
-  const grouped = new Map();
-  for (const placement of settings.kit?.placements || []) {
-    if (!grouped.has(placement.garmentName)) grouped.set(placement.garmentName, []);
-    grouped.get(placement.garmentName).push(placement);
-  }
-  for (const [garment, entries] of grouped) {
-    const group = el("fieldset", { class: "placement-group" }, el("legend", { text: garment }));
-    for (const placement of entries) {
-      const checkbox = el("input", { type: "checkbox", name: "offeredPlacementIds", value: placement.id });
-      checkbox.checked = (values.offeredPlacementIds || []).includes(placement.id);
-      checkbox.disabled = locked;
-      group.append(el("label", { class: "check-row" }, checkbox, el("span", { text: placement.label })));
+  const offered = new Set(values.offeredPlacementIds || []);
+  const placementNames = { ...(values.placementNames || {}) };
+  const placementList = settings.kit?.placements || [];
+  const placementGroups = el("div", { class: "placement-groups" });
+  const addSelect = el("select", { class: "placement-add-select", "aria-label": "Choose a ready-made placement" });
+  const addButton = el("button", { class: "btn", type: "button", text: "Add" });
+  function paintPlacements() {
+    const grouped = new Map();
+    for (const placement of placementList) {
+      if (!offered.has(placement.id)) continue;
+      if (!grouped.has(placement.garmentName)) grouped.set(placement.garmentName, []);
+      grouped.get(placement.garmentName).push(placement);
     }
-    placements.append(group);
+    placementGroups.replaceChildren(...[...grouped].map(([garment, entries]) => {
+      const group = el("fieldset", { class: "placement-group" }, el("legend", { text: garment }));
+      for (const placement of entries) {
+        const name = el("input", {
+          class: "placement-name",
+          type: "text",
+          maxlength: "60",
+          placeholder: placement.name || placement.label,
+          value: placementNames[placement.id] || "",
+          disabled: locked,
+          "aria-label": `${placement.id} display name`
+        });
+        name.addEventListener("input", () => { placementNames[placement.id] = name.value; });
+        const state = summary.placements.find((item) => item.id === placement.id)?.state || "open";
+        const row = el("div", { class: "placement-edit-row" },
+          el("span", { class: "pid placement-id-chip", text: placement.id }),
+          name,
+          !locked ? el("button", {
+            class: "btn btn-ghost btn-remove-placement",
+            type: "button",
+            text: "Remove",
+            disabled: state !== "open",
+            title: state !== "open" ? "Has bids — can't remove" : "",
+            onclick: () => { offered.delete(placement.id); paintPlacements(); }
+          }) : null);
+        group.append(row);
+      }
+      return group;
+    }));
+    const unused = placementList.filter((placement) => !offered.has(placement.id));
+    addSelect.replaceChildren(
+      el("option", { value: "", text: "Choose a ready-made spot" }),
+      ...unused.map((placement) => el("option", {
+        value: placement.id,
+        text: `${placement.id} · ${placement.name || placement.label}`
+      }))
+    );
+    addSelect.disabled = locked || unused.length === 0;
+    addButton.disabled = locked || unused.length === 0 || !addSelect.value;
+    placements.replaceChildren(
+      placementGroups,
+      ...(!locked ? [el("div", { class: "placement-add-row" },
+        field("Add a spot", addSelect),
+        addButton)] : [])
+    );
   }
+  addButton.addEventListener("click", () => {
+    if (!addSelect.value) return;
+    offered.add(addSelect.value);
+    paintPlacements();
+  });
+  addSelect.addEventListener("change", () => {
+    addButton.disabled = !addSelect.value;
+  });
+  paintPlacements();
   const error = el("p", { class: "notice notice-error", role: "alert", hidden: true });
   const save = el("button", { class: "btn btn-primary", type: "submit", text: "Save settings" });
   form.append(
@@ -276,10 +392,14 @@ function renderSettings() {
       benefits: benefits.value.split("\n").map((item) => item.trim()).filter(Boolean),
       intro: intro.value,
       accent: accent.value,
-      offeredPlacementIds: [...form.querySelectorAll('input[name="offeredPlacementIds"]:checked')].map((input) => input.value)
+      offeredPlacementIds: placementList.filter((placement) => offered.has(placement.id)).map((placement) => placement.id),
+      placementNames: Object.fromEntries(placementList
+        .filter((placement) => offered.has(placement.id))
+        .map((placement) => [placement.id, (placementNames[placement.id] || "").trim()])
+        .filter(([id, name]) => name && name !== (placementList.find((placement) => placement.id === id)?.name || "")))
     };
     if (locked) {
-      for (const key of ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds"]) delete body[key];
+      for (const key of ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds", "placementNames"]) delete body[key];
     }
     try {
       await api(`/api/dashboard/${encodeURIComponent(slug)}/settings`, { method: "POST", body });
@@ -292,6 +412,167 @@ function renderSettings() {
   return el("section", { class: "card settings-card" },
     el("div", { class: "card-head" }, el("h2", { text: "Portal settings" }), el("span", { class: `badge badge-${locked ? "ok" : "accent"}`, text: locked ? "Copy only" : "Draft" })),
     form);
+}
+
+function renderLookEditor() {
+  const settings = summary.settings;
+  if (!settings?.editable || !settings.kit) return null;
+  const values = settings.values || {};
+  let posterImages = null;
+  let selectedArena = values.arena || settings.kit.defaultArena || "ropes";
+  let selectedBackdrop = values.backdrop === "arena" || !values.poster ? "arena" : "poster";
+  const posterTitle = el("input", { type: "text", maxlength: "80", value: values.poster?.title || "", "aria-label": "Poster title" });
+  const posterSubtitle = el("input", { type: "text", maxlength: "120", value: values.poster?.subtitle || "", "aria-label": "Poster subtitle" });
+  const posterInput = el("input", { type: "file", accept: "image/jpeg,image/png,image/webp", "aria-label": "Choose fight poster image" });
+  const posterPreview = el("img", {
+    class: "poster-card-preview",
+    src: values.poster?.cardUrl || "",
+    alt: values.poster ? `${values.poster.title} fight poster` : "Poster preview",
+    hidden: !values.poster
+  });
+  const posterEmpty = el("div", { class: "poster-preview-empty", text: "No fight poster uploaded" });
+  posterEmpty.hidden = Boolean(values.poster);
+  const posterError = el("p", { class: "notice notice-error", role: "alert", hidden: true });
+  const posterProgress = el("p", { class: "muted small", role: "status", hidden: true });
+  const savePoster = el("button", { class: "btn btn-primary", type: "button", text: "Save poster", disabled: true });
+  const removePoster = values.poster
+    ? el("button", { class: "btn btn-ghost", type: "button", text: "Remove poster" })
+    : null;
+
+  posterInput.addEventListener("change", async () => {
+    const file = posterInput.files?.[0];
+    if (!file) return;
+    posterError.hidden = true;
+    posterProgress.hidden = true;
+    savePoster.disabled = true;
+    try {
+      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+        throw new Error("Use a JPG, PNG or WebP.");
+      }
+      let bitmap;
+      try { bitmap = await createImageBitmap(file); } catch { throw new Error("Use a JPG, PNG or WebP."); }
+      if (bitmap.width < 800) throw new Error("Choose an image at least 800 pixels wide.");
+      posterImages = {};
+      for (const [variant, width, height] of [
+        ["card", 819, 1024],
+        ["stage900", 900, 1125],
+        ["stage1500", 1500, 1875],
+        ["og", 1200, 630]
+      ]) {
+        posterImages[variant] = await posterVariant(bitmap, width, height);
+      }
+      posterPreview.src = posterImages.card;
+      posterPreview.hidden = false;
+      posterEmpty.hidden = true;
+      savePoster.disabled = false;
+    } catch (err) {
+      posterImages = null;
+      posterError.textContent = err.message || "Use a JPG, PNG or WebP.";
+      posterError.hidden = false;
+    }
+  });
+
+  savePoster.addEventListener("click", async () => {
+    if (!posterImages) return;
+    savePoster.disabled = true;
+    if (removePoster) removePoster.disabled = true;
+    posterError.hidden = true;
+    posterProgress.hidden = false;
+    const version = crypto.randomUUID().replaceAll("-", "");
+    try {
+      const variants = Object.entries(posterImages);
+      for (let index = 0; index < variants.length; index += 1) {
+        const [variant, image] = variants[index];
+        posterProgress.textContent = `Uploading poster image ${index + 1} of ${variants.length}…`;
+        await api(`/api/dashboard/${encodeURIComponent(slug)}/poster/${variant}`, {
+          method: "POST",
+          body: { version, image }
+        });
+      }
+      posterProgress.textContent = "Saving poster details…";
+      await api(`/api/dashboard/${encodeURIComponent(slug)}/poster`, {
+        method: "POST",
+        body: { version, title: posterTitle.value.trim(), subtitle: posterSubtitle.value.trim() }
+      });
+      toast("Fight poster saved");
+      await load();
+    } catch (err) {
+      posterError.textContent = err.message;
+      posterError.hidden = false;
+      savePoster.disabled = false;
+      if (removePoster) removePoster.disabled = false;
+    }
+  });
+
+  removePoster?.addEventListener("click", async () => {
+    removePoster.disabled = true;
+    posterError.hidden = true;
+    try {
+      await api(`/api/dashboard/${encodeURIComponent(slug)}/poster/remove`, { method: "POST", body: {} });
+      toast("Fight poster removed");
+      await load();
+    } catch (err) {
+      posterError.textContent = err.message;
+      posterError.hidden = false;
+      removePoster.disabled = false;
+    }
+  });
+
+  const arenaCards = el("div", { class: "arena-cards" }, (settings.kit.arenas || []).map((arena) => {
+    const radio = el("input", { type: "radio", name: "look-arena", value: arena.id });
+    radio.checked = selectedArena === arena.id;
+    radio.addEventListener("change", () => { selectedArena = arena.id; });
+    return el("label", { class: "arena-card" },
+      radio,
+      el("img", { src: arena.thumbnail, alt: "", loading: "lazy" }),
+      el("span", { text: arena.name }));
+  }));
+  const posterBackdrop = el("input", { type: "radio", name: "look-backdrop", value: "poster", disabled: !values.poster });
+  const arenaBackdrop = el("input", { type: "radio", name: "look-backdrop", value: "arena" });
+  posterBackdrop.checked = selectedBackdrop === "poster";
+  arenaBackdrop.checked = selectedBackdrop === "arena";
+  posterBackdrop.addEventListener("change", () => { selectedBackdrop = "poster"; });
+  arenaBackdrop.addEventListener("change", () => { selectedBackdrop = "arena"; });
+  const saveLook = el("button", { class: "btn btn-primary", type: "button", text: "Save look" });
+  saveLook.addEventListener("click", async () => {
+    saveLook.disabled = true;
+    try {
+      await api(`/api/dashboard/${encodeURIComponent(slug)}/settings`, {
+        method: "POST",
+        body: { arena: selectedArena, backdrop: selectedBackdrop }
+      });
+      toast("Portal look saved");
+      await load();
+    } catch (err) {
+      posterError.textContent = err.message;
+      posterError.hidden = false;
+      saveLook.disabled = false;
+    }
+  });
+
+  return el("section", { class: "card card-wide look-card" },
+    el("div", { class: "card-head" },
+      el("div", {}, el("p", { class: "eyebrow", text: "PORTAL LOOK" }), el("h2", { text: "Fight poster & arena" })),
+      el("span", { class: "badge badge-accent", text: "Editable after launch" })),
+    el("div", { class: "look-layout" },
+      el("div", { class: "look-pane poster-pane" },
+        el("div", { class: "poster-preview-frame" }, posterPreview, posterEmpty),
+        el("label", { class: "file-field" }, el("span", { text: "Fight poster image" }), posterInput),
+        field("Poster title", posterTitle),
+        field("Subtitle (optional)", posterSubtitle),
+        posterProgress,
+        posterError,
+        el("div", { class: "actions" }, savePoster, removePoster)),
+      el("div", { class: "look-pane arena-pane" },
+        el("p", { class: "eyebrow", text: "ARENA" }),
+        arenaCards,
+        el("p", { class: "eyebrow backdrop-eyebrow", text: "STAGE BACKDROP" }),
+        el("div", { class: "backdrop-options" },
+          el("label", { class: "backdrop-option" }, posterBackdrop, el("span", {}, el("strong", { text: "Fight poster" }), el("small", { text: "Use your uploaded poster behind the 3D kit." }))),
+          el("label", { class: "backdrop-option" }, arenaBackdrop, el("span", {}, el("strong", { text: "Arena photo" }), el("small", { text: "Use the selected arena image behind the 3D kit." })))),
+        !values.poster ? el("p", { class: "muted small" }, "Upload and save a poster to use it as the stage backdrop.") : null,
+        el("div", { class: "actions look-actions" }, saveLook))),
+  );
 }
 
 function renderLaunch() {
@@ -436,6 +717,7 @@ function render() {
     checklist,
     renderStats(),
     renderSettings(),
+    renderLookEditor(),
     renderLaunch(),
     el("div", { class: "grid" }, renderPayments(), renderModel(), renderShare()),
     renderPlacements()
@@ -445,33 +727,74 @@ function render() {
 function openSoldDialog(p) {
   const dialog = el("dialog", { class: "modal", "aria-labelledby": "soldTitle" });
   const error = el("p", { class: "notice notice-error", role: "alert", hidden: true });
+  const logoInput = el("input", { id: "soldLogo", name: "logoFile", type: "file", accept: "image/png,image/jpeg,image/webp" });
+  const logoPreview = el("img", { class: "logo-preview sold-logo-preview", alt: "Sponsor logo preview", hidden: true });
+  const logoStatus = el("p", { class: "muted small", hidden: true });
+  const submitButton = el("button", { class: "btn btn-primary", type: "submit", text: "Mark as sold" });
+  let logo = null;
+  logoInput.addEventListener("change", async () => {
+    const file = logoInput.files?.[0];
+    if (!file) {
+      logo = null;
+      logoPreview.hidden = true;
+      logoStatus.hidden = true;
+      return;
+    }
+    submitButton.disabled = true;
+    error.hidden = true;
+    logoStatus.hidden = false;
+    logoStatus.textContent = "Preparing sponsor logo…";
+    try {
+      logo = await sponsorLogoData(file);
+      logoPreview.src = logo;
+      logoPreview.hidden = false;
+      logoStatus.hidden = true;
+    } catch (err) {
+      logo = null;
+      logoPreview.hidden = true;
+      error.textContent = err.message || "Use a JPG, PNG or WebP image.";
+      error.hidden = false;
+      logoStatus.hidden = true;
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
   const form = el("form", { class: "stack", method: "dialog", novalidate: true },
     el("h2", { id: "soldTitle", text: `Mark ${p.id} as sold` }),
     el("p", { class: "muted", text: `${p.label}. The placement shows as taken on your portal and stops accepting bids.` }),
     el("label", { for: "soldSponsor", text: "Sponsor name" }), el("input", { id: "soldSponsor", name: "sponsor", required: true, maxlength: "120", autocomplete: "off" }),
     el("label", { for: "soldAmount", text: "Amount (optional)" }), el("input", { id: "soldAmount", name: "amount", type: "number", min: "0", step: "1", inputmode: "numeric" }),
     el("label", { for: "soldNote", text: "Note (optional)" }), el("textarea", { id: "soldNote", name: "note", rows: "2", maxlength: "500" }),
+    el("label", { for: "soldLogo", text: "Sponsor logo (optional)" }), logoInput,
+    logoPreview,
+    logoStatus,
     error,
     el("div", { class: "actions" },
       el("button", { class: "btn btn-ghost", type: "button", text: "Cancel", onclick: () => dialog.close() }),
-      el("button", { class: "btn btn-primary", type: "submit", text: "Mark as sold" })));
+      submitButton));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const sponsor = form.sponsor.value.trim();
     const amountRaw = form.amount.value.trim();
     if (!sponsor) { error.hidden = false; error.textContent = "Enter the sponsor's name."; return; }
     if (amountRaw && !(Number.isInteger(Number(amountRaw)) && Number(amountRaw) >= 0)) { error.hidden = false; error.textContent = "Amount must be a whole number."; return; }
-    form.querySelector("[type=submit]").disabled = true;
+    submitButton.disabled = true;
     try {
       await api(`/api/dashboard/${encodeURIComponent(slug)}/placements/${encodeURIComponent(p.id)}/sold`, {
-        method: "POST", body: { sponsor, ...(amountRaw ? { amount: Number(amountRaw) } : {}), note: form.note.value.trim() }
+        method: "POST",
+        body: {
+          sponsor,
+          ...(amountRaw ? { amount: Number(amountRaw) } : {}),
+          note: form.note.value.trim(),
+          ...(logo ? { logo } : {})
+        }
       });
       dialog.close();
       toast(`${p.id} marked as sold`);
       await load();
     } catch (err) {
       error.hidden = false; error.textContent = err.message;
-      form.querySelector("[type=submit]").disabled = false;
+      submitButton.disabled = false;
     }
   });
   dialog.append(form);

@@ -243,14 +243,31 @@ fi
 if grep -Fq "'=HYPERLINK" "$TMP_DIR/bids.csv"; then echo "  ok   CSV prefixes formula-like company"; else echo "  FAIL CSV prefixes formula-like company"; FAIL=1; fi
 if grep -Fq 'dashboard-bidder@example.test' "$TMP_DIR/bids.csv"; then echo "  ok   CSV includes the bid row"; else echo "  FAIL CSV includes the bid row"; FAIL=1; fi
 
+SALE_LOGO=$(node -e 'const fs=require("fs");process.stdout.write(`data:image/png;base64,${fs.readFileSync("public/tenants/michael-heckert/sponsors/boxrope.png").toString("base64")}`)')
+INVALID_LOGO_CODE=$(curl -sS -o "$TMP_DIR/invalid-sale-logo.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/TF-11/sold" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE" -H 'content-type: application/json' \
+  -d '{"sponsor":"Invalid Logo Sponsor","logo":"data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="}')
+check "unsupported offline-sale logo type is rejected" "$INVALID_LOGO_CODE" "400"
+curl -sS -o "$TMP_DIR/invalid-sale-logo-summary.json" -H "Cookie: asp_dash=$FIXTURE_COOKIE" "$BASE/api/dashboard/platform-fixture/summary"
+json_check "invalid logo leaves placement open" "$TMP_DIR/invalid-sale-logo-summary.json" 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(s.placements.find(x=>x.id==="TF-11")?.state==="open"?0:1)'
 SOLD_CODE=$(curl -sS -o "$TMP_DIR/sold.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/TF-12/sold" \
   -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE" -H 'content-type: application/json' \
-  -d '{"sponsor":"Offline Sponsor","amount":1250,"note":"Confirmed offline"}')
+  -d "{\"sponsor\":\"Offline Sponsor\",\"amount\":1250,\"note\":\"Confirmed offline\",\"logo\":\"$SALE_LOGO\"}")
 check "no-bid placement can be marked sold" "$SOLD_CODE" "200"
 json_check "sold response uses dashboard placement shape" "$TMP_DIR/sold.json" 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).placement;process.exit(p?.state==="sold"&&p.sponsor==="Offline Sponsor"&&p.soldAmount===1250&&p.soldSource==="dashboard"?0:1)'
 PUBLIC_GET=$(curl -sS "$BASE/api/platform-fixture/bids")
 printf '%s' "$PUBLIC_GET" > "$TMP_DIR/public-sold.json"
 json_check "public bid view shows dashboard placement as sold without details" "$TMP_DIR/public-sold.json" 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).placements["TF-12"];process.exit(p?.locked===true&&p.closed===true&&p.lockedBy==="Offline Sponsor"&&p.sold===true&&!Object.hasOwn(p,"email")&&!Object.hasOwn(p,"phone")&&!Object.hasOwn(p,"amount")?0:1)'
+json_check "public sold payload contains the sponsor-logo URL" "$TMP_DIR/public-sold.json" 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).placements["TF-12"];process.exit(typeof p?.logo==="string"&&p.logo.includes("/api/platform-fixture/sponsor-logos/TF-12?v=")?0:1)'
+SALE_LOGO_URL=$(node -e 'const x=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(x.placements["TF-12"]?.logo||"")' "$TMP_DIR/public-sold.json")
+SALE_LOGO_CODE=$(curl -sS -o "$TMP_DIR/sale-logo.png" -D "$TMP_DIR/sale-logo.headers" -w '%{http_code}' "$BASE$SALE_LOGO_URL")
+check "offline-sale sponsor-logo asset is served" "$SALE_LOGO_CODE" "200"
+if grep -qi '^content-type: image/png' "$TMP_DIR/sale-logo.headers"; then
+  echo "  ok   offline-sale sponsor logo has PNG content type"
+else
+  echo "  FAIL offline-sale sponsor logo has PNG content type"
+  FAIL=1
+fi
 check "public bid on sold placement is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/platform-fixture/bids" -H "Origin: $BASE" -H 'content-type: application/json' -d '{"id":"TF-12","type":"bid","amount":500,"company":"Blocked Co","name":"Blocked Bidder","email":"blocked@example.test"}')" "409"
 check "marking placement with bids sold is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/SB-R1/sold" -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE" -H 'content-type: application/json' -d '{"sponsor":"Too Late"}')" "409"
 check "marking config-sold placement sold is rejected" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/SF-L1/sold" -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE" -H 'content-type: application/json' -d '{"sponsor":"Already Sold"}')" "409"
@@ -265,6 +282,10 @@ fi
 RELEASE_CODE=$(curl -sS -o "$TMP_DIR/release.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/TF-12/release" \
   -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE")
 check "dashboard sale can be released" "$RELEASE_CODE" "200"
+check "released sponsor-logo asset returns 404" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE$SALE_LOGO_URL")" "404"
+RELEASED_PUBLIC_GET=$(curl -sS "$BASE/api/platform-fixture/bids")
+printf '%s' "$RELEASED_PUBLIC_GET" > "$TMP_DIR/public-released.json"
+json_check "released sponsor is absent from sold public payload" "$TMP_DIR/public-released.json" 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).placements["TF-12"];process.exit(!p?.sold&&!p?.logo?0:1)'
 check "release of config-sold placement is rejected" "$(curl -sS -o "$TMP_DIR/release-config.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/SF-L1/release" -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE")" "409"
 if grep -Fq 'This sale is set in the tenant config; contact support to change it.' "$TMP_DIR/release-config.json"; then
   echo "  ok   config-sold release explains the restriction"
