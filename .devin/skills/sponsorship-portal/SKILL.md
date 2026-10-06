@@ -34,9 +34,11 @@ skip what the user has already completed. Read the relevant reference before edi
   `/api/dashboard/:slug/model/kit`, `/api/dashboard/:slug/model/photos/:angle` (GET/POST), and
   `/api/dashboard/:slug/model/submit`, `/api/dashboard/:slug/model/views/generate`, `/api/dashboard/:slug/model/views/decision`,
   `/api/dashboard/:slug/model/views/:angle`, `/api/dashboard/:slug/model/build/{start,model.glb,thumbnail}`,
-  and `/api/dashboard/:slug/model/review`. Athlete studio pages use `/dashboard/:slug/model/studio`.
+  `/api/dashboard/:slug/model/review`, `/api/dashboard/:slug/settings`, and `/api/dashboard/:slug/launch`.
+  Athlete studio pages use `/dashboard/:slug/model/studio`.
   Operator pages and APIs are `/admin`, `/admin/:slug/studio`, `/api/admin/session`, `/api/admin/logout`,
-  `/api/admin/reviews`, and `/api/admin/:slug/model/{publish,send-back,unpublish}`. Published models are served
+  `/api/admin/reviews`, `/api/admin/applications`, `/api/admin/applications/:id/{create,dismiss}`, and
+  `/api/admin/:slug/model/{publish,send-back,unpublish}`. Published models are served
   from `/api/:slug/model.glb?v=<job-id>`; draft tenants require the preview token.
   Onboarding progress is stored per tenant in the `onboarding` Blobs store. Model Studio Phase A collects consent,
   kit colours and photos; Phase B generates reference views for athlete approval; Phase C builds and optimizes a
@@ -59,6 +61,12 @@ skip what the user has already completed. Read the relevant reference before edi
 - A tenant may use a `demo` block instead of `showcase` for an interactive prospect preview. Demo pages keep every
   placement and local logo preview available, but bids, locks, Connect onboarding, dashboard sales, Model Studio
   changes, and close-auction invoicing are blocked server-side.
+- Self-serve applications are provisioned from `/admin` as dynamic records in the strong-consistency `tenants` store
+  under `tenant/<slug>`; committed static tenants always take precedence. Athletes edit draft settings and press Go live
+  after Connect payouts, an athlete-specific published likeness, event date, deadline, pricing, and placement checks pass.
+  Event, pricing, dates and placements are locked after launch.
+  Draft previews use an HMAC token bound to the tenant slug; legacy global preview tokens remain supported. Writes are
+  serialized per slug within an instance; concurrent writes across instances may race.
 - `netlify/lib/sponsorship.mjs` exports `forTenant(config, { portalUrl })`, which closes email, invoice, pricing,
   and placement helpers over one tenant.
 - The scheduled job processes every non-draft tenant; the admin close endpoint may process all non-draft tenants or
@@ -107,7 +115,9 @@ scripts/tenant-test.sh http://localhost:8890
 scripts/connect-test.sh http://localhost:8890
 scripts/webhook-test.sh http://localhost:8890
 scripts/dashboard-test.sh http://localhost:8890
+scripts/selfserve-test.sh http://localhost:8890
 scripts/studio-test.sh http://localhost:8890
+scripts/apply-test.sh http://localhost:8890
 ```
 
 Reset the local Blobs sandbox and restart the mock service before each test run with `rm -rf .netlify/blobs-serve`.

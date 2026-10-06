@@ -1,4 +1,5 @@
 import { getStore } from "@netlify/blobs";
+import { purgeCache } from "@netlify/functions";
 import { forTenant, json } from "../lib/sponsorship.mjs";
 import {
   allowLoginEmail,
@@ -27,13 +28,22 @@ import {
 } from "../lib/model-build.mjs";
 import { getLivePointer, loadReview, saveAthleteReview } from "../lib/model-review.mjs";
 import { MeshyConfigurationError } from "../lib/meshy.mjs";
-import { getTenant, listTenants } from "../lib/tenants.mjs";
+import { getTenant, listTenants, tenantPreviewToken } from "../lib/tenants.mjs";
+import { getStarterKit } from "../lib/starter-kits.mjs";
+import { loadDynamicTenant, TenantStoreError, updateDynamicTenant } from "../lib/tenant-store.mjs";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ANGLES = ["front", "back", "left", "right", "face"];
 const REQUIRED_ANGLES = ["front", "back", "left", "right"];
 const PHOTO_WARNINGS = new Set(["blurry", "dark", "bright", "no_person", "multiple_people", "not_full_body", "landscape"]);
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+const TIME_ZONES = new Set([
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "Europe/London"
+]);
 
 export function jpegSize(bytes) {
   const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -319,6 +329,7 @@ async function summary(req, slug) {
 
   const base = platformUrl(req);
   const portalUrl = `${base}/${tenant.slug}`;
+  const dynamicRecord = await loadDynamicTenant(slug);
   const services = forTenant(tenant, { portalUrl });
   const [record, readiness, placements, onboarding, studio] = await Promise.all([
     services.connect.record(),
@@ -340,6 +351,11 @@ async function summary(req, slug) {
     }, 0),
     paid: placements.reduce((sum, placement) => sum + (placement.invoice?.amountPaid || 0), 0)
   };
+  const kit = dynamicRecord ? getStarterKit(dynamicRecord.kitId) : null;
+  const scope = dynamicRecord
+    ? tenant.status === "live" ? "copy" : "full"
+    : "none";
+  const previewToken = tenant.status === "draft" ? tenantPreviewToken(slug) : null;
   return json({
     tenant: {
       slug: tenant.slug,
@@ -347,9 +363,58 @@ async function summary(req, slug) {
       status: tenant.status,
       eventName: tenant.event.name,
       portalUrl,
+      previewUrl: previewToken ? `${base}/${encodeURIComponent(slug)}?preview=${encodeURIComponent(previewToken)}` : null,
       embedCode: `<iframe src="${escapeHtml(portalUrl)}" title="${escapeHtml(tenant.copy.embedTitle)}" loading="lazy" allow="fullscreen" style="width:100%;height:900px;border:0"></iframe>`,
       currency: tenant.pricing.currency,
       accent: tenant.brand?.accent || null
+    },
+    settings: {
+      editable: Boolean(dynamicRecord),
+      scope,
+      reason: scope === "none" ? "Managed by the platform team" : null,
+      values: dynamicRecord ? {
+        eventName: dynamicRecord.settings.eventName,
+        eventDate: dynamicRecord.settings.eventDate,
+        timeZone: dynamicRecord.settings.timeZone,
+        deadline: dynamicRecord.settings.deadline,
+        minBid: dynamicRecord.settings.minBid,
+        increment: dynamicRecord.settings.increment,
+        lockPrice: dynamicRecord.settings.lockPrice,
+        packageName: dynamicRecord.settings.packageName,
+        benefits: dynamicRecord.settings.benefits,
+        intro: dynamicRecord.settings.intro,
+        accent: dynamicRecord.settings.accent,
+        offeredPlacementIds: dynamicRecord.settings.offeredPlacementIds
+      } : {
+        eventName: tenant.event.name,
+        eventDate: tenant.event.date,
+        timeZone: tenant.event.timeZone,
+        deadline: tenant.pricing.deadline,
+        minBid: tenant.pricing.minBid,
+        increment: tenant.pricing.increment,
+        lockPrice: tenant.pricing.lockPrice,
+        packageName: tenant.packageName,
+        benefits: tenant.benefits,
+        intro: tenant.hero.intro,
+        accent: tenant.brand?.accent || null,
+        offeredPlacementIds: tenant.garments.flatMap((garment) => garment.placements.map((placement) => placement.id))
+      },
+      kit: kit ? {
+        id: kit.id,
+        name: kit.name,
+        placements: kit.placements.map((placement) => ({
+          id: placement.id,
+          label: placement.label,
+          garmentName: placement.garmentName,
+          offered: dynamicRecord.settings.offeredPlacementIds.includes(placement.id)
+        }))
+      } : null
+    },
+    launch: {
+      available: Boolean(dynamicRecord && tenant.status === "draft"),
+      checks: dynamicRecord && tenant.status === "draft"
+        ? await launchChecks(tenant, dynamicRecord, base)
+        : []
     },
     pricing: {
       minBid: tenant.pricing.minBid,
@@ -382,6 +447,191 @@ async function summary(req, slug) {
       review: studio.review
     }
   });
+}
+
+function isDateOnly(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function todayUtc() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function eventEnd(value) {
+  return Date.parse(`${value}T23:59:59.999Z`);
+}
+
+function validSettings(settings, kit) {
+  const eventName = typeof settings.eventName === "string" ? settings.eventName.trim() : "";
+  if (eventName.length < 1 || eventName.length > 80) return "Event name must be between 1 and 80 characters.";
+  if (!isDateOnly(settings.eventDate) || settings.eventDate < todayUtc()) return "Event date must be today or later in YYYY-MM-DD format.";
+  if (!TIME_ZONES.has(settings.timeZone)) return "Select an accepted timezone.";
+  const deadline = Date.parse(settings.deadline);
+  if (!Number.isFinite(deadline) || deadline <= Date.now()) return "Deadline must be a future ISO date.";
+  if (deadline > eventEnd(settings.eventDate)) return "Deadline must be no later than the event date.";
+  if (!Number.isInteger(settings.minBid) || settings.minBid < 50 || settings.minBid > 100000) return "Minimum bid must be an integer from 50 to 100000.";
+  if (!Number.isInteger(settings.increment) || settings.increment < 5 || settings.increment > settings.minBid) return "Increment must be an integer from 5 through the minimum bid.";
+  if (!Number.isInteger(settings.lockPrice) || settings.lockPrice <= settings.minBid || settings.lockPrice > 250000) return "Lock price must be greater than the minimum bid and at most 250000.";
+  if (typeof settings.packageName !== "string" || settings.packageName.trim().length < 1 || settings.packageName.trim().length > 60) return "Package name must be between 1 and 60 characters.";
+  if (!Array.isArray(settings.benefits) || settings.benefits.length < 1 || settings.benefits.length > 8 ||
+      settings.benefits.some((benefit) => typeof benefit !== "string" || benefit.trim().length < 1 || benefit.trim().length > 140)) {
+    return "Benefits must contain 1 to 8 non-empty items of 140 characters or fewer.";
+  }
+  if (typeof settings.intro !== "string" || settings.intro.length > 400) return "Intro must be 400 characters or fewer.";
+  if (typeof settings.accent !== "string" || !/^#[0-9a-f]{6}$/i.test(settings.accent)) return "Accent must be a hex color such as #2f7bff.";
+  if (!Array.isArray(settings.offeredPlacementIds) || settings.offeredPlacementIds.length < 1) return "Select at least one placement.";
+  const placementIds = new Set(kit.placements.map((placement) => placement.id));
+  if (settings.offeredPlacementIds.some((id) => typeof id !== "string" || !placementIds.has(id))) return "Select only placements from this starter kit.";
+  return null;
+}
+
+export async function launchChecks(tenant, record, base) {
+  const services = forTenant(tenant, { portalUrl: `${base}/${tenant.slug}` });
+  let readiness;
+  try {
+    readiness = await services.connect.readiness();
+  } catch {
+    readiness = { ready: false };
+  }
+  const live = await getLivePointer(tenant);
+  const eventDateOk = isDateOnly(record.settings.eventDate) && record.settings.eventDate >= todayUtc();
+  const deadlineAt = Date.parse(record.settings.deadline);
+  const deadlineOk = Number.isFinite(deadlineAt) && deadlineAt > Date.now() &&
+    deadlineAt <= eventEnd(record.settings.eventDate);
+  const pricingOk = Number.isInteger(record.settings.minBid) &&
+    Number.isInteger(record.settings.increment) &&
+    Number.isInteger(record.settings.lockPrice) &&
+    record.settings.minBid >= 50 &&
+    record.settings.increment >= 5 &&
+    record.settings.increment <= record.settings.minBid &&
+    record.settings.lockPrice > record.settings.minBid &&
+    record.settings.lockPrice <= 250000;
+  const placementsOk = Array.isArray(record.settings.offeredPlacementIds) && record.settings.offeredPlacementIds.length > 0;
+  return [
+    {
+      id: "payouts",
+      label: "Connect payouts ready",
+      ok: readiness.ready === true,
+      detail: readiness.ready ? "Your payout account is ready." : "Finish Stripe Connect setup before launch."
+    },
+    {
+      id: "likeness",
+      label: "Published 3D likeness",
+      ok: Boolean(live?.jobId),
+      detail: live?.jobId ? "A published athlete-specific model is ready." : "Publish your athlete-specific model before launch."
+    },
+    {
+      id: "event-date",
+      label: "Event date",
+      ok: eventDateOk,
+      detail: eventDateOk ? "The event date is valid." : "Choose an event date today or later."
+    },
+    {
+      id: "deadline",
+      label: "Bidding deadline",
+      ok: deadlineOk,
+      detail: deadlineOk ? "The deadline is before the event." : "Choose a future deadline no later than the event date."
+    },
+    {
+      id: "pricing",
+      label: "Pricing is valid",
+      ok: pricingOk,
+      detail: pricingOk ? "Minimum bid, increment, and lock price are valid." : "Review the pricing values."
+    },
+    {
+      id: "placements",
+      label: "At least one placement",
+      ok: placementsOk,
+      detail: placementsOk ? "At least one placement is offered." : "Offer at least one placement."
+    }
+  ];
+}
+
+async function updateSettings(req, slug) {
+  const tenant = await getTenant(slug);
+  if (!tenant) return json({ error: "Tenant not found." }, 404);
+  const session = sessionFor(req, slug);
+  if (!session) return json({ error: "Sign in required" }, 401);
+  const record = await loadDynamicTenant(slug);
+  if (!record) return json({ error: "Portal settings are managed by the platform team." }, 403);
+  let body;
+  try { body = await req.json(); } catch { return json({ error: "A valid request body is required." }, 400); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "A valid request body is required." }, 400);
+  const current = record.settings;
+  const copyOnly = tenant.status === "live";
+  if (copyOnly && ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds"].some((key) =>
+    Object.hasOwn(body, key) && JSON.stringify(body[key]) !== JSON.stringify(current[key]))) {
+    return json({ error: "Event, pricing, dates and placements are locked after launch" }, 409);
+  }
+  const next = {
+    ...current,
+    ...Object.fromEntries(Object.entries(body).filter(([key]) => [
+      "eventName", "eventDate", "timeZone", "deadline", "minBid", "increment",
+      "lockPrice", "packageName", "benefits", "intro", "accent", "offeredPlacementIds"
+    ].includes(key)))
+  };
+  const kit = getStarterKit(record.kitId);
+  const error = validSettings(next, kit);
+  if (error) return json({ error }, 400);
+  try {
+    const updated = await updateDynamicTenant(slug, (existing) => ({
+      ...existing,
+      settings: { ...existing.settings, ...next }
+    }));
+    if (copyOnly) await purgeTenantCache(slug);
+    return json({ ok: true, settings: updated.settings });
+  } catch (err) {
+    if (err instanceof TenantStoreError && err.code === "NOT_FOUND") return json({ error: "Tenant not found." }, 404);
+    console.error("Dashboard settings update failed", slug, err);
+    return json({ error: "Unable to save portal settings." }, 500);
+  }
+}
+
+async function purgeTenantCache(slug) {
+  try {
+    await purgeCache({ tags: [`tenant-${slug}`] });
+  } catch (err) {
+    console.error("Tenant cache purge failed", slug, err);
+  }
+}
+
+async function launch(req, slug) {
+  const tenant = await getTenant(slug);
+  if (!tenant) return json({ error: "Tenant not found." }, 404);
+  if (!sessionFor(req, slug)) return json({ error: "Sign in required" }, 401);
+  const record = await loadDynamicTenant(slug);
+  if (!record || tenant.status !== "draft") return json({ error: "Only dynamic draft portals can go live." }, 409);
+  const checks = await launchChecks(tenant, record, platformUrl(req));
+  const failures = checks.filter((check) => !check.ok);
+  if (failures.length) return json({ error: "Launch checks are not complete.", checks }, 409);
+  const launchedAt = new Date().toISOString();
+  const updated = await updateDynamicTenant(slug, (existing) => ({
+    ...existing,
+    launchedAt,
+    settings: { ...existing.settings, status: "live" }
+  }));
+  await purgeTenantCache(slug);
+  const operatorEmail = process.env.OPERATOR_EMAIL;
+  if (operatorEmail && process.env.RESEND_API_KEY) {
+    const portalUrl = `${platformUrl(req)}/${slug}`;
+    try {
+      await fetch(`${process.env.RESEND_API_BASE || "https://api.resend.com"}/emails`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          from: "Athlete Sponsorship Portal <sponsors@michaelheckert.com>",
+          to: [operatorEmail],
+          subject: `${updated.settings.fullName} just went live`,
+          text: `${updated.settings.fullName} just went live.\n\nPortal: ${portalUrl}`
+        })
+      });
+    } catch (err) {
+      console.error("Operator launch email failed", slug, err);
+    }
+  }
+  return json({ ok: true, portalUrl: `${platformUrl(req)}/${slug}` });
 }
 
 async function loadPlacementsForSummary(tenant, portalUrl) {
@@ -880,6 +1130,18 @@ export default async function dashboardApi(req) {
     return updateOnboarding(req, parts[2]);
   }
 
+  if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" &&
+      parts[3] === "settings") {
+    if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+    return updateSettings(req, parts[2]);
+  }
+
+  if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" &&
+      parts[3] === "launch") {
+    if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+    return launch(req, parts[2]);
+  }
+
   if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" && parts[3] === "model") {
     if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
     return getModel(req, parts[2]);
@@ -977,6 +1239,8 @@ export const config = {
     "/api/dashboard/logout",
     "/api/dashboard/:slug/link",
     "/api/dashboard/:slug/onboarding",
+    "/api/dashboard/:slug/settings",
+    "/api/dashboard/:slug/launch",
     "/api/dashboard/:slug/model",
     "/api/dashboard/:slug/model/consent",
     "/api/dashboard/:slug/model/kit",

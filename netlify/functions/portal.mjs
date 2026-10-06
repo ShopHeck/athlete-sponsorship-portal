@@ -1,9 +1,13 @@
 import platform from "../lib/platform.generated.json";
 import { getLivePointer } from "../lib/model-review.mjs";
 import { renderPortal } from "../lib/render.mjs";
-import { getTenant, previewTokenMatches } from "../lib/tenants.mjs";
-
-const RESERVED_SLUGS = new Set(["api", "tenants", "assets", "admin", "dashboard", "static", "terms", "privacy"]);
+import {
+  getTenant,
+  globalPreviewTokenMatches,
+  previewTokenMatches,
+  tenantPreviewToken
+} from "../lib/tenants.mjs";
+import { RESERVED_SLUGS } from "../lib/validate.mjs";
 const notFoundHtml = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Portal not found</title></head>
 <body><main><h1>Portal not found</h1></main></body></html>`;
@@ -20,8 +24,15 @@ export default async function portal(req, context) {
   if (!tenant) return notFound();
 
   const url = new URL(req.url);
-  const previewToken = process.env.PREVIEW_TOKEN;
-  const preview = tenant.status === "draft" && previewTokenMatches(url.searchParams.get("preview"));
+  const suppliedPreviewToken = url.searchParams.get("preview");
+  const globalPreview = tenant.status === "draft" && globalPreviewTokenMatches(suppliedPreviewToken);
+  const signedToken = tenantPreviewToken(slug);
+  const tenantPreview = tenant.status === "draft" &&
+    !globalPreview &&
+    Boolean(signedToken) &&
+    previewTokenMatches(suppliedPreviewToken, slug);
+  const preview = globalPreview || tenantPreview;
+  const previewToken = globalPreview ? process.env.PREVIEW_TOKEN : tenantPreview ? signedToken : null;
   if (tenant.status === "draft" && !preview) return notFound();
 
   const platformUrl = (process.env.PLATFORM_URL || url.origin).replace(/\/+$/, "");

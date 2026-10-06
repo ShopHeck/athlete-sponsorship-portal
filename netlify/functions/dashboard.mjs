@@ -150,13 +150,15 @@ export default async function dashboard(req, context) {
 
   const session = readSession(req);
   if (path === "/dashboard") {
-    if (session && !url.searchParams.has("error")) return redirect(`/dashboard/${encodeURIComponent(session.slug)}`);
+    if (session && !url.searchParams.has("error") && await getTenant(session.slug)) {
+      return redirect(`/dashboard/${encodeURIComponent(session.slug)}`);
+    }
     return loginPage(url);
   }
 
   const slug = context.params?.slug || "";
   const tenant = await getTenant(slug);
-  if (!tenant || !session || session.slug !== slug) return redirect("/dashboard");
+  if (!tenant || !session || session.slug !== slug) return redirect("/dashboard?error=session");
   if (path === `/dashboard/${encodeURIComponent(slug)}/model/studio`) {
     return renderStudioPage(req, tenant, "athlete");
   }

@@ -72,6 +72,10 @@ Reset only this checkout's Blobs sandbox with `rm -rf .netlify/blobs-serve` befo
 scripts/smoke-test.sh http://localhost:8890 platform-fixture SB-R1 TF-12
 scripts/tenant-test.sh http://localhost:8890
 scripts/connect-test.sh http://localhost:8890
+scripts/dashboard-test.sh http://localhost:8890
+scripts/selfserve-test.sh http://localhost:8890
+scripts/studio-test.sh http://localhost:8890
+scripts/apply-test.sh http://localhost:8890
 ```
 
 The smoke-test signature is `[base-url] [slug] [open-placement-A] [open-placement-B]`. Choose two IDs defined
@@ -88,6 +92,10 @@ in the tenant config, absent from its `sold` map, and with no existing local bid
   `/api/<slug>/logos/<id>`. Blobs stores remain named `bids` and `logos`, with keys prefixed by `<slug>/`.
 - `POST /api/apply` accepts founding-athlete applications, stores them in the strong-consistency `applications`
   Blobs store, and rate-limits by a SHA-256 hash of the client IP.
+- Operators review applications at `/admin`; approved athletes receive a dynamically provisioned private portal.
+  Dynamic settings and athlete-controlled launch use `/api/dashboard/:slug/settings` and `/api/dashboard/:slug/launch`.
+  Event, pricing, dates and placements are locked after launch.
+  Dynamic tenant writes are serialized per slug within an instance; concurrent writes across instances may race.
 - `POST /api/<slug>/connect/onboard` and `GET /api/<slug>/connect/status` require the admin token. Connect tenants
   cannot accept bids until charges are enabled and `card_payments` is active. Their customers and invoices live on
   the connected account and are accessed with Stripe's `Stripe-Account` header.
