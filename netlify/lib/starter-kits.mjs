@@ -171,7 +171,7 @@ export function materializeConfig(settings, kitId) {
       name: settings.eventName,
       date: settings.eventDate,
       portalSubtitle: fill(template.event.portalSubtitle, values),
-      lockupKicker: template.event.lockupKicker,
+      lockupKicker: settings.eventName.toUpperCase(),
       lockupDate: dateLockup(settings.eventDate),
       timeZone: settings.timeZone
     },

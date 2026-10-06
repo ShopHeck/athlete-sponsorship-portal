@@ -45,6 +45,7 @@ operating one. `reference/gotchas.md` first when debugging.
   hourly rate-limit keys contain only a SHA-256 hash of the client IP.
 - Self-serve tenants are stored in the strong-consistency `tenants` Blobs store under `tenant/<slug>`. Static tenants
   win conflicts; draft previews use slug-bound HMAC tokens, and athletes press Go live after launch checks pass.
+  Event, pricing, dates and placements are locked after launch.
   Per-slug writes are serialized within an instance; cross-instance races are not prevented.
 - Tenant API routes are `/api/<slug>/bids`, `/api/<slug>/logos/<id>`, and `/api/<slug>/connect/{onboard,status}`;
   Stripe webhooks use `/api/stripe/webhook`. Dashboard APIs are `/api/dashboard/login`, `/session`, `/logout`,

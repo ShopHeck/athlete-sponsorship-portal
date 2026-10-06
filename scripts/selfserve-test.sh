@@ -242,7 +242,7 @@ post_json "$BASE/api/dashboard/avery-selfserve/settings" "$GOOD_SETTINGS" "$TMP_
 check "valid draft settings save" "$LAST_CODE" "200"
 UPDATED_PREVIEW=$(curl -sS "$BASE/avery-selfserve?preview=$TENANT_TOKEN")
 if printf '%s' "$UPDATED_PREVIEW" | grep -Fq "Custom portal intro"; then echo "  ok   updated copy appears in private preview"; else echo "  FAIL updated copy appears in private preview"; FAIL=1; fi
-if printf '%s' "$UPDATED_PREVIEW" | grep -Fq "Custom Fight Night" && printf '%s' "$UPDATED_PREVIEW" | grep -Fq "#336699"; then
+if printf '%s' "$UPDATED_PREVIEW" | grep -Fq "CUSTOM FIGHT NIGHT" && printf '%s' "$UPDATED_PREVIEW" | grep -Fq "#336699"; then
   echo "  ok   updated event name and derived accent appear in private preview"
 else
   echo "  FAIL updated event name and derived accent appear in private preview"
@@ -297,7 +297,10 @@ json_check "live settings scope is copy-only" "$TMP_DIR/live-summary.json" \
 LOCKED_SETTINGS=$(node -e 'const x=JSON.parse(process.argv[1]);x.eventDate="2099-01-01";process.stdout.write(JSON.stringify(x))' "$GOOD_SETTINGS")
 post_json "$BASE/api/dashboard/avery-selfserve/settings" "$LOCKED_SETTINGS" "$TMP_DIR/locked-settings.json" "$ATHLETE_COOKIE"
 check "post-launch pricing/date/placement changes are locked" "$LAST_CODE" "409"
-if grep -Fq 'Pricing, dates and placements are locked after launch' "$TMP_DIR/locked-settings.json"; then echo "  ok   locked settings return the exact conflict message"; else echo "  FAIL locked settings return the exact conflict message"; FAIL=1; fi
+LOCKED_EVENT_NAME=$(node -e 'const x=JSON.parse(process.argv[1]);x.eventName="Changed Fight Night";process.stdout.write(JSON.stringify(x))' "$GOOD_SETTINGS")
+post_json "$BASE/api/dashboard/avery-selfserve/settings" "$LOCKED_EVENT_NAME" "$TMP_DIR/locked-event-name.json" "$ATHLETE_COOKIE"
+check "post-launch event-name changes are locked" "$LAST_CODE" "409"
+if grep -Fq 'Event, pricing, dates and placements are locked after launch' "$TMP_DIR/locked-event-name.json"; then echo "  ok   locked settings return the exact conflict message"; else echo "  FAIL locked settings return the exact conflict message"; FAIL=1; fi
 COPY_SETTINGS=$(node -e 'const x=JSON.parse(process.argv[1]);x.packageName="Live copy edit";x.intro="Post-launch copy is editable";process.stdout.write(JSON.stringify(x))' "$GOOD_SETTINGS")
 post_json "$BASE/api/dashboard/avery-selfserve/settings" "$COPY_SETTINGS" "$TMP_DIR/copy-settings.json" "$ATHLETE_COOKIE"
 check "post-launch copy edits remain allowed" "$LAST_CODE" "200"
@@ -350,6 +353,25 @@ done
 check "static Jordan draft accepts legacy preview" \
   "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/jordan-reyes?preview=$PREVIEW_TOKEN")" "200"
 check "Michael static portal still renders" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/michael-heckert")" "200"
+
+node <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const root = path.join(".netlify", "blobs-serve");
+const key = path.join("unlinked", "site:tenants", "tenant", "avery-selfserve");
+for (const directory of ["entries", "metadata"]) {
+  fs.rmSync(path.join(root, directory, key), { force: true });
+}
+NODE
+STALE_DASHBOARD_CODE=$(curl -sS -o "$TMP_DIR/stale-session-dashboard.html" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$ATHLETE_COOKIE" "$BASE/dashboard")
+check "stale tenant session renders dashboard login without redirect" "$STALE_DASHBOARD_CODE" "200"
+if grep -Fq '<h1>Athlete dashboard</h1>' "$TMP_DIR/stale-session-dashboard.html"; then
+  echo "  ok   deleted-tenant session receives the dashboard login page"
+else
+  echo "  FAIL deleted-tenant session receives the dashboard login page"
+  FAIL=1
+fi
 
 if [ "$FAIL" -eq 0 ]; then
   echo "SELFSERVE TEST PASSED"

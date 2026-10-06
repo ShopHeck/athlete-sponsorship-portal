@@ -213,7 +213,7 @@ function renderSettings() {
       el("p", { class: "muted", text: settings.reason || "Managed by the platform team." }));
   }
   const form = el("form", { class: "settings-form", "data-tour": "settings", novalidate: true });
-  const eventName = el("input", { name: "eventName", maxlength: "80", value: values.eventName || "" });
+  const eventName = el("input", { name: "eventName", maxlength: "80", value: values.eventName || "", disabled: locked });
   const eventDate = el("input", { name: "eventDate", type: "date", value: values.eventDate || "" });
   const timeZone = el("select", { name: "timeZone" });
   ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London"]
@@ -260,7 +260,7 @@ function renderSettings() {
     error,
     el("div", { class: "actions" }, save)
   );
-  if (locked) form.insertBefore(el("p", { class: "notice", text: "Pricing, dates and placements are locked after launch." }), form.firstChild);
+  if (locked) form.insertBefore(el("p", { class: "notice", text: "Event, pricing, dates and placements are locked after launch" }), form.firstChild);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     save.disabled = true; error.hidden = true;
@@ -279,7 +279,7 @@ function renderSettings() {
       offeredPlacementIds: [...form.querySelectorAll('input[name="offeredPlacementIds"]:checked')].map((input) => input.value)
     };
     if (locked) {
-      for (const key of ["eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds"]) delete body[key];
+      for (const key of ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds"]) delete body[key];
     }
     try {
       await api(`/api/dashboard/${encodeURIComponent(slug)}/settings`, { method: "POST", body });

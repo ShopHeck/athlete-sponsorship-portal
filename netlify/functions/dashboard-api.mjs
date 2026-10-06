@@ -561,9 +561,9 @@ async function updateSettings(req, slug) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "A valid request body is required." }, 400);
   const current = record.settings;
   const copyOnly = tenant.status === "live";
-  if (copyOnly && ["eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds"].some((key) =>
+  if (copyOnly && ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds"].some((key) =>
     Object.hasOwn(body, key) && JSON.stringify(body[key]) !== JSON.stringify(current[key]))) {
-    return json({ error: "Pricing, dates and placements are locked after launch" }, 409);
+    return json({ error: "Event, pricing, dates and placements are locked after launch" }, 409);
   }
   const next = {
     ...current,

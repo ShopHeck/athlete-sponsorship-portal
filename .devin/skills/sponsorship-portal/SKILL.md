@@ -64,6 +64,7 @@ skip what the user has already completed. Read the relevant reference before edi
 - Self-serve applications are provisioned from `/admin` as dynamic records in the strong-consistency `tenants` store
   under `tenant/<slug>`; committed static tenants always take precedence. Athletes edit draft settings and press Go live
   after Connect payouts, an athlete-specific published likeness, event date, deadline, pricing, and placement checks pass.
+  Event, pricing, dates and placements are locked after launch.
   Draft previews use an HMAC token bound to the tenant slug; legacy global preview tokens remain supported. Writes are
   serialized per slug within an instance; concurrent writes across instances may race.
 - `netlify/lib/sponsorship.mjs` exports `forTenant(config, { portalUrl })`, which closes email, invoice, pricing,

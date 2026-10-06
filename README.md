@@ -94,6 +94,7 @@ in the tenant config, absent from its `sold` map, and with no existing local bid
   Blobs store, and rate-limits by a SHA-256 hash of the client IP.
 - Operators review applications at `/admin`; approved athletes receive a dynamically provisioned private portal.
   Dynamic settings and athlete-controlled launch use `/api/dashboard/:slug/settings` and `/api/dashboard/:slug/launch`.
+  Event, pricing, dates and placements are locked after launch.
   Dynamic tenant writes are serialized per slug within an instance; concurrent writes across instances may race.
 - `POST /api/<slug>/connect/onboard` and `GET /api/<slug>/connect/status` require the admin token. Connect tenants
   cannot accept bids until charges are enabled and `card_payments` is active. Their customers and invoices live on
