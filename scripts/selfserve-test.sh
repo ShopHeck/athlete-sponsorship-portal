@@ -311,6 +311,15 @@ post_json "$BASE/api/dashboard/avery-selfserve/settings" "$PAST_DEADLINE_SETTING
 check "past deadline is rejected" "$LAST_CODE" "400"
 post_json "$BASE/api/dashboard/avery-selfserve/settings" "$GOOD_SETTINGS" "$TMP_DIR/settings-good.json" "$ATHLETE_COOKIE"
 check "valid draft settings save" "$LAST_CODE" "200"
+post_json "$BASE/api/dashboard/avery-selfserve/settings" '{"arena":"boxing"}' "$TMP_DIR/settings-partial-arena.json" "$ATHLETE_COOKIE"
+check "partial arena settings update succeeds" "$LAST_CODE" "200"
+post_json "$BASE/api/dashboard/avery-selfserve/settings" '{"backdrop":"arena"}' "$TMP_DIR/settings-partial-backdrop.json" "$ATHLETE_COOKIE"
+check "partial backdrop settings update succeeds" "$LAST_CODE" "200"
+PARTIAL_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/settings-partial-summary.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$ATHLETE_COOKIE" "$BASE/api/dashboard/avery-selfserve/summary")
+check "settings summary loads after partial updates" "$PARTIAL_SUMMARY_CODE" "200"
+json_check "partial settings updates preserve both changes" "$TMP_DIR/settings-partial-summary.json" \
+  'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).settings.values;process.exit(s.arena==="boxing"&&s.backdrop==="arena"?0:1)'
 SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/summary-renamed.json" -w '%{http_code}' \
   -H "Cookie: asp_dash=$ATHLETE_COOKIE" "$BASE/api/dashboard/avery-selfserve/summary")
 check "renamed placement summary loads" "$SUMMARY_CODE" "200"
@@ -330,6 +339,22 @@ else
   echo "  FAIL renamed placement appears in preview config"
   FAIL=1
 fi
+XSS_PLACEMENT_SETTINGS=$(node -e '
+const x=JSON.parse(process.argv[1]);
+x.placementNames={[x.offeredPlacementIds[0]]:"<img src=x onerror=alert(1)>"};
+process.stdout.write(JSON.stringify(x));
+' "$GOOD_SETTINGS")
+post_json "$BASE/api/dashboard/avery-selfserve/settings" "$XSS_PLACEMENT_SETTINGS" "$TMP_DIR/settings-xss-name.json" "$ATHLETE_COOKIE"
+check "HTML-like placement name can be saved" "$LAST_CODE" "200"
+XSS_PREVIEW=$(curl -sS "$BASE/avery-selfserve?preview=$TENANT_TOKEN")
+if printf '%s' "$XSS_PREVIEW" | grep -Fq '\u003cimg src=x onerror=alert(1)'; then
+  echo "  ok   preview config escapes HTML-like placement name"
+else
+  echo "  FAIL preview config escapes HTML-like placement name"
+  FAIL=1
+fi
+post_json "$BASE/api/dashboard/avery-selfserve/settings" "$GOOD_SETTINGS" "$TMP_DIR/settings-restore-name.json" "$ATHLETE_COOKIE"
+check "valid placement name is restored after XSS check" "$LAST_CODE" "200"
 
 post_json_file "$BASE/api/dashboard/avery-selfserve/poster/card" "$TMP_DIR/card.json" "$TMP_DIR/poster-unauth.json"
 check "poster upload requires a dashboard session" "$LAST_CODE" "401"
@@ -353,6 +378,14 @@ post_json "$BASE/api/dashboard/avery-selfserve/poster" \
   "{\"version\":\"$POSTER_VERSION\",\"title\":\"Avery Fight Night\",\"subtitle\":\"Private preview\"}" \
   "$TMP_DIR/poster-commit.json" "$ATHLETE_COOKIE"
 check "complete poster can be committed" "$LAST_CODE" "200"
+post_json_file "$BASE/api/dashboard/avery-selfserve/poster/card" "$TMP_DIR/card.json" "$TMP_DIR/poster-committed-overwrite.json" "$ATHLETE_COOKIE"
+check "committed poster version rejects variant uploads" "$LAST_CODE" "409"
+if grep -Fq 'This poster version is already published; upload with a new version.' "$TMP_DIR/poster-committed-overwrite.json"; then
+  echo "  ok   committed-version upload returns the exact conflict message"
+else
+  echo "  FAIL committed-version upload returns the exact conflict message"
+  FAIL=1
+fi
 curl -sS "$BASE/api/dashboard/avery-selfserve/summary" -H "Cookie: asp_dash=$ATHLETE_COOKIE" -o "$TMP_DIR/poster-summary.json"
 if grep -Fq "/api/avery-selfserve/poster/card?v=$POSTER_VERSION&preview=$TENANT_TOKEN" "$TMP_DIR/poster-summary.json"; then
   echo "  ok   draft poster summary URL includes preview token"
@@ -497,6 +530,29 @@ LIVE_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/live-summary.json" -w '%{http_code}' \
 check "live dashboard summary loads" "$LIVE_SUMMARY_CODE" "200"
 json_check "live settings scope is copy-only" "$TMP_DIR/live-summary.json" \
   'const x=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(x.settings.scope==="copy"&&x.settings.editable?0:1)'
+if node <<'NODE'
+const fs = require("fs");
+const file = ".netlify/blobs-serve/entries/unlinked/site:tenants/tenant/avery-selfserve";
+const record = JSON.parse(fs.readFileSync(file, "utf8"));
+record.settings.eventDate = "2000-01-01";
+record.settings.deadline = "2000-01-01T22:00:00.000Z";
+fs.writeFileSync(file, JSON.stringify(record));
+NODE
+then
+  echo "  ok   live tenant fixture stores past event date and deadline"
+else
+  echo "  FAIL live tenant fixture stores past event date and deadline"
+  FAIL=1
+fi
+PAST_DATE_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/past-date-summary.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$ATHLETE_COOKIE" "$BASE/api/dashboard/avery-selfserve/summary")
+check "live summary loads after past-date fixture update" "$PAST_DATE_SUMMARY_CODE" "200"
+json_check "live summary confirms stored event date and deadline are past" "$TMP_DIR/past-date-summary.json" \
+  'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).settings.values;process.exit(v.eventDate==="2000-01-01"&&Date.parse(v.deadline)<Date.now()?0:1)'
+post_json "$BASE/api/dashboard/avery-selfserve/settings" '{"arena":"mat"}' "$TMP_DIR/past-date-arena-settings.json" "$ATHLETE_COOKIE"
+check "post-launch arena edit works with past stored dates" "$LAST_CODE" "200"
+post_json "$BASE/api/dashboard/avery-selfserve/settings" '{"intro":"x"}' "$TMP_DIR/past-date-copy-settings.json" "$ATHLETE_COOKIE"
+check "post-launch copy edit works with past stored dates" "$LAST_CODE" "200"
 LOCKED_SETTINGS=$(node -e 'const x=JSON.parse(process.argv[1]);x.eventDate="2099-01-01";process.stdout.write(JSON.stringify(x))' "$GOOD_SETTINGS")
 post_json "$BASE/api/dashboard/avery-selfserve/settings" "$LOCKED_SETTINGS" "$TMP_DIR/locked-settings.json" "$ATHLETE_COOKIE"
 check "post-launch pricing/date/placement changes are locked" "$LAST_CODE" "409"

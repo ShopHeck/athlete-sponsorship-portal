@@ -250,6 +250,13 @@ INVALID_LOGO_CODE=$(curl -sS -o "$TMP_DIR/invalid-sale-logo.json" -w '%{http_cod
 check "unsupported offline-sale logo type is rejected" "$INVALID_LOGO_CODE" "400"
 curl -sS -o "$TMP_DIR/invalid-sale-logo-summary.json" -H "Cookie: asp_dash=$FIXTURE_COOKIE" "$BASE/api/dashboard/platform-fixture/summary"
 json_check "invalid logo leaves placement open" "$TMP_DIR/invalid-sale-logo-summary.json" 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(s.placements.find(x=>x.id==="TF-11")?.state==="open"?0:1)'
+SPOOFED_PNG=$(node -e 'process.stdout.write(Buffer.from("<html><script>alert(1)</script>").toString("base64"))')
+SPOOFED_LOGO_CODE=$(curl -sS -o "$TMP_DIR/spoofed-sale-logo.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/TF-11/sold" \
+  -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE" -H 'content-type: application/json' \
+  -d "{\"sponsor\":\"Spoofed PNG Sponsor\",\"logo\":\"data:image/png;base64,$SPOOFED_PNG\"}")
+check "PNG logo with non-image bytes is rejected" "$SPOOFED_LOGO_CODE" "400"
+curl -sS -o "$TMP_DIR/spoofed-sale-logo-summary.json" -H "Cookie: asp_dash=$FIXTURE_COOKIE" "$BASE/api/dashboard/platform-fixture/summary"
+json_check "spoofed PNG leaves placement open" "$TMP_DIR/spoofed-sale-logo-summary.json" 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(s.placements.find(x=>x.id==="TF-11")?.state==="open"?0:1)'
 SOLD_CODE=$(curl -sS -o "$TMP_DIR/sold.json" -w '%{http_code}' -X POST "$BASE/api/dashboard/platform-fixture/placements/TF-12/sold" \
   -H "Origin: $BASE" -H "Cookie: asp_dash=$FIXTURE_COOKIE" -H 'content-type: application/json' \
   -d "{\"sponsor\":\"Offline Sponsor\",\"amount\":1250,\"note\":\"Confirmed offline\",\"logo\":\"$SALE_LOGO\"}")

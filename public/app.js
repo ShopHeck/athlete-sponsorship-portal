@@ -466,7 +466,7 @@ function renderInventory() {
     const status = sold ? config.copy.soldStatus : locked ? (bid.locked ? config.copy.lockedStatus : config.copy.wonStatus)
       : bid?.high ? formatCopy(config.copy.statusBid, { amount: usd(bid.high) })
         : formatCopy(config.copy.statusOpen, { amount: usd(state.auction.minBid) });
-    button.innerHTML = `<span class="num">${String(index + 1).padStart(2, "0")}</span><span><strong>${escapeHtml(title)}</strong><small>${spot.id}${sold || locked ? " · " + spot.name : ""}</small></span><span class="status">${status}</span>`;
+    button.innerHTML = `<span class="num">${String(index + 1).padStart(2, "0")}</span><span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(spot.id)}${sold || locked ? " · " + escapeHtml(spot.name) : ""}</small></span><span class="status">${status}</span>`;
     button.setAttribute("aria-pressed", String(spot.id === state.selected));
     button.addEventListener("click", () => selectPlacement(spot.id, true));
     inventoryList.append(button);

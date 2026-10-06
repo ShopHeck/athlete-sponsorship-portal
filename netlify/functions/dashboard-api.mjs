@@ -495,13 +495,18 @@ function eventEnd(value) {
   return Date.parse(`${value}T23:59:59.999Z`);
 }
 
-function validSettings(settings, kit) {
+function validSettings(settings, kit, current = {}) {
   const eventName = typeof settings.eventName === "string" ? settings.eventName.trim() : "";
   if (eventName.length < 1 || eventName.length > 80) return "Event name must be between 1 and 80 characters.";
-  if (!isDateOnly(settings.eventDate) || settings.eventDate < todayUtc()) return "Event date must be today or later in YYYY-MM-DD format.";
+  if (!isDateOnly(settings.eventDate) ||
+      (settings.eventDate !== current.eventDate && settings.eventDate < todayUtc())) {
+    return "Event date must be today or later in YYYY-MM-DD format.";
+  }
   if (!TIME_ZONES.has(settings.timeZone)) return "Select an accepted timezone.";
   const deadline = Date.parse(settings.deadline);
-  if (!Number.isFinite(deadline) || deadline <= Date.now()) return "Deadline must be a future ISO date.";
+  if (!Number.isFinite(deadline) || (settings.deadline !== current.deadline && deadline <= Date.now())) {
+    return "Deadline must be a future ISO date.";
+  }
   if (deadline > eventEnd(settings.eventDate)) return "Deadline must be no later than the event date.";
   if (!Number.isInteger(settings.minBid) || settings.minBid < 50 || settings.minBid > 100000) return "Minimum bid must be an integer from 50 to 100000.";
   if (!Number.isInteger(settings.increment) || settings.increment < 5 || settings.increment > settings.minBid) return "Increment must be an integer from 5 through the minimum bid.";
@@ -535,6 +540,31 @@ function validSettings(settings, kit) {
     return "Backdrop must be poster or arena.";
   }
   return null;
+}
+
+class SettingsMutationError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function assertPlacementsRemainRemovable(slug, currentSettings, nextSettings) {
+  const removed = (currentSettings.offeredPlacementIds || [])
+    .filter((id) => !nextSettings.offeredPlacementIds.includes(id));
+  if (!removed.length) return;
+  const bidsStore = getStore({ name: "bids", consistency: "strong" });
+  const soldStore = getStore({ name: "sold", consistency: "strong" });
+  for (const id of removed) {
+    const [bid, sale] = await Promise.all([
+      bidsStore.get(`${slug}/${id}`, { type: "json" }),
+      soldStore.get(`${slug}/${id}`, { type: "json" })
+    ]);
+    if ((bid && (bid.bidder || (bid.history?.length || 0) > 0 || bid.locked || bid.closed || bid.high > 0)) ||
+        (sale && !sale.releasedAt)) {
+      throw new SettingsMutationError(409, `${id} has bids or a sale, so it can't be removed.`);
+    }
+  }
 }
 
 export async function launchChecks(tenant, record, base) {
@@ -615,40 +645,28 @@ async function updateSettings(req, slug) {
     Object.hasOwn(body, key) && JSON.stringify(body[key]) !== JSON.stringify(current[key]))) {
     return json({ error: "Event, pricing, dates and placements are locked after launch" }, 409);
   }
-  const next = {
-    ...current,
-    ...Object.fromEntries(Object.entries(body).filter(([key]) => [
-      "eventName", "eventDate", "timeZone", "deadline", "minBid", "increment",
-      "lockPrice", "packageName", "benefits", "intro", "accent", "offeredPlacementIds",
-      "placementNames", "arena", "backdrop"
-    ].includes(key)))
-  };
+  const allowedSettings = new Set([
+    "eventName", "eventDate", "timeZone", "deadline", "minBid", "increment",
+    "lockPrice", "packageName", "benefits", "intro", "accent", "offeredPlacementIds",
+    "placementNames", "arena", "backdrop"
+  ]);
+  const changes = Object.fromEntries(Object.entries(body).filter(([key]) => allowedSettings.has(key)));
+  const next = { ...current, ...changes };
   const kit = getStarterKit(record.kitId);
-  const error = validSettings(next, kit);
+  const error = validSettings(next, kit, current);
   if (error) return json({ error }, 400);
-  const removed = current.offeredPlacementIds.filter((id) => !next.offeredPlacementIds.includes(id));
-  if (removed.length) {
-    const bidsStore = getStore({ name: "bids", consistency: "strong" });
-    const soldStore = getStore({ name: "sold", consistency: "strong" });
-    for (const id of removed) {
-      const [bid, sale] = await Promise.all([
-        bidsStore.get(`${slug}/${id}`, { type: "json" }),
-        soldStore.get(`${slug}/${id}`, { type: "json" })
-      ]);
-      if (bid && (bid.bidder || (bid.history?.length || 0) > 0 || bid.locked || bid.closed || bid.high > 0) ||
-          sale && !sale.releasedAt) {
-        return json({ error: `${id} has bids or a sale, so it can't be removed.` }, 409);
-      }
-    }
-  }
   try {
-    const updated = await updateDynamicTenant(slug, (existing) => ({
-      ...existing,
-      settings: { ...existing.settings, ...next }
-    }));
+    const updated = await updateDynamicTenant(slug, async (existing) => {
+      const merged = { ...existing.settings, ...changes };
+      const mutationError = validSettings(merged, kit, existing.settings);
+      if (mutationError) throw new SettingsMutationError(400, mutationError);
+      await assertPlacementsRemainRemovable(slug, existing.settings, merged);
+      return { ...existing, settings: merged };
+    });
     if (copyOnly) await purgeTenantCache(slug);
     return json({ ok: true, settings: updated.settings });
   } catch (err) {
+    if (err instanceof SettingsMutationError) return json({ error: err.message }, err.status);
     if (err instanceof TenantStoreError && err.code === "NOT_FOUND") return json({ error: "Tenant not found." }, 404);
     console.error("Dashboard settings update failed", slug, err);
     return json({ error: "Unable to save portal settings." }, 500);
@@ -682,6 +700,10 @@ async function uploadPosterVariant(req, slug, variant) {
   let body;
   try { body = await req.json(); } catch { return json({ error: "A valid request body is required." }, 400); }
   if (!body || !POSTER_VERSION.test(body.version || "")) return json({ error: "Poster version must be 32 lowercase hexadecimal characters." }, 400);
+  const store = getStore({ name: "tenant-assets", consistency: "strong" });
+  if (await store.getMetadata(`${slug}/poster/${body.version}/committed`)) {
+    return json({ error: "This poster version is already published; upload with a new version." }, 409);
+  }
   const match = typeof body.image === "string"
     ? body.image.match(/^data:image\/jpeg;base64,([A-Za-z0-9+/]+={0,2})$/)
     : null;
@@ -697,8 +719,7 @@ async function uploadPosterVariant(req, slug, variant) {
     return json({ error: `Poster ${variant} must be exactly ${dimensions.width}×${dimensions.height} pixels.` }, 400);
   }
   const at = new Date().toISOString();
-  await getStore({ name: "tenant-assets", consistency: "strong" })
-    .set(`${slug}/poster/${body.version}/${variant}`, bytes, { metadata: { type: "image/jpeg", at } });
+  await store.set(`${slug}/poster/${body.version}/${variant}`, bytes, { metadata: { type: "image/jpeg", at } });
   return json({ ok: true, version: body.version, variant });
 }
 
@@ -719,6 +740,7 @@ async function commitPoster(req, slug) {
     return json({ error: "Upload all four poster variants before saving the poster." }, 400);
   }
   try {
+    await store.setJSON(`${slug}/poster/${body.version}/committed`, { at: new Date().toISOString() });
     const updated = await updateDynamicTenant(slug, (existing) => ({
       ...existing,
       settings: { ...existing.settings, poster: { version: body.version, title, subtitle } }
