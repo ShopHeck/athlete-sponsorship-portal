@@ -39,6 +39,7 @@ function kitFromSource(definition) {
     defaultArena: source.ring?.style || "ropes",
     model: source.model,
     modelFacing: source.modelFacing,
+    motion: source.motion ? clone(source.motion) : undefined,
     pricing: {
       minBid: source.pricing.minBid,
       increment: source.pricing.increment,
@@ -50,7 +51,7 @@ function kitFromSource(definition) {
 
 const KIT_RECORDS = KIT_SOURCES.map(kitFromSource);
 
-export const STARTER_KITS = KIT_RECORDS.map(({ garments, ring, model, modelFacing, pricing, source, ...kit }) => kit);
+export const STARTER_KITS = KIT_RECORDS.map(({ garments, ring, model, modelFacing, motion, pricing, source, ...kit }) => kit);
 
 const boxingRing = sourceTenant("demo-boxing-men").ring;
 const octagonRing = sourceTenant("demo-mma-women").ring;
@@ -225,6 +226,7 @@ export function materializeConfig(settings, kitId) {
     brand: deriveBrand(settings.accent),
     model: kit.model,
     ...(kit.modelFacing ? { modelFacing: kit.modelFacing } : {}),
+    ...(kit.motion ? { motion: clone(kit.motion) } : {}),
     ring: settings.arena ? arenaForKit(settings.arena, kit) : kit.ring,
     pricing: {
       minBid: settings.minBid,

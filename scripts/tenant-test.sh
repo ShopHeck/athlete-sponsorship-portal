@@ -137,10 +137,20 @@ if node --input-type=module -e '
   } catch (error) {
     if (!error.message.includes("modelFacing")) process.exit(1);
   }
+  validateConfig({ ...JSON.parse(JSON.stringify(demo)), motion: { intro: "Taunt", clips: [{ clip: "Taunt", label: "Taunt" }] } });
+  for (const motion of [[], { clips: [] }, { clips: [{ clip: "A" }] }, { clips: [{ clip: "A", label: "A" }], intro: "B" },
+    { clips: [{ clip: "A", label: "A" }, { clip: "A", label: "B" }] }]) {
+    try {
+      validateConfig({ ...JSON.parse(JSON.stringify(demo)), motion });
+      process.exit(1);
+    } catch (error) {
+      if (!error.message.includes("motion")) process.exit(1);
+    }
+  }
 '; then
-  echo "  ok   demo schema rejects showcase overlap, missing copy, invalid ring style/mat colors, and invalid model facing"
+  echo "  ok   demo schema rejects showcase overlap, missing copy, invalid ring style/mat colors, invalid model facing, and invalid motion"
 else
-  echo "  FAIL demo schema rejects showcase overlap, missing copy, invalid ring style/mat colors, and invalid model facing"
+  echo "  FAIL demo schema rejects showcase overlap, missing copy, invalid ring style/mat colors, invalid model facing, and invalid motion"
   FAIL=1
 fi
 

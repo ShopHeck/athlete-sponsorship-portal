@@ -109,7 +109,7 @@ export async function getImageToImage(id) {
   return response.json();
 }
 
-export async function createMultiImageTo3D({ imageUrls }) {
+export async function createMultiImageTo3D({ imageUrls, poseMode }) {
   const response = await apiRequest("/openapi/v1/multi-image-to-3d", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -122,7 +122,8 @@ export async function createMultiImageTo3D({ imageUrls }) {
       enable_pbr: false,
       should_remesh: true,
       topology: "triangle",
-      target_polycount: 150000
+      target_polycount: 150000,
+      ...(poseMode ? { pose_mode: poseMode } : {})
     })
   });
   const body = await response.json();
@@ -142,6 +143,44 @@ export async function getMultiImageTo3D(id) {
     }
     throw error;
   }
+  return response.json();
+}
+
+// Auto-rig a humanoid from a finished Meshy 3D task (5 credits).
+export async function createRigging({ inputTaskId, heightMeters }) {
+  const response = await apiRequest("/openapi/v1/rigging", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ input_task_id: inputTaskId, height_meters: heightMeters })
+  });
+  const body = await response.json();
+  if (typeof body?.result !== "string" || !body.result) {
+    throw new Error("Meshy rigging response did not include a task ID.");
+  }
+  return body.result;
+}
+
+export async function getRigging(id) {
+  const response = await apiRequest(`/openapi/v1/rigging/${encodeURIComponent(id)}`);
+  return response.json();
+}
+
+// Bake library actions onto a rigged character as named clips in one GLB (3 credits per action).
+export async function createAnimation({ rigTaskId, actionIds }) {
+  const response = await apiRequest("/openapi/v1/animations", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ rig_task_id: rigTaskId, action_ids: actionIds })
+  });
+  const body = await response.json();
+  if (typeof body?.result !== "string" || !body.result) {
+    throw new Error("Meshy animation response did not include a task ID.");
+  }
+  return body.result;
+}
+
+export async function getAnimation(id) {
+  const response = await apiRequest(`/openapi/v1/animations/${encodeURIComponent(id)}`);
   return response.json();
 }
 

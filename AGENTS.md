@@ -30,7 +30,7 @@ operating one. `reference/gotchas.md` first when debugging.
   → must print `SMOKE TEST PASSED`, `TENANT TEST PASSED`, `CONNECT TEST PASSED`, `WEBHOOK TEST PASSED`,
   `DASHBOARD TEST PASSED`, `SELFSERVE TEST PASSED`, and `APPLY TEST PASSED`.
   Reset the sandbox with `rm -rf .netlify/blobs-serve` and restart the mock service before each script.
-- Syntax check: `for f in public/app.js public/arena.js netlify/lib/*.mjs netlify/functions/*.mjs scripts/*.mjs; do node --check "$f" || exit 1; done; for f in scripts/*.sh; do bash -n "$f" || exit 1; done`
+- Syntax check: `for f in public/app.js public/arena.js public/motion.js netlify/lib/*.mjs netlify/functions/*.mjs scripts/*.mjs; do node --check "$f" || exit 1; done; for f in scripts/*.sh; do bash -n "$f" || exit 1; done`
 - Package the skill for Claude / Codex / ChatGPT: `scripts/package-skill.sh` → `dist/skill/`
 - Production deploys happen from Git (`main`) via Netlify; do not `netlify deploy` a linked site.
 

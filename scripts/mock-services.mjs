@@ -200,6 +200,37 @@ http.createServer(async (req, res) => {
       consumed_credits: 0
     });
   }
+  if (req.method === "POST" && (url.pathname === "/openapi/v1/rigging" || url.pathname === "/openapi/v1/animations")) {
+    if (req.headers.authorization !== "Bearer mock_key") {
+      return send(401, { message: "Mock Meshy requires a bearer token." });
+    }
+    const type = url.pathname.endsWith("rigging") ? "rig" : "animation";
+    if (type === "rig" ? !body.input_task_id && !body.model_url : !body.rig_task_id || !Array.isArray(body.action_ids)) {
+      return send(400, { message: `Mock Meshy ${type} request is missing required fields.` });
+    }
+    const id = `mock-${type}-${n}`;
+    meshTasks.set(id, { polls: 0, fail: failNextMeshy, type, credits: type === "rig" ? 5 : 3 * body.action_ids.length });
+    failNextMeshy = false;
+    return send(200, { result: id });
+  }
+  const rigTaskMatch = url.pathname.match(/^\/openapi\/v1\/(rigging|animations)\/([^/]+)$/);
+  if (req.method === "GET" && rigTaskMatch) {
+    const id = decodeURIComponent(rigTaskMatch[2]);
+    const task = meshTasks.get(id);
+    if (!task || task.type !== (rigTaskMatch[1] === "rigging" ? "rig" : "animation")) {
+      return send(404, { message: "Mock Meshy task not found." });
+    }
+    task.polls += 1;
+    if (task.fail) return send(200, { status: "FAILED", progress: 100, task_error: { message: "Mock failure" } });
+    if (task.polls < 3) return send(200, { status: "IN_PROGRESS", progress: task.polls * 40 });
+    const glb = `http://127.0.0.1:${PORT}/__mock/meshy/assets/${encodeURIComponent(id)}.glb`;
+    return send(200, {
+      status: "SUCCEEDED",
+      progress: 100,
+      consumed_credits: task.credits,
+      result: task.type === "rig" ? { rigged_character_glb_url: glb } : { animation_glb_url: glb }
+    });
+  }
   const meshAssetMatch = url.pathname.match(/^\/__mock\/meshy\/assets\/([^/]+)\.png$/);
   if (req.method === "GET" && meshAssetMatch) {
     res.writeHead(200, {

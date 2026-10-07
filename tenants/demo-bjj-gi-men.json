@@ -42,7 +42,30 @@
     "accentPanel": "#161b28",
     "accentGradient": "#161b28"
   },
-  "model": "models/demo-bjj-gi-men.glb",
+  "model": "models/demo-bjj-gi-men-animated.glb",
+  "motion": {
+    "label": "Moves",
+    "rest": "Idle",
+    "intro": "Chest_Pound_Taunt",
+    "clips": [
+      {
+        "clip": "Boxing_Warmup",
+        "label": "Warm-up"
+      },
+      {
+        "clip": "Chest_Pound_Taunt",
+        "label": "Taunt"
+      },
+      {
+        "clip": "Show_Both_Arm_Muscles",
+        "label": "Flex"
+      },
+      {
+        "clip": "Victory_Fist_Pump",
+        "label": "Victory"
+      }
+    ]
+  },
   "ring": {
     "enabled": true,
     "style": "mat",

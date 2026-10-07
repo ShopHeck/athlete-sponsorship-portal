@@ -42,7 +42,30 @@
     "accentPanel": "#1b1528",
     "accentGradient": "#1b1528"
   },
-  "model": "models/demo-nogi-women.glb",
+  "model": "models/demo-nogi-women-animated.glb",
+  "motion": {
+    "label": "Moves",
+    "rest": "Idle",
+    "intro": "Chest_Pound_Taunt",
+    "clips": [
+      {
+        "clip": "Boxing_Warmup",
+        "label": "Warm-up"
+      },
+      {
+        "clip": "Chest_Pound_Taunt",
+        "label": "Taunt"
+      },
+      {
+        "clip": "Show_Both_Arm_Muscles",
+        "label": "Flex"
+      },
+      {
+        "clip": "Victory_Fist_Pump",
+        "label": "Victory"
+      }
+    ]
+  },
   "modelFacing": "positive-z",
   "ring": {
     "enabled": true,
