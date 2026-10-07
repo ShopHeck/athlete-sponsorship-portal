@@ -47,6 +47,7 @@ operating one. `reference/gotchas.md` first when debugging.
   win conflicts; draft previews use slug-bound HMAC tokens, and athletes press Go live after launch checks pass.
   Event, pricing, dates and placements are locked after launch.
   Per-slug writes are serialized within an instance; cross-instance races are not prevented.
+  Placement removal and bid/sale creation each write first and then recheck the other store, so a placement with activity cannot be removed.
 - Dynamic dashboard settings may rename kit placements and select an arena/backdrop; placement IDs and geometry stay
   kit-defined. Poster variants and offline-sale sponsor logos are stored in the strong-consistency `tenant-assets`
   Blobs store under tenant-prefixed keys; poster metadata is written only by poster endpoints.

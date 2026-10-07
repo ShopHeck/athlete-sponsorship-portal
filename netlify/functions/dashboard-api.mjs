@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 import { purgeCache } from "@netlify/functions";
 import { parseLogo } from "../lib/logo.mjs";
@@ -549,21 +550,29 @@ class SettingsMutationError extends Error {
   }
 }
 
-async function assertPlacementsRemainRemovable(slug, currentSettings, nextSettings) {
-  const removed = (currentSettings.offeredPlacementIds || [])
-    .filter((id) => !nextSettings.offeredPlacementIds.includes(id));
-  if (!removed.length) return;
+async function activePlacementIds(slug, ids) {
   const bidsStore = getStore({ name: "bids", consistency: "strong" });
   const soldStore = getStore({ name: "sold", consistency: "strong" });
-  for (const id of removed) {
+  const activity = await Promise.all(ids.map(async (id) => {
     const [bid, sale] = await Promise.all([
       bidsStore.get(`${slug}/${id}`, { type: "json" }),
       soldStore.get(`${slug}/${id}`, { type: "json" })
     ]);
-    if ((bid && (bid.bidder || (bid.history?.length || 0) > 0 || bid.locked || bid.closed || bid.high > 0)) ||
-        (sale && !sale.releasedAt)) {
-      throw new SettingsMutationError(409, `${id} has bids or a sale, so it can't be removed.`);
-    }
+    return {
+      id,
+      active: (bid && (bid.bidder || (bid.history?.length || 0) > 0 || bid.locked || bid.closed || bid.high > 0)) ||
+        (sale && !sale.releasedAt)
+    };
+  }));
+  return activity.filter(({ active }) => active).map(({ id }) => id);
+}
+
+async function assertPlacementsRemainRemovable(slug, currentSettings, nextSettings) {
+  const removed = (currentSettings.offeredPlacementIds || [])
+    .filter((id) => !nextSettings.offeredPlacementIds.includes(id));
+  const active = await activePlacementIds(slug, removed);
+  if (active.length) {
+    throw new SettingsMutationError(409, `${active[0]} has bids or a sale, so it can't be removed.`);
   }
 }
 
@@ -656,13 +665,33 @@ async function updateSettings(req, slug) {
   const error = validSettings(next, kit, current);
   if (error) return json({ error }, 400);
   try {
+    let removedPlacementIds = [];
     const updated = await updateDynamicTenant(slug, async (existing) => {
       const merged = { ...existing.settings, ...changes };
       const mutationError = validSettings(merged, kit, existing.settings);
       if (mutationError) throw new SettingsMutationError(400, mutationError);
+      removedPlacementIds = (existing.settings.offeredPlacementIds || [])
+        .filter((id) => !merged.offeredPlacementIds.includes(id));
       await assertPlacementsRemainRemovable(slug, existing.settings, merged);
       return { ...existing, settings: merged };
     });
+    const activeRemovedIds = await activePlacementIds(slug, removedPlacementIds);
+    if (activeRemovedIds.length) {
+      await updateDynamicTenant(slug, (existing) => {
+        const offeredPlacementIds = new Set(existing.settings.offeredPlacementIds);
+        for (const id of activeRemovedIds) offeredPlacementIds.add(id);
+        return {
+          ...existing,
+          settings: {
+            ...existing.settings,
+            offeredPlacementIds: kit.placements
+              .map(({ id }) => id)
+              .filter((id) => offeredPlacementIds.has(id))
+          }
+        };
+      });
+      return json({ error: `${activeRemovedIds[0]} has bids or a sale, so it can't be removed.` }, 409);
+    }
     if (copyOnly) await purgeTenantCache(slug);
     return json({ ok: true, settings: updated.settings });
   } catch (err) {
@@ -704,6 +733,10 @@ async function uploadPosterVariant(req, slug, variant) {
   if (await store.getMetadata(`${slug}/poster/${body.version}/committed`)) {
     return json({ error: "This poster version is already published; upload with a new version." }, 409);
   }
+  const key = `${slug}/poster/${body.version}/${variant}`;
+  if (await store.getMetadata(key)) {
+    return json({ error: `This poster version already has a ${variant} image; upload with a new version.` }, 409);
+  }
   const match = typeof body.image === "string"
     ? body.image.match(/^data:image\/jpeg;base64,([A-Za-z0-9+/]+={0,2})$/)
     : null;
@@ -719,7 +752,8 @@ async function uploadPosterVariant(req, slug, variant) {
     return json({ error: `Poster ${variant} must be exactly ${dimensions.width}×${dimensions.height} pixels.` }, 400);
   }
   const at = new Date().toISOString();
-  await store.set(`${slug}/poster/${body.version}/${variant}`, bytes, { metadata: { type: "image/jpeg", at } });
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  await store.set(key, bytes, { metadata: { type: "image/jpeg", at, sha256 } });
   return json({ ok: true, version: body.version, variant });
 }
 
@@ -736,14 +770,17 @@ async function commitPoster(req, slug) {
   const store = getStore({ name: "tenant-assets", consistency: "strong" });
   const variants = await Promise.all(Object.keys(POSTER_VARIANTS).map((variant) =>
     store.getMetadata(`${slug}/poster/${body.version}/${variant}`)));
-  if (variants.some((variant) => !variant)) {
+  if (variants.some((variant) => !variant || typeof variant.metadata?.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(variant.metadata.sha256))) {
     return json({ error: "Upload all four poster variants before saving the poster." }, 400);
   }
+  const digests = Object.fromEntries(Object.keys(POSTER_VARIANTS).map((variant, index) =>
+    [variant, variants[index].metadata.sha256]));
   try {
     await store.setJSON(`${slug}/poster/${body.version}/committed`, { at: new Date().toISOString() });
     const updated = await updateDynamicTenant(slug, (existing) => ({
       ...existing,
-      settings: { ...existing.settings, poster: { version: body.version, title, subtitle } }
+      settings: { ...existing.settings, poster: { version: body.version, title, subtitle, digests } }
     }));
     if (access.tenant.status === "live") await purgeTenantCache(slug);
     return json({ ok: true, poster: updated.settings.poster });
@@ -932,12 +969,18 @@ async function markSold(req, slug, id) {
     at: new Date().toISOString(),
     by: session.email
   };
+  if (logo) sale.logo = { type: logo.type, at: sale.at };
+  const soldStore = getStore({ name: "sold", consistency: "strong" });
+  await soldStore.setJSON(`${slug}/${id}`, sale);
+  const updatedTenant = await getTenant(slug);
+  if (!updatedTenant?.garments.some((garment) => garment.placements.some((placement) => placement.id === id))) {
+    await soldStore.delete(`${slug}/${id}`);
+    return json({ error: "This placement is no longer offered." }, 409);
+  }
   if (logo) {
     await getStore({ name: "tenant-assets", consistency: "strong" })
       .set(`${slug}/sponsor-logo/${id}`, logo.bytes, { metadata: { type: logo.type, at: sale.at } });
-    sale.logo = { type: logo.type, at: sale.at };
   }
-  await getStore({ name: "sold", consistency: "strong" }).setJSON(`${slug}/${id}`, sale);
   const soldDetail = {
     ...sale,
     source: "dashboard",

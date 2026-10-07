@@ -20,6 +20,7 @@ export default async (req, context) => {
     headers: {
       "content-type": hit.metadata?.type || "image/png",
       "cache-control": tenant.status === "draft" ? "no-store" : "public, max-age=60, must-revalidate",
+      "content-security-policy": "default-src 'none'; sandbox",
       "x-content-type-options": "nosniff"
     }
   });

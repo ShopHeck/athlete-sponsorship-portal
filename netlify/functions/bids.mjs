@@ -1,7 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import { parseLogo } from "../lib/logo.mjs";
 import { forTenant, json } from "../lib/sponsorship.mjs";
-import { resolveTenantForApi } from "../lib/tenants.mjs";
+import { getTenant, resolveTenantForApi } from "../lib/tenants.mjs";
 
 /* ---------------------------------------------------------------------------
    Sponsor bidding for open placements.
@@ -112,7 +112,9 @@ export default async (req, context) => {
   if (Date.now() > new Date(DEADLINE).getTime()) return json({ error: "Bidding has closed for this event." }, 409);
   if ((await soldPlacements()).has(id)) return json({ error: "This placement is already sold." }, 409);
 
-  const rec = (await store.get(storageKey(id), { type: "json" })) || { high: 0, bidder: null, history: [], locked: false };
+  const existing = await store.get(storageKey(id), { type: "json" });
+  const prior = existing ? structuredClone(existing) : null;
+  const rec = existing || { high: 0, bidder: null, history: [], locked: false };
   if (rec.locked || rec.closed) return json({ error: "This placement has been locked by another sponsor.", placement: publicView(slug, id, rec) }, 409);
 
   const now = new Date().toISOString();
@@ -137,12 +139,22 @@ export default async (req, context) => {
   rec.bidder = bidder;
   rec.history.push({ amount, type: rec.locked ? "lock" : "bid", at: now, ...bidder, note, logo: Boolean(logo) });
   if (logo) {
-    await getStore({ name: "logos", consistency: "strong" }).set(storageKey(id), logo.bytes, { metadata: { type: logo.type, company: bidder.company, email: bidder.email, at: now } });
     rec.logo = { type: logo.type, size: logo.bytes.length, company: bidder.company, at: now };
   } else if (rec.logo && previous && previous.email !== bidder.email) {
     delete rec.logo; // a new high bidder without artwork shouldn't inherit the previous bidder's logo
   }
   await store.setJSON(storageKey(id), rec);
+  const updatedTenant = await getTenant(slug);
+  if (!updatedTenant?.garments.some((garment) => garment.placements.some((placement) => placement.id === id))) {
+    if (prior) await store.setJSON(storageKey(id), prior);
+    else await store.delete(storageKey(id));
+    return json({ error: "This placement is no longer offered." }, 409);
+  }
+  if (logo) {
+    await getStore({ name: "logos", consistency: "strong" }).set(storageKey(id), logo.bytes, {
+      metadata: { type: logo.type, company: bidder.company, email: bidder.email, at: now }
+    });
+  }
 
   if (rec.locked) {
     await invoicePlacement(store, id, rec, "lock");

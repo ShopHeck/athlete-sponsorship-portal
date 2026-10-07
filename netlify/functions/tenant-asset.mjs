@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 import { json } from "../lib/sponsorship.mjs";
 import { loadDynamicTenant } from "../lib/tenant-store.mjs";
@@ -26,6 +27,7 @@ export default async function tenantAsset(req, context) {
       headers: {
         "content-type": asset.metadata?.type || sale.logo.type,
         "cache-control": tenant.status === "draft" ? "private, no-store" : "public, max-age=60, must-revalidate",
+        "content-security-policy": "default-src 'none'; sandbox",
         "x-content-type-options": "nosniff"
       }
     });
@@ -43,9 +45,14 @@ export default async function tenantAsset(req, context) {
   const asset = await getStore({ name: "tenant-assets", consistency: "strong" })
     .getWithMetadata(key, { type: "arrayBuffer" });
   if (!asset) return new Response("Not found", { status: 404 });
+  const digest = record.settings.poster.digests?.[variant];
+  if (!digest || createHash("sha256").update(Buffer.from(asset.data)).digest("hex") !== digest) {
+    return new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } });
+  }
 
   const headers = new Headers({
     "content-type": asset.metadata?.type || "image/jpeg",
+    "content-security-policy": "default-src 'none'; sandbox",
     "x-content-type-options": "nosniff"
   });
   if (tenant.status === "draft") {

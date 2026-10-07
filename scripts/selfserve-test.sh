@@ -10,6 +10,7 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 FAIL=0
 POSTER_VERSION="0123456789abcdef0123456789abcdef"
+POSTER_REUPLOAD_VERSION="fedcba9876543210fedcba9876543210"
 
 node - "$TMP_DIR" "$POSTER_VERSION" <<'NODE'
 const fs = require("fs");
@@ -370,6 +371,17 @@ post_json "$BASE/api/dashboard/avery-selfserve/poster" \
   "{\"version\":\"$POSTER_VERSION\",\"title\":\"Avery Fight Night\",\"subtitle\":\"Private preview\"}" \
   "$TMP_DIR/poster-missing-variant.json" "$ATHLETE_COOKIE"
 check "poster commit requires all four variants" "$LAST_CODE" "400"
+node - "$TMP_DIR/card.json" "$POSTER_REUPLOAD_VERSION" "$TMP_DIR/poster-uncommitted-card.json" <<'NODE'
+const fs = require("fs");
+const [source, version, output] = process.argv.slice(2);
+const body = JSON.parse(fs.readFileSync(source, "utf8"));
+body.version = version;
+fs.writeFileSync(output, JSON.stringify(body));
+NODE
+post_json_file "$BASE/api/dashboard/avery-selfserve/poster/card" "$TMP_DIR/poster-uncommitted-card.json" "$TMP_DIR/poster-uncommitted-card-response.json" "$ATHLETE_COOKIE"
+check "uncommitted poster card upload succeeds" "$LAST_CODE" "200"
+post_json_file "$BASE/api/dashboard/avery-selfserve/poster/card" "$TMP_DIR/poster-uncommitted-card.json" "$TMP_DIR/poster-uncommitted-card-overwrite.json" "$ATHLETE_COOKIE"
+check "uncommitted poster variant cannot be overwritten" "$LAST_CODE" "409"
 for variant in card stage900 stage1500 og; do
   post_json_file "$BASE/api/dashboard/avery-selfserve/poster/$variant" "$TMP_DIR/$variant.json" "$TMP_DIR/poster-$variant.json" "$ATHLETE_COOKIE"
   check "poster $variant variant upload succeeds" "$LAST_CODE" "200"
@@ -378,6 +390,8 @@ post_json "$BASE/api/dashboard/avery-selfserve/poster" \
   "{\"version\":\"$POSTER_VERSION\",\"title\":\"Avery Fight Night\",\"subtitle\":\"Private preview\"}" \
   "$TMP_DIR/poster-commit.json" "$ATHLETE_COOKIE"
 check "complete poster can be committed" "$LAST_CODE" "200"
+json_check "poster commit stores SHA-256 digests for every variant" "$TMP_DIR/poster-commit.json" \
+  'const d=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).poster?.digests;process.exit(d&&["card","stage900","stage1500","og"].every((key)=>/^[a-f0-9]{64}$/.test(d[key]))?0:1)'
 post_json_file "$BASE/api/dashboard/avery-selfserve/poster/card" "$TMP_DIR/card.json" "$TMP_DIR/poster-committed-overwrite.json" "$ATHLETE_COOKIE"
 check "committed poster version rejects variant uploads" "$LAST_CODE" "409"
 if grep -Fq 'This poster version is already published; upload with a new version.' "$TMP_DIR/poster-committed-overwrite.json"; then
@@ -403,12 +417,19 @@ fi
 POSTER_ASSET_CODE=$(curl -sS -o "$TMP_DIR/poster-asset.jpg" -D "$TMP_DIR/poster-asset.headers" -w '%{http_code}' \
   "$BASE/api/avery-selfserve/poster/card?v=$POSTER_VERSION&preview=$TENANT_TOKEN")
 check "draft poster asset accepts preview token" "$POSTER_ASSET_CODE" "200"
+check "committed poster variant returns 200" "$POSTER_ASSET_CODE" "200"
 if grep -qi '^content-type: image/jpeg' "$TMP_DIR/poster-asset.headers" &&
   grep -qi '^cache-control: private, no-store' "$TMP_DIR/poster-asset.headers" &&
   grep -qi '^x-content-type-options: nosniff' "$TMP_DIR/poster-asset.headers"; then
   echo "  ok   draft poster response has JPEG, no-store and nosniff headers"
 else
   echo "  FAIL draft poster response has JPEG, no-store and nosniff headers"
+  FAIL=1
+fi
+if grep -Fqi "content-security-policy: default-src 'none'; sandbox" "$TMP_DIR/poster-asset.headers"; then
+  echo "  ok   draft poster response has sandbox CSP header"
+else
+  echo "  FAIL draft poster response has sandbox CSP header"
   FAIL=1
 fi
 check "draft poster HEAD request is authorized" \
@@ -506,6 +527,12 @@ if grep -qi '^content-type: image/png' "$TMP_DIR/dynamic-sale-logo.headers" &&
   echo "  ok   draft sponsor logo has PNG and no-store headers"
 else
   echo "  FAIL draft sponsor logo has PNG and no-store headers"
+  FAIL=1
+fi
+if grep -Fqi "content-security-policy: default-src 'none'; sandbox" "$TMP_DIR/dynamic-sale-logo.headers"; then
+  echo "  ok   draft sponsor-logo response has sandbox CSP header"
+else
+  echo "  FAIL draft sponsor-logo response has sandbox CSP header"
   FAIL=1
 fi
 check "draft sponsor-logo asset is hidden without preview token" \
