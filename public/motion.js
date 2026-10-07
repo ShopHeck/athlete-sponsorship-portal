@@ -84,11 +84,17 @@ export function skinDecal(decal, body) {
     p.set(0, 0, 0);
     for (let k = 0; k < 3; k++) p.addScaledVector(q.fromBufferAttribute(bind, ids[k]), bary.getComponent(k));
     pos.setXYZ(i, p.x, p.y, p.z);
-    const j = ids[bary.x >= bary.y && bary.x >= bary.z ? 0 : bary.y >= bary.z ? 1 : 2];
-    for (let k = 0; k < 4; k++) {
-      skinIndex[i * 4 + k] = srcIndex.array[j * srcIndex.itemSize + k]; // joint indices are never normalized
-      skinWeight[i * 4 + k] = srcWeight.getComponent(j, k);
+    // Blend the corners' influences as the surface itself interpolates them, keeping the four strongest.
+    const influence = new Map();
+    for (let c = 0; c < 3; c++) for (let k = 0; k < 4; k++) {
+      const w = srcWeight.getComponent(ids[c], k) * bary.getComponent(c);
+      if (w <= 0) continue;
+      const joint = srcIndex.array[ids[c] * srcIndex.itemSize + k]; // joint indices are never normalized
+      influence.set(joint, (influence.get(joint) || 0) + w);
     }
+    const top = [...influence].sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const total = top.reduce((sum, [, w]) => sum + w, 0) || 1;
+    top.forEach(([joint, w], k) => { skinIndex[i * 4 + k] = joint; skinWeight[i * 4 + k] = w / total; });
   }
   geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(skinIndex, 4));
   geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(skinWeight, 4));
@@ -163,11 +169,18 @@ function anchoredClip(root, clip) {
 function restClip(root, clips, stance) {
   const tracks = [];
   const seen = new Set();
+  const hips = torsoChain(root)[0];
   for (const track of stance?.tracks || []) {
-    if (track.name.endsWith(".position") && track.times.length) continue;
+    if (!track.times.length) continue;
+    const values = Array.from(track.values.slice(0, track.getValueSize()));
+    if (track.name.endsWith(".position")) {
+      // Only the hips travel in Meshy's clips: keep the stance's height (moves blend from it), pinned in place.
+      if (THREE.PropertyBinding.parseTrackName(track.name).nodeName !== hips?.name) continue;
+      values[0] = hips.position.x;
+      values[2] = hips.position.z;
+    }
     seen.add(track.name);
-    const size = track.getValueSize();
-    tracks.push(new track.constructor(track.name, [0], Array.from(track.values.slice(0, size))));
+    tracks.push(new track.constructor(track.name, [0], values));
   }
   for (const clip of clips) for (const track of clip.tracks) {
     if (seen.has(track.name)) continue;
@@ -182,7 +195,6 @@ function restClip(root, clips, stance) {
   return new THREE.AnimationClip("__rest", 0, tracks);
 }
 
-// Plays the tenant's curated moves on demand; the athlete otherwise holds the rest stance.
 // Root → chest bones (the spine up to where the neck and shoulders branch off).
 function torsoChain(root) {
   const chain = [];
@@ -203,6 +215,7 @@ function torsoChain(root) {
   return chain;
 }
 
+// Plays the tenant's curated moves on demand; the athlete otherwise holds the rest stance.
 export function createMotion(root, gltfClips, entries, { onChange, rest: restName } = {}) {
   const byName = new Map(gltfClips.map((clip) => [clip.name, clip]));
   const moves = new Map(entries.filter((e) => byName.has(e.clip)).map((e) => [e.clip, { ...e, clip: anchoredClip(root, byName.get(e.clip)) }]));
