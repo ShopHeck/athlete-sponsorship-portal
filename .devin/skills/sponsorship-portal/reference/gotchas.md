@@ -132,3 +132,5 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
 - **Placement `w`/`h` are metres on a 1.8–1.86 m body** (the inventory shows them as inches, ≈39 in per unit).
   Keep shorts logos ≤ ~0.19 m wide or they wrap around the leg, and keep shorts placements below y≈0.90: the
   T-shirt hem covers the waistband, so a decal up there projects onto the shirt.
+  The hem hangs lower at the back: back-of-shorts decals must stay below y≈0.84 (front rows can reach ≈0.90).
+  Side rays map placement `x` to world z (left) and -z (right), so +x is always toward the front on both sides.

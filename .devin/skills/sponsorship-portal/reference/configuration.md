@@ -86,7 +86,9 @@ email/invoice labels from the config.
 ```
 
 IDs must be unique within the tenant and no longer than eight characters. Valid sides are `front`, `back`, `left`,
-and `right`. Add `mirror` when the same decal should be projected onto another side. Ordering inside each garment
+and `right`. Add `mirror` when the same decal should be projected onto another side. Add `rotate` (degrees,
+counter-clockwise as the sponsor sees it) to turn the artwork on the garment, e.g. `rotate: 90` for a vertical
+shorts side panel; `w`/`h` stay in the logo's own frame, so a 90° panel is `w` long up the leg and `h` thick. Ordering inside each garment
 is the order shown in the inventory.
 
 ## Sold sponsors
