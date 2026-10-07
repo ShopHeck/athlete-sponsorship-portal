@@ -111,18 +111,18 @@ export function readAnchor({ mesh, tri, sign }, outPoint, outNormal) {
 /* ---------------------------------------------------------- moves */
 const CROSSFADE = 0.35, SETTLE = 0.5, MIN_PLAY_SECONDS = 2.8;
 
-// Keep the athlete centred on the mat: remove start→end drift from position tracks.
-function anchoredClip(clip) {
+// Library moves step and lunge around the ring (some even start off-centre); pin the root's horizontal position to
+// its bind pose so the athlete performs in place and stays framed. Vertical bob and crouch are kept.
+function anchoredClip(root, clip) {
   const out = clip.clone();
   for (const track of out.tracks) {
     if (!track.name.endsWith(".position") || track.times.length < 2) continue;
-    const { values, times } = track;
-    const n = times.length, span = times[n - 1] - times[0] || 1;
-    const last = (n - 1) * 3;
-    const drift = [values[last] - values[0], values[last + 1] - values[1], values[last + 2] - values[2]];
-    for (let i = 0; i < n; i++) {
-      const t = (times[i] - times[0]) / span;
-      for (let k = 0; k < 3; k++) values[i * 3 + k] -= drift[k] * t;
+    const bone = root.getObjectByName(THREE.PropertyBinding.parseTrackName(track.name).nodeName);
+    if (!bone) continue;
+    const { values } = track;
+    for (let i = 0; i < values.length; i += 3) {
+      values[i] = bone.position.x;
+      values[i + 2] = bone.position.z;
     }
   }
   return out;
@@ -155,7 +155,7 @@ function restClip(root, clips, stance) {
 // Plays the tenant's curated moves on demand; the athlete otherwise holds the rest stance.
 export function createMotion(root, gltfClips, entries, { onChange, rest: restName } = {}) {
   const byName = new Map(gltfClips.map((clip) => [clip.name, clip]));
-  const moves = new Map(entries.filter((e) => byName.has(e.clip)).map((e) => [e.clip, { ...e, clip: anchoredClip(byName.get(e.clip)) }]));
+  const moves = new Map(entries.filter((e) => byName.has(e.clip)).map((e) => [e.clip, { ...e, clip: anchoredClip(root, byName.get(e.clip)) }]));
   if (!moves.size) return null;
   const mixer = new THREE.AnimationMixer(root);
   const rest = mixer.clipAction(restClip(root, [...moves.values()].map((m) => m.clip), byName.get(restName)));
