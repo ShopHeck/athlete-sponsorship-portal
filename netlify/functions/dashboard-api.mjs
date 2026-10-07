@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 import { purgeCache } from "@netlify/functions";
+import { parseLogo } from "../lib/logo.mjs";
 import { forTenant, json } from "../lib/sponsorship.mjs";
 import {
   allowLoginEmail,
@@ -29,7 +31,7 @@ import {
 import { getLivePointer, loadReview, saveAthleteReview } from "../lib/model-review.mjs";
 import { MeshyConfigurationError } from "../lib/meshy.mjs";
 import { getTenant, listTenants, tenantPreviewToken } from "../lib/tenants.mjs";
-import { getStarterKit } from "../lib/starter-kits.mjs";
+import { ARENA_OPTIONS, getStarterKit } from "../lib/starter-kits.mjs";
 import { loadDynamicTenant, TenantStoreError, updateDynamicTenant } from "../lib/tenant-store.mjs";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -37,6 +39,14 @@ const ANGLES = ["front", "back", "left", "right", "face"];
 const REQUIRED_ANGLES = ["front", "back", "left", "right"];
 const PHOTO_WARNINGS = new Set(["blurry", "dark", "bright", "no_person", "multiple_people", "not_full_body", "landscape"]);
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+const POSTER_VARIANTS = {
+  card: { width: 819, height: 1024 },
+  stage900: { width: 900, height: 1125 },
+  stage1500: { width: 1500, height: 1875 },
+  og: { width: 1200, height: 630 }
+};
+const POSTER_VERSION = /^[a-f0-9]{32}$/;
+const POSTER_MAX_BYTES = 2 * 1024 * 1024;
 const TIME_ZONES = new Set([
   "America/New_York",
   "America/Chicago",
@@ -186,7 +196,7 @@ async function link(req, slug) {
   });
 }
 
-function placementSummary(placement, record, soldDetail) {
+function placementSummary(placement, record, soldDetail, previewToken = null) {
   const history = record?.history || [];
   const invoice = record?.invoice;
   const state = soldDetail
@@ -198,9 +208,12 @@ function placementSummary(placement, record, soldDetail) {
         : history.length || record?.high
           ? "bidding"
           : "open";
-  const logoUrl = soldDetail?.logo || (record?.logo
+  const rawLogoUrl = soldDetail?.logo || (record?.logo
     ? `/api/${placement.slug}/logos/${placement.id}?v=${encodeURIComponent(record.logo.at || "")}`
     : null);
+  const logoUrl = rawLogoUrl && previewToken
+    ? `${rawLogoUrl}${rawLogoUrl.includes("?") ? "&" : "?"}preview=${encodeURIComponent(previewToken)}`
+    : rawLogoUrl;
   return {
     id: placement.id,
     label: placement.label,
@@ -330,11 +343,12 @@ async function summary(req, slug) {
   const base = platformUrl(req);
   const portalUrl = `${base}/${tenant.slug}`;
   const dynamicRecord = await loadDynamicTenant(slug);
+  const previewToken = tenant.status === "draft" ? tenantPreviewToken(slug) : null;
   const services = forTenant(tenant, { portalUrl });
   const [record, readiness, placements, onboarding, studio] = await Promise.all([
     services.connect.record(),
     services.connect.readiness(),
-    loadPlacementsForSummary(tenant, portalUrl),
+    loadPlacementsForSummary(tenant, portalUrl, previewToken),
     loadOnboarding(tenant.slug),
     loadStudio(tenant)
   ]);
@@ -355,7 +369,10 @@ async function summary(req, slug) {
   const scope = dynamicRecord
     ? tenant.status === "live" ? "copy" : "full"
     : "none";
-  const previewToken = tenant.status === "draft" ? tenantPreviewToken(slug) : null;
+  const poster = dynamicRecord?.settings.poster || null;
+  const posterCardUrl = poster
+    ? `/api/${slug}/poster/card?v=${encodeURIComponent(poster.version)}${previewToken ? `&preview=${encodeURIComponent(previewToken)}` : ""}`
+    : null;
   return json({
     tenant: {
       slug: tenant.slug,
@@ -384,7 +401,16 @@ async function summary(req, slug) {
         benefits: dynamicRecord.settings.benefits,
         intro: dynamicRecord.settings.intro,
         accent: dynamicRecord.settings.accent,
-        offeredPlacementIds: dynamicRecord.settings.offeredPlacementIds
+        offeredPlacementIds: dynamicRecord.settings.offeredPlacementIds,
+        placementNames: dynamicRecord.settings.placementNames || {},
+        arena: dynamicRecord.settings.arena || null,
+        backdrop: dynamicRecord.settings.backdrop || "poster",
+        poster: poster ? {
+          version: poster.version,
+          title: poster.title,
+          subtitle: poster.subtitle,
+          cardUrl: posterCardUrl
+        } : null
       } : {
         eventName: tenant.event.name,
         eventDate: tenant.event.date,
@@ -397,14 +423,21 @@ async function summary(req, slug) {
         benefits: tenant.benefits,
         intro: tenant.hero.intro,
         accent: tenant.brand?.accent || null,
-        offeredPlacementIds: tenant.garments.flatMap((garment) => garment.placements.map((placement) => placement.id))
+        offeredPlacementIds: tenant.garments.flatMap((garment) => garment.placements.map((placement) => placement.id)),
+        placementNames: {},
+        arena: null,
+        backdrop: "poster",
+        poster: null
       },
       kit: kit ? {
         id: kit.id,
         name: kit.name,
+        defaultArena: kit.defaultArena,
+        arenas: ARENA_OPTIONS,
         placements: kit.placements.map((placement) => ({
           id: placement.id,
           label: placement.label,
+          name: placement.name,
           garmentName: placement.garmentName,
           offered: dynamicRecord.settings.offeredPlacementIds.includes(placement.id)
         }))
@@ -463,13 +496,18 @@ function eventEnd(value) {
   return Date.parse(`${value}T23:59:59.999Z`);
 }
 
-function validSettings(settings, kit) {
+function validSettings(settings, kit, current = {}) {
   const eventName = typeof settings.eventName === "string" ? settings.eventName.trim() : "";
   if (eventName.length < 1 || eventName.length > 80) return "Event name must be between 1 and 80 characters.";
-  if (!isDateOnly(settings.eventDate) || settings.eventDate < todayUtc()) return "Event date must be today or later in YYYY-MM-DD format.";
+  if (!isDateOnly(settings.eventDate) ||
+      (settings.eventDate !== current.eventDate && settings.eventDate < todayUtc())) {
+    return "Event date must be today or later in YYYY-MM-DD format.";
+  }
   if (!TIME_ZONES.has(settings.timeZone)) return "Select an accepted timezone.";
   const deadline = Date.parse(settings.deadline);
-  if (!Number.isFinite(deadline) || deadline <= Date.now()) return "Deadline must be a future ISO date.";
+  if (!Number.isFinite(deadline) || (settings.deadline !== current.deadline && deadline <= Date.now())) {
+    return "Deadline must be a future ISO date.";
+  }
   if (deadline > eventEnd(settings.eventDate)) return "Deadline must be no later than the event date.";
   if (!Number.isInteger(settings.minBid) || settings.minBid < 50 || settings.minBid > 100000) return "Minimum bid must be an integer from 50 to 100000.";
   if (!Number.isInteger(settings.increment) || settings.increment < 5 || settings.increment > settings.minBid) return "Increment must be an integer from 5 through the minimum bid.";
@@ -484,7 +522,58 @@ function validSettings(settings, kit) {
   if (!Array.isArray(settings.offeredPlacementIds) || settings.offeredPlacementIds.length < 1) return "Select at least one placement.";
   const placementIds = new Set(kit.placements.map((placement) => placement.id));
   if (settings.offeredPlacementIds.some((id) => typeof id !== "string" || !placementIds.has(id))) return "Select only placements from this starter kit.";
+  if (settings.placementNames !== undefined) {
+    if (!settings.placementNames || typeof settings.placementNames !== "object" || Array.isArray(settings.placementNames)) {
+      return "Placement names must be an object keyed by starter-kit placement IDs.";
+    }
+    for (const [id, name] of Object.entries(settings.placementNames)) {
+      if (!placementIds.has(id)) return "Placement names can only use IDs from this starter kit.";
+      if (typeof name !== "string" || name.trim() !== name || name.length < 1 || name.length > 60 ||
+          /[\u0000-\u001f\u007f-\u009f]/.test(name)) {
+        return "Placement names must be trimmed, 1 to 60 characters, and contain no control characters.";
+      }
+    }
+  }
+  if (settings.arena !== undefined && !["boxing", "octagon", "mat", "ropes"].includes(settings.arena)) {
+    return "Arena must be boxing, octagon, mat, or ropes.";
+  }
+  if (settings.backdrop !== undefined && !["poster", "arena"].includes(settings.backdrop)) {
+    return "Backdrop must be poster or arena.";
+  }
   return null;
+}
+
+class SettingsMutationError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function activePlacementIds(slug, ids) {
+  const bidsStore = getStore({ name: "bids", consistency: "strong" });
+  const soldStore = getStore({ name: "sold", consistency: "strong" });
+  const activity = await Promise.all(ids.map(async (id) => {
+    const [bid, sale] = await Promise.all([
+      bidsStore.get(`${slug}/${id}`, { type: "json" }),
+      soldStore.get(`${slug}/${id}`, { type: "json" })
+    ]);
+    return {
+      id,
+      active: (bid && (bid.bidder || (bid.history?.length || 0) > 0 || bid.locked || bid.closed || bid.high > 0)) ||
+        (sale && !sale.releasedAt)
+    };
+  }));
+  return activity.filter(({ active }) => active).map(({ id }) => id);
+}
+
+async function assertPlacementsRemainRemovable(slug, currentSettings, nextSettings) {
+  const removed = (currentSettings.offeredPlacementIds || [])
+    .filter((id) => !nextSettings.offeredPlacementIds.includes(id));
+  const active = await activePlacementIds(slug, removed);
+  if (active.length) {
+    throw new SettingsMutationError(409, `${active[0]} has bids or a sale, so it can't be removed.`);
+  }
 }
 
 export async function launchChecks(tenant, record, base) {
@@ -561,28 +650,52 @@ async function updateSettings(req, slug) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "A valid request body is required." }, 400);
   const current = record.settings;
   const copyOnly = tenant.status === "live";
-  if (copyOnly && ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds"].some((key) =>
+  if (copyOnly && ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds", "placementNames"].some((key) =>
     Object.hasOwn(body, key) && JSON.stringify(body[key]) !== JSON.stringify(current[key]))) {
     return json({ error: "Event, pricing, dates and placements are locked after launch" }, 409);
   }
-  const next = {
-    ...current,
-    ...Object.fromEntries(Object.entries(body).filter(([key]) => [
-      "eventName", "eventDate", "timeZone", "deadline", "minBid", "increment",
-      "lockPrice", "packageName", "benefits", "intro", "accent", "offeredPlacementIds"
-    ].includes(key)))
-  };
+  const allowedSettings = new Set([
+    "eventName", "eventDate", "timeZone", "deadline", "minBid", "increment",
+    "lockPrice", "packageName", "benefits", "intro", "accent", "offeredPlacementIds",
+    "placementNames", "arena", "backdrop"
+  ]);
+  const changes = Object.fromEntries(Object.entries(body).filter(([key]) => allowedSettings.has(key)));
+  const next = { ...current, ...changes };
   const kit = getStarterKit(record.kitId);
-  const error = validSettings(next, kit);
+  const error = validSettings(next, kit, current);
   if (error) return json({ error }, 400);
   try {
-    const updated = await updateDynamicTenant(slug, (existing) => ({
-      ...existing,
-      settings: { ...existing.settings, ...next }
-    }));
+    let removedPlacementIds = [];
+    const updated = await updateDynamicTenant(slug, async (existing) => {
+      const merged = { ...existing.settings, ...changes };
+      const mutationError = validSettings(merged, kit, existing.settings);
+      if (mutationError) throw new SettingsMutationError(400, mutationError);
+      removedPlacementIds = (existing.settings.offeredPlacementIds || [])
+        .filter((id) => !merged.offeredPlacementIds.includes(id));
+      await assertPlacementsRemainRemovable(slug, existing.settings, merged);
+      return { ...existing, settings: merged };
+    });
+    const activeRemovedIds = await activePlacementIds(slug, removedPlacementIds);
+    if (activeRemovedIds.length) {
+      await updateDynamicTenant(slug, (existing) => {
+        const offeredPlacementIds = new Set(existing.settings.offeredPlacementIds);
+        for (const id of activeRemovedIds) offeredPlacementIds.add(id);
+        return {
+          ...existing,
+          settings: {
+            ...existing.settings,
+            offeredPlacementIds: kit.placements
+              .map(({ id }) => id)
+              .filter((id) => offeredPlacementIds.has(id))
+          }
+        };
+      });
+      return json({ error: `${activeRemovedIds[0]} has bids or a sale, so it can't be removed.` }, 409);
+    }
     if (copyOnly) await purgeTenantCache(slug);
     return json({ ok: true, settings: updated.settings });
   } catch (err) {
+    if (err instanceof SettingsMutationError) return json({ error: err.message }, err.status);
     if (err instanceof TenantStoreError && err.code === "NOT_FOUND") return json({ error: "Tenant not found." }, 404);
     console.error("Dashboard settings update failed", slug, err);
     return json({ error: "Unable to save portal settings." }, 500);
@@ -594,6 +707,104 @@ async function purgeTenantCache(slug) {
     await purgeCache({ tags: [`tenant-${slug}`] });
   } catch (err) {
     console.error("Tenant cache purge failed", slug, err);
+  }
+}
+
+async function posterAccess(req, slug) {
+  const tenant = await getTenant(slug);
+  if (!tenant) return { response: json({ error: "Tenant not found." }, 404) };
+  if (!sessionFor(req, slug)) return { response: json({ error: "Sign in required" }, 401) };
+  if (tenant.demo) return { response: json({ error: "Demo portals cannot change posters." }, 409) };
+  const record = await loadDynamicTenant(slug);
+  if (!record) return { response: json({ error: "Portal settings are managed by the platform team." }, 403) };
+  return { tenant, record };
+}
+
+async function uploadPosterVariant(req, slug, variant) {
+  const dimensions = POSTER_VARIANTS[variant];
+  if (!dimensions) return json({ error: "Unknown poster variant." }, 404);
+  const access = await posterAccess(req, slug);
+  if (access.response) return access.response;
+
+  let body;
+  try { body = await req.json(); } catch { return json({ error: "A valid request body is required." }, 400); }
+  if (!body || !POSTER_VERSION.test(body.version || "")) return json({ error: "Poster version must be 32 lowercase hexadecimal characters." }, 400);
+  const store = getStore({ name: "tenant-assets", consistency: "strong" });
+  if (await store.getMetadata(`${slug}/poster/${body.version}/committed`)) {
+    return json({ error: "This poster version is already published; upload with a new version." }, 409);
+  }
+  const key = `${slug}/poster/${body.version}/${variant}`;
+  if (await store.getMetadata(key)) {
+    return json({ error: `This poster version already has a ${variant} image; upload with a new version.` }, 409);
+  }
+  const match = typeof body.image === "string"
+    ? body.image.match(/^data:image\/jpeg;base64,([A-Za-z0-9+/]+={0,2})$/)
+    : null;
+  if (!match || match[1].length % 4 !== 0) return json({ error: "Poster image must be a JPEG data URL." }, 400);
+  const bytes = Buffer.from(match[1], "base64");
+  if (bytes.toString("base64") !== match[1]) return json({ error: "Poster image must be a valid JPEG data URL." }, 400);
+  if (bytes.length > POSTER_MAX_BYTES) return json({ error: "Poster variant must be no larger than 2 MB." }, 413);
+  if (bytes.length < 3 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) {
+    return json({ error: "Poster image must contain JPEG data." }, 400);
+  }
+  const actual = jpegSize(bytes);
+  if (!actual || actual.width !== dimensions.width || actual.height !== dimensions.height) {
+    return json({ error: `Poster ${variant} must be exactly ${dimensions.width}×${dimensions.height} pixels.` }, 400);
+  }
+  const at = new Date().toISOString();
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  await store.set(key, bytes, { metadata: { type: "image/jpeg", at, sha256 } });
+  return json({ ok: true, version: body.version, variant });
+}
+
+async function commitPoster(req, slug) {
+  const access = await posterAccess(req, slug);
+  if (access.response) return access.response;
+  let body;
+  try { body = await req.json(); } catch { return json({ error: "A valid request body is required." }, 400); }
+  const title = typeof body?.title === "string" ? body.title.trim() : "";
+  const subtitle = typeof body?.subtitle === "string" ? body.subtitle.trim() : null;
+  if (!body || !POSTER_VERSION.test(body.version || "")) return json({ error: "Poster version must be 32 lowercase hexadecimal characters." }, 400);
+  if (title.length < 1 || title.length > 80) return json({ error: "Poster title must be between 1 and 80 characters." }, 400);
+  if (subtitle === null || subtitle.length > 120) return json({ error: "Poster subtitle must be 120 characters or fewer." }, 400);
+  const store = getStore({ name: "tenant-assets", consistency: "strong" });
+  const variants = await Promise.all(Object.keys(POSTER_VARIANTS).map((variant) =>
+    store.getMetadata(`${slug}/poster/${body.version}/${variant}`)));
+  if (variants.some((variant) => !variant || typeof variant.metadata?.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(variant.metadata.sha256))) {
+    return json({ error: "Upload all four poster variants before saving the poster." }, 400);
+  }
+  const digests = Object.fromEntries(Object.keys(POSTER_VARIANTS).map((variant, index) =>
+    [variant, variants[index].metadata.sha256]));
+  try {
+    await store.setJSON(`${slug}/poster/${body.version}/committed`, { at: new Date().toISOString() });
+    const updated = await updateDynamicTenant(slug, (existing) => ({
+      ...existing,
+      settings: { ...existing.settings, poster: { version: body.version, title, subtitle, digests } }
+    }));
+    if (access.tenant.status === "live") await purgeTenantCache(slug);
+    return json({ ok: true, poster: updated.settings.poster });
+  } catch (err) {
+    if (err instanceof TenantStoreError && err.code === "NOT_FOUND") return json({ error: "Tenant not found." }, 404);
+    console.error("Dashboard poster commit failed", slug, err);
+    return json({ error: "Unable to save the fight poster." }, 500);
+  }
+}
+
+async function removePoster(req, slug) {
+  const access = await posterAccess(req, slug);
+  if (access.response) return access.response;
+  try {
+    const updated = await updateDynamicTenant(slug, (existing) => ({
+      ...existing,
+      settings: { ...existing.settings, poster: null }
+    }));
+    if (access.tenant.status === "live") await purgeTenantCache(slug);
+    return json({ ok: true, poster: updated.settings.poster });
+  } catch (err) {
+    if (err instanceof TenantStoreError && err.code === "NOT_FOUND") return json({ error: "Tenant not found." }, 404);
+    console.error("Dashboard poster removal failed", slug, err);
+    return json({ error: "Unable to remove the fight poster." }, 500);
   }
 }
 
@@ -634,13 +845,13 @@ async function launch(req, slug) {
   return json({ ok: true, portalUrl: `${platformUrl(req)}/${slug}` });
 }
 
-async function loadPlacementsForSummary(tenant, portalUrl) {
+async function loadPlacementsForSummary(tenant, portalUrl, previewToken = null) {
   const services = forTenant(tenant, { portalUrl });
   const sold = await services.soldDetails();
   const store = getStore({ name: "bids", consistency: "strong" });
   const placements = await Promise.all(placementConfigs(tenant).map(async (placement) => {
     const record = await store.get(`${tenant.slug}/${placement.id}`, { type: "json" });
-    return placementSummary(placement, record, sold.get(placement.id) || null);
+    return placementSummary(placement, record, sold.get(placement.id) || null, previewToken);
   }));
   return placements;
 }
@@ -730,6 +941,10 @@ async function markSold(req, slug, id) {
   if (body.amount !== undefined && body.amount !== null && (!Number.isInteger(body.amount) || body.amount < 0)) {
     return json({ error: "Amount must be a non-negative integer." }, 400);
   }
+  const logo = body.logo === undefined ? null : parseLogo(body.logo);
+  if (body.logo !== undefined && (!logo || logo.error)) {
+    return json({ error: logo?.error || "Logo must be a PNG, JPG or WebP image." }, 400);
+  }
 
   const services = forTenant(tenant, { portalUrl: `${platformUrl(req)}/${tenant.slug}` });
   if (!services.isPlacementId(id)) return json({ error: "Unknown placement." }, 400);
@@ -754,9 +969,24 @@ async function markSold(req, slug, id) {
     at: new Date().toISOString(),
     by: session.email
   };
-  await getStore({ name: "sold", consistency: "strong" }).setJSON(`${slug}/${id}`, sale);
-  const soldDetail = { ...sale, source: "dashboard" };
-  return json({ placement: placementSummary(placement, record, soldDetail) });
+  if (logo) sale.logo = { type: logo.type, at: sale.at };
+  const soldStore = getStore({ name: "sold", consistency: "strong" });
+  await soldStore.setJSON(`${slug}/${id}`, sale);
+  const updatedTenant = await getTenant(slug);
+  if (!updatedTenant?.garments.some((garment) => garment.placements.some((placement) => placement.id === id))) {
+    await soldStore.delete(`${slug}/${id}`);
+    return json({ error: "This placement is no longer offered." }, 409);
+  }
+  if (logo) {
+    await getStore({ name: "tenant-assets", consistency: "strong" })
+      .set(`${slug}/sponsor-logo/${id}`, logo.bytes, { metadata: { type: logo.type, at: sale.at } });
+  }
+  const soldDetail = {
+    ...sale,
+    source: "dashboard",
+    ...(sale.logo ? { logo: `/api/${slug}/sponsor-logos/${id}?v=${encodeURIComponent(sale.logo.at)}` } : {})
+  };
+  return json({ placement: placementSummary(placement, record, soldDetail, tenant.status === "draft" ? tenantPreviewToken(slug) : null) });
 }
 
 async function releaseSale(req, slug, id) {
@@ -1136,6 +1366,18 @@ export default async function dashboardApi(req) {
     return updateSettings(req, parts[2]);
   }
 
+  if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" && parts[3] === "poster") {
+    if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+    return commitPoster(req, parts[2]);
+  }
+
+  if (parts.length === 5 && parts[0] === "api" && parts[1] === "dashboard" && parts[3] === "poster") {
+    if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+    return parts[4] === "remove"
+      ? removePoster(req, parts[2])
+      : uploadPosterVariant(req, parts[2], parts[4]);
+  }
+
   if (parts.length === 4 && parts[0] === "api" && parts[1] === "dashboard" &&
       parts[3] === "launch") {
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -1240,6 +1482,9 @@ export const config = {
     "/api/dashboard/:slug/link",
     "/api/dashboard/:slug/onboarding",
     "/api/dashboard/:slug/settings",
+    "/api/dashboard/:slug/poster",
+    "/api/dashboard/:slug/poster/:variant",
+    "/api/dashboard/:slug/poster/remove",
     "/api/dashboard/:slug/launch",
     "/api/dashboard/:slug/model",
     "/api/dashboard/:slug/model/consent",

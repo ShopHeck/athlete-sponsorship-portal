@@ -114,6 +114,15 @@ deadline values, notification email and sender, brand colors, ring colors and pa
 sold sponsors, and athlete/event-specific email and invoice copy. These business settings are not overridden with
 per-site environment variables.
 
+## Dynamic dashboard look and placements
+
+Dynamic tenants may store optional `placementNames`, `arena`, and `backdrop` values in their tenant record.
+Placement-name keys must be IDs from the selected starter kit; athletes can rename or offer only those ready-made
+spots, without changing placement IDs or geometry. `arena` selects one of the kit-supported arena styles, and
+`backdrop` selects the fight poster or arena photo. Poster metadata is managed by the dashboard poster endpoints,
+not by the general settings endpoint. Poster variants and offline-sale sponsor logos live in the strong-consistency
+`tenant-assets` Blobs store under tenant-prefixed keys.
+
 ## Payments
 
 Every tenant requires a `payments` block:

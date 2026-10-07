@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
+import { parseLogo } from "../lib/logo.mjs";
 import { forTenant, json } from "../lib/sponsorship.mjs";
-import { resolveTenantForApi } from "../lib/tenants.mjs";
+import { getTenant, resolveTenantForApi } from "../lib/tenants.mjs";
 
 /* ---------------------------------------------------------------------------
    Sponsor bidding for open placements.
@@ -32,18 +33,6 @@ const publicView = (slug, id, rec) => ({
 });
 
 const clean = (v, max = 120) => (typeof v === "string" ? v.trim().slice(0, max) : "");
-
-// Optional bidder logo, sent as a data URL the browser has already downscaled.
-const LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
-const LOGO_MAX_BYTES = 1.5 * 1024 * 1024;
-function parseLogo(v) {
-  if (typeof v !== "string" || !v.startsWith("data:image/")) return null;
-  const m = v.match(/^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/);
-  if (!m || !LOGO_TYPES.has(m[1])) return { error: "Logo must be a PNG, JPG or WebP image." };
-  const bytes = Buffer.from(m[2], "base64");
-  if (bytes.length > LOGO_MAX_BYTES) return { error: "Logo is too large — please use an image under 1.5 MB." };
-  return { type: m[1], bytes };
-}
 
 export default async (req, context) => {
   const slug = context.params?.slug || "";
@@ -94,7 +83,8 @@ export default async (req, context) => {
         locked: true,
         closed: true,
         lockedBy: detail.sponsor || null,
-        sold: true
+        sold: true,
+        logo: detail.logo || null
       };
     }
     const paymentsReady = (await services.connect.readiness()).ready;
@@ -122,7 +112,9 @@ export default async (req, context) => {
   if (Date.now() > new Date(DEADLINE).getTime()) return json({ error: "Bidding has closed for this event." }, 409);
   if ((await soldPlacements()).has(id)) return json({ error: "This placement is already sold." }, 409);
 
-  const rec = (await store.get(storageKey(id), { type: "json" })) || { high: 0, bidder: null, history: [], locked: false };
+  const existing = await store.get(storageKey(id), { type: "json" });
+  const prior = existing ? structuredClone(existing) : null;
+  const rec = existing || { high: 0, bidder: null, history: [], locked: false };
   if (rec.locked || rec.closed) return json({ error: "This placement has been locked by another sponsor.", placement: publicView(slug, id, rec) }, 409);
 
   const now = new Date().toISOString();
@@ -147,12 +139,22 @@ export default async (req, context) => {
   rec.bidder = bidder;
   rec.history.push({ amount, type: rec.locked ? "lock" : "bid", at: now, ...bidder, note, logo: Boolean(logo) });
   if (logo) {
-    await getStore({ name: "logos", consistency: "strong" }).set(storageKey(id), logo.bytes, { metadata: { type: logo.type, company: bidder.company, email: bidder.email, at: now } });
     rec.logo = { type: logo.type, size: logo.bytes.length, company: bidder.company, at: now };
   } else if (rec.logo && previous && previous.email !== bidder.email) {
     delete rec.logo; // a new high bidder without artwork shouldn't inherit the previous bidder's logo
   }
   await store.setJSON(storageKey(id), rec);
+  const updatedTenant = await getTenant(slug);
+  if (!updatedTenant?.garments.some((garment) => garment.placements.some((placement) => placement.id === id))) {
+    if (prior) await store.setJSON(storageKey(id), prior);
+    else await store.delete(storageKey(id));
+    return json({ error: "This placement is no longer offered." }, 409);
+  }
+  if (logo) {
+    await getStore({ name: "logos", consistency: "strong" }).set(storageKey(id), logo.bytes, {
+      metadata: { type: logo.type, company: bidder.company, email: bidder.email, at: now }
+    });
+  }
 
   if (rec.locked) {
     await invoicePlacement(store, id, rec, "lock");

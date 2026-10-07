@@ -238,7 +238,8 @@ fi
 
 echo "3. tenant-scoped bids"
 JORDAN_EMAIL="tenant-jordan-test@example.test"
-JORDAN_BODY="{\"id\":\"TR-L1\",\"type\":\"bid\",\"amount\":250,\"company\":\"Jordan Test Co\",\"name\":\"Jordan Tester\",\"email\":\"$JORDAN_EMAIL\",\"phone\":\"\",\"logo\":\"data:image/png;base64,aGVsbG8=\"}"
+JORDAN_LOGO=$(node -e 'const fs=require("fs");process.stdout.write(`data:image/png;base64,${fs.readFileSync("public/tenants/michael-heckert/sponsors/boxrope.png").toString("base64")}`)')
+JORDAN_BODY="{\"id\":\"TR-L1\",\"type\":\"bid\",\"amount\":250,\"company\":\"Jordan Test Co\",\"name\":\"Jordan Tester\",\"email\":\"$JORDAN_EMAIL\",\"phone\":\"\",\"logo\":\"$JORDAN_LOGO\"}"
 check "Jordan GET requires preview token" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/jordan-reyes/bids")" "404"
 JORDAN_RESPONSE=$(curl -sS -X POST "$BASE/api/jordan-reyes/bids" -H 'content-type: application/json' -H "x-preview-token: $PREVIEW_TOKEN" -d "$JORDAN_BODY")
 check "Jordan TR-L1 bid accepted" "$(printf '%s' "$JORDAN_RESPONSE" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).ok?"200":"invalid")}catch{process.stdout.write("invalid")}})')" "200"
