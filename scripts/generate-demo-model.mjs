@@ -4,6 +4,10 @@
 //   node scripts/generate-demo-model.mjs <spec.json> model [a-pose|t-pose] → multi-image-to-3D + optimize (~35 credits);
 //     a pose keeps the arms clear of the body so Meshy rigging can animate it, and writes <slug>-<pose>.glb
 //   node scripts/generate-demo-model.mjs <spec.json> backdrop → optional arena backdrop photo (~9 credits)
+// Real athletes: put `"references": { "front": "ref-front.png", "back": ..., "left": ..., "right": ... }` (files in the
+// work dir) in the spec and skip the `front` stage — `views` then redraws each reference photo (studio background, A-pose)
+// instead of inventing views from the generated front. Optional `"texture": "8k"` and `"polycount": 200000` raise the
+// Meshy quality settings (8k textures cost 5 more credits; the optimizer still caps textures at 4096 for the 5 MB limit).
 // Work files go to $DEMO_WORK_DIR/<slug>/ (default ~/demo-models-work); the optimized GLB is written to
 // public/tenants/<slug>/models/<slug>.glb.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -69,9 +73,11 @@ if (stage === "front") {
   writeFileSync(path.join(workDir, "backdrop.task"), id);
   await saveImage(await poll("backdrop", getTextToImage, id, 10 * 60_000), "backdrop.png");
 } else if (stage === "views") {
-  const front = dataUri("front.png");
+  const refs = spec.references || {};
+  const front = refs.front ? dataUri(refs.front) : dataUri("front.png");
   await Promise.all(Object.entries(spec.views).map(async ([angle, prompt]) => {
-    const id = await createImageToImage({ prompt, referenceImageUrls: [front] });
+    const referenceImageUrls = refs[angle] && angle !== "front" ? [dataUri(refs[angle]), front] : [front];
+    const id = await createImageToImage({ prompt, referenceImageUrls });
     writeFileSync(path.join(workDir, `${angle}.task`), id);
     await saveImage(await poll(angle, getImageToImage, id, 10 * 60_000), `${angle}.png`);
   }));
@@ -79,7 +85,7 @@ if (stage === "front") {
   const imageUrls = ["front", "back", "left", "right"].map((angle) => dataUri(`${angle}.png`));
   if (poseMode && !["a-pose", "t-pose"].includes(poseMode)) throw new Error("pose must be a-pose or t-pose");
   const name = poseMode ? `${spec.slug}-${poseMode}` : spec.slug;
-  const id = await createMultiImageTo3D({ imageUrls, poseMode });
+  const id = await createMultiImageTo3D({ imageUrls, poseMode, textureResolution: spec.texture, targetPolycount: spec.polycount });
   writeFileSync(path.join(workDir, `${name}.task`), id);
   console.log(`model task ${id}`);
   const task = await poll("model", getMultiImageTo3D, id, 20 * 60_000);

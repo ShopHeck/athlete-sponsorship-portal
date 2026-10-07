@@ -126,3 +126,9 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
 - **Blob deletions are destructive.** Confirm the placement ID with the owner, back up the record first.
 - **Ask before real sends.** A real test email or lock is a real-world side effect — confirm, then do it with the
   owner's own address.
+- **Meshy rigging POST is slow for big bodies.** `POST /openapi/v1/rigging` fetches the source model before it
+  answers; a 200k-triangle 8K body takes 20–60 s, so `createRigging` uses a 90 s timeout instead of the 8 s
+  default. A timed-out POST does not create a task or spend credits — check the task list before retrying.
+- **Placement `w`/`h` are metres on a 1.8–1.86 m body** (the inventory shows them as inches, ≈39 in per unit).
+  Keep shorts logos ≤ ~0.19 m wide or they wrap around the leg, and keep shorts placements below y≈0.90: the
+  T-shirt hem covers the waistband, so a decal up there projects onto the shirt.

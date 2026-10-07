@@ -37,7 +37,7 @@ async function responseMessage(response) {
   }
 }
 
-async function apiRequest(path, options = {}) {
+async function apiRequest(path, { timeoutMs = 8000, ...options } = {}) {
   const key = process.env.MESHY_API_KEY;
   if (!key) throw new MeshyConfigurationError();
   const response = await fetch(`${apiBase()}${path}`, {
@@ -46,7 +46,7 @@ async function apiRequest(path, options = {}) {
       authorization: `Bearer ${key}`,
       ...(options.headers || {})
     },
-    signal: AbortSignal.timeout(8000)
+    signal: AbortSignal.timeout(timeoutMs)
   });
   if (!response.ok) {
     throw new MeshyRequestError(response.status, await responseMessage(response));
@@ -109,7 +109,7 @@ export async function getImageToImage(id) {
   return response.json();
 }
 
-export async function createMultiImageTo3D({ imageUrls, poseMode }) {
+export async function createMultiImageTo3D({ imageUrls, poseMode, textureResolution = "4k", targetPolycount = 150000 }) {
   const response = await apiRequest("/openapi/v1/multi-image-to-3d", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -118,11 +118,11 @@ export async function createMultiImageTo3D({ imageUrls, poseMode }) {
       ai_model: "meshy-7.1",
       geometry_resolution: "2k",
       should_texture: true,
-      texture_resolution: "4k",
+      texture_resolution: textureResolution,
       enable_pbr: false,
       should_remesh: true,
       topology: "triangle",
-      target_polycount: 150000,
+      target_polycount: targetPolycount,
       ...(poseMode ? { pose_mode: poseMode } : {})
     })
   });
@@ -148,10 +148,12 @@ export async function getMultiImageTo3D(id) {
 
 // Auto-rig a humanoid from a finished Meshy 3D task (5 credits).
 export async function createRigging({ inputTaskId, heightMeters }) {
+  // Meshy fetches the source model before answering, which takes well over the default 8 s for 200k-triangle bodies.
   const response = await apiRequest("/openapi/v1/rigging", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ input_task_id: inputTaskId, height_meters: heightMeters })
+    body: JSON.stringify({ input_task_id: inputTaskId, height_meters: heightMeters }),
+    timeoutMs: 90_000
   });
   const body = await response.json();
   if (typeof body?.result !== "string" || !body.result) {
