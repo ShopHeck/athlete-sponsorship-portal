@@ -5,7 +5,7 @@ import { buildArena, ROPE_RADIUS } from "./arena.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { DecalGeometry } from "three/addons/geometries/DecalGeometry.js";
-import { createMotion, readAnchor, restMatrix, skinDecal, surfaceAnchor } from "./motion.js";
+import { createMotion, posedGeometry, readAnchor, skinDecal, surfaceAnchor } from "./motion.js";
 
 /* ---------------------------------------------------------------------------
    Placements are defined in the tenant config as rectangles in metres on a
@@ -293,13 +293,14 @@ function makeSlot(spot, side, meshes) {
   projector.set(origin, dir);
   const hit = projector.intersectObjects(meshes, false)[0];
   if (!hit) { console.warn("No surface found for placement", spot.id, side); return null; }
-  const restSpace = hit.object.isSkinnedMesh ? restMatrix(hit.object) : hit.object.matrixWorld;
-  const normal = hit.face.normal.clone().transformDirection(restSpace).normalize();
+  const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
   if (normal.dot(dir) > 0) normal.negate();
   const m = new THREE.Matrix4().lookAt(hit.point.clone().add(normal), hit.point, new THREE.Vector3(0, 1, 0));
   const orientation = new THREE.Euler().setFromRotationMatrix(m);
-  // DecalGeometry only reads geometry + matrixWorld; skinned bodies are projected in their rest-pose space.
-  const target = hit.object.isSkinnedMesh ? { geometry: hit.object.geometry, matrixWorld: restSpace } : hit.object;
+  // DecalGeometry only reads geometry + matrixWorld, so skinned bodies are projected as currently posed.
+  const target = hit.object.isSkinnedMesh
+    ? { geometry: posedGeometry(hit.object), matrixWorld: hit.object.matrixWorld }
+    : hit.object;
   const geo = new DecalGeometry(target, hit.point, orientation, new THREE.Vector3(spec.w, spec.h, 0.10));
   const { canvas: c, tex } = slotTexture(spec);
   let mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, ...decalMaterialBase }));
@@ -397,8 +398,13 @@ loader.load(
     const frontFacesPositiveZ = config.modelFacing === "positive-z" ||
       (config.modelFacing !== "negative-z" && facesPositiveZ(meshes));
     if (!frontFacesPositiveZ) { root.rotateY(Math.PI); normalise(root); }
-    buildSlots(meshes);
     setupMotion(root, gltf.animations);
+    const project = () => {
+      for (const m of meshes) if (m.isSkinnedMesh) { m.computeBoundingBox(); m.computeBoundingSphere(); }
+      buildSlots(meshes);
+    };
+    if (motion) motion.withProjectionPose(project);
+    else project();
     renderer.shadowMap.needsUpdate = true;
     firstRender().then(() => { stage.classList.add("is-ready"); playIntro(); });
   },
@@ -421,9 +427,9 @@ let motion = null;
 let bodyMoving = false;
 const motionBar = document.getElementById("motionBar");
 function setupMotion(root, clips) {
-  if (isCardCapture || !config.motion || !clips?.length || !motionBar) return;
+  if (!config.motion || !clips?.length) return;
   motion = createMotion(root, clips, config.motion.clips, { rest: config.motion.rest, onChange: renderMotionBar });
-  if (!motion) return;
+  if (!motion || isCardCapture || !motionBar) return;
   motionBar.setAttribute("aria-label", config.motion.label || "Moves");
   const title = document.createElement("span");
   title.className = "motion-title";

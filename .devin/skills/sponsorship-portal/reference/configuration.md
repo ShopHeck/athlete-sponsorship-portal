@@ -168,7 +168,8 @@ buttons by GLB animation name; `motion.label` titles the button group, `motion.r
 is the stance held between moves (the bind pose otherwise), and `motion.intro` names one listed clip to play once on
 load (skipped for reduced motion and card capture). Sponsor decals and callouts are skinned to the body, so they move
 with it. Build source models in Meshy's A-pose (`scripts/generate-demo-model.mjs <spec> model a-pose`) and animate them
-with `scripts/animate-model.mjs`; arms resting against the body rig into stretched geometry.
+with `scripts/animate-model.mjs`; arms resting against the body rig into stretched geometry. Placements are projected onto the rest stance (arms and legs posed, torso kept square to +Z), so author
+placement coordinates for that arms-down stance rather than the A-pose the rig was built from.
 
 ## Adding and previewing a tenant
 
