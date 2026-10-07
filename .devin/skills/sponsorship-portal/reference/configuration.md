@@ -163,6 +163,13 @@ pad text, rope colors, corner colors, and pad color. Optional `ring.style` is `"
 poster; a configured poster takes precedence. For `"mat"` style, optional `ring.matColors` is an array of two
 `#rrggbb` colors for the competition surface and border, defaulting to `["#1f3d8a", "#d9ad2b"]`.
 
+Optional `motion` turns a rigged, animated GLB into a moving athlete. `motion.clips` lists `{ "clip", "label" }`
+buttons by GLB animation name; `motion.label` titles the button group, `motion.rest` names a clip whose first frame
+is the stance held between moves (the bind pose otherwise), and `motion.intro` names one listed clip to play once on
+load (skipped for reduced motion and card capture). Sponsor decals and callouts are skinned to the body, so they move
+with it. Build source models in Meshy's A-pose (`scripts/generate-demo-model.mjs <spec> model a-pose`) and animate them
+with `scripts/animate-model.mjs`; arms resting against the body rig into stretched geometry.
+
 ## Adding and previewing a tenant
 
 1. Create `tenants/<slug>.json` and `public/tenants/<slug>/`.

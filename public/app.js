@@ -5,6 +5,7 @@ import { buildArena, ROPE_RADIUS } from "./arena.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { DecalGeometry } from "three/addons/geometries/DecalGeometry.js";
+import { createMotion, readAnchor, restMatrix, skinDecal, surfaceAnchor } from "./motion.js";
 
 /* ---------------------------------------------------------------------------
    Placements are defined in the tenant config as rectangles in metres on a
@@ -292,18 +293,25 @@ function makeSlot(spot, side, meshes) {
   projector.set(origin, dir);
   const hit = projector.intersectObjects(meshes, false)[0];
   if (!hit) { console.warn("No surface found for placement", spot.id, side); return null; }
-  const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+  const restSpace = hit.object.isSkinnedMesh ? restMatrix(hit.object) : hit.object.matrixWorld;
+  const normal = hit.face.normal.clone().transformDirection(restSpace).normalize();
   if (normal.dot(dir) > 0) normal.negate();
   const m = new THREE.Matrix4().lookAt(hit.point.clone().add(normal), hit.point, new THREE.Vector3(0, 1, 0));
   const orientation = new THREE.Euler().setFromRotationMatrix(m);
-  const geo = new DecalGeometry(hit.object, hit.point, orientation, new THREE.Vector3(spec.w, spec.h, 0.10));
+  // DecalGeometry only reads geometry + matrixWorld; skinned bodies are projected in their rest-pose space.
+  const target = hit.object.isSkinnedMesh ? { geometry: hit.object.geometry, matrixWorld: restSpace } : hit.object;
+  const geo = new DecalGeometry(target, hit.point, orientation, new THREE.Vector3(spec.w, spec.h, 0.10));
   const { canvas: c, tex } = slotTexture(spec);
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, ...decalMaterialBase }));
+  let mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, ...decalMaterialBase }));
   mesh.visible = !isCardCapture;
   mesh.userData.spotId = spot.id;
   mesh.renderOrder = 2;
   athlete.add(mesh);
   const slot = { spot, side, mesh, canvas: c, tex, point: hit.point.clone(), normal };
+  if (hit.object.isSkinnedMesh) {
+    slot.mesh = mesh = skinDecal(mesh, hit.object);
+    slot.anchor = surfaceAnchor(mesh, hit.point, normal);
+  }
   slotMeshes.push(slot);
   drawSlot(slot);
   return slot;
@@ -381,6 +389,7 @@ loader.load(
       o.material.roughness = 0.9;
       o.material.side = THREE.FrontSide;
       if (o.material.map) { o.material.map.anisotropy = renderer.capabilities.getMaxAnisotropy(); o.material.map.needsUpdate = true; }
+      if (o.isSkinnedMesh) o.frustumCulled = false; // limbs leave the rest-pose bounds mid-move
       meshes.push(o);
     });
     athlete.add(root);
@@ -389,6 +398,7 @@ loader.load(
       (config.modelFacing !== "negative-z" && facesPositiveZ(meshes));
     if (!frontFacesPositiveZ) { root.rotateY(Math.PI); normalise(root); }
     buildSlots(meshes);
+    setupMotion(root, gltf.animations);
     renderer.shadowMap.needsUpdate = true;
     firstRender().then(() => { stage.classList.add("is-ready"); playIntro(); });
   },
@@ -406,6 +416,42 @@ loader.load(
     firstRender();
   }
 );
+/* ------------------------------------------------------------- moves */
+let motion = null;
+let bodyMoving = false;
+const motionBar = document.getElementById("motionBar");
+function setupMotion(root, clips) {
+  if (isCardCapture || !config.motion || !clips?.length || !motionBar) return;
+  motion = createMotion(root, clips, config.motion.clips, { rest: config.motion.rest, onChange: renderMotionBar });
+  if (!motion) return;
+  motionBar.setAttribute("aria-label", config.motion.label || "Moves");
+  const title = document.createElement("span");
+  title.className = "motion-title";
+  title.textContent = config.motion.label || "Moves";
+  motionBar.append(title, ...motion.moves.map(({ name, label }) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.move = name;
+    b.textContent = label;
+    b.setAttribute("aria-pressed", "false");
+    b.addEventListener("click", () => {
+      userInteracted = true; // the intro move must not override a move the visitor picked
+      if (motion.playing === name) motion.settle();
+      else motion.play(name);
+      invalidate();
+    });
+    return b;
+  }));
+  motionBar.hidden = false;
+}
+function renderMotionBar(playing) {
+  motionBar.querySelectorAll("[data-move]").forEach((b) => {
+    const on = b.dataset.move === playing;
+    b.classList.toggle("is-playing", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
+}
+
 // First paint once the sold list and live bids are known (used by both the model success and failure paths).
 function firstRender() {
   return Promise.all([sponsorsReady, bidsReady]).then(() => { selectInitial(); renderAll(); scrollSelectedIntoView(); });
@@ -656,6 +702,7 @@ function slotFor(spot) {
 }
 // Close-up on a placement: face its side and frame it at chest/hip height so the artwork reads clearly.
 function flyToPlacement(spot) {
+  motion?.settle();
   const slot = slotFor(spot);
   const targetY = slot ? THREE.MathUtils.clamp(slot.point.y, 0.55, 1.5) : HOME.targetY;
   flyTo({ az: SIDE_AZIMUTH[spot.side], polar: 1.55, dist: 1.85, targetY }, { duration: 1.05 });
@@ -668,7 +715,11 @@ function playIntro() {
   if (prefersReducedMotion) { invalidate(); return; }
   const from = { az: -0.75, polar: 1.5, dist: 1.25, targetY: 1.62 };
   applyPose(from);
-  flyTo({ az: 0, ...homeFraming() }, { from, duration: 2.6, onDone: () => { if (!userInteracted) controls.autoRotate = true; } });
+  flyTo({ az: 0, ...homeFraming() }, { from, duration: 2.6, onDone: () => {
+    if (userInteracted) return;
+    controls.autoRotate = true;
+    if (config.motion?.intro) motion?.play(config.motion.intro);
+  } });
 }
 document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => flyTo({ az: SIDE_AZIMUTH[b.dataset.view], ...homeFraming() })));
 canvas.addEventListener("dblclick", () => flyTo(homeFraming()));
@@ -965,6 +1016,7 @@ function positionCallout() {
   const slot = spot ? slotFor(spot) : null;
   const ready = stage.classList.contains("is-ready") && !(tween && tween.duration > 2);
   if (!slot || !ready) { callout.classList.remove("is-visible"); return; }
+  if (bodyMoving && slot.anchor) readAnchor(slot.anchor, slot.point, slot.normal);
   toCamera.copy(camera.position).sub(slot.point).normalize();
   projected.copy(slot.point).project(camera);
   const facing = slot.normal.dot(toCamera) > 0.25 && projected.z < 1;
@@ -989,6 +1041,8 @@ function animate(now) {
   if (!stageVisible || document.hidden) { lastFrameAt = 0; return; }
   stepTween(dt);
   controls.update(dt);
+  bodyMoving = Boolean(motion?.update(dt));
+  if (bodyMoving) { renderer.shadowMap.needsUpdate = true; invalidate(); }
   if (!needsRender) { lastFrameAt = 0; return; }
   needsRender = false;
   state.azimuth = controls.getAzimuthalAngle();

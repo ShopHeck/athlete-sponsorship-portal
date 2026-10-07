@@ -54,6 +54,7 @@ export function validateConfig(config, filename) {
   if (config.modelFacing !== undefined && !["auto", "positive-z", "negative-z"].includes(config.modelFacing)) {
     throw new Error(`tenant ${config.slug} modelFacing must be auto, positive-z, or negative-z`);
   }
+  if (config.motion !== undefined) validateMotion(config);
   if (config.ring?.style !== undefined && !["ropes", "octagon", "boxing", "mat"].includes(config.ring.style)) {
     throw new Error(`tenant ${config.slug} ring.style must be ropes, octagon, boxing, or mat`);
   }
@@ -155,4 +156,29 @@ export function validateConfig(config, filename) {
     throw new Error(`garment ${config.garments[0].id} needs at least one placement`);
   }
   return config;
+}
+
+// Curated animation clips baked into the tenant's rigged GLB (see scripts/animate-model.mjs).
+function validateMotion(config) {
+  const { motion } = config;
+  const text = (value, max) => typeof value === "string" && value.trim() && value.length <= max;
+  if (!motion || typeof motion !== "object" || Array.isArray(motion)) {
+    throw new Error(`tenant ${config.slug} motion must be an object`);
+  }
+  if (motion.label !== undefined && !text(motion.label, 24)) {
+    throw new Error(`tenant ${config.slug} motion.label must be a non-empty string of at most 24 characters`);
+  }
+  if (!Array.isArray(motion.clips) || !motion.clips.length || motion.clips.length > 8 ||
+      motion.clips.some((entry) => !text(entry?.clip, 64) || !text(entry?.label, 20))) {
+    throw new Error(`tenant ${config.slug} motion.clips must list 1-8 { clip, label } entries`);
+  }
+  if (new Set(motion.clips.map((entry) => entry.clip)).size !== motion.clips.length) {
+    throw new Error(`tenant ${config.slug} motion.clips must not repeat a clip`);
+  }
+  if (motion.rest !== undefined && (typeof motion.rest !== "string" || !motion.rest.trim() || motion.rest.length > 64)) {
+    throw new Error(`tenant ${config.slug} motion.rest must be a GLB clip name of at most 64 characters`);
+  }
+  if (motion.intro !== undefined && !motion.clips.some((entry) => entry.clip === motion.intro)) {
+    throw new Error(`tenant ${config.slug} motion.intro must name one of motion.clips`);
+  }
 }

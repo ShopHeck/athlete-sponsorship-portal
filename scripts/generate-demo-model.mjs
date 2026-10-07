@@ -1,7 +1,8 @@
 // Generate a fictional demo athlete model with Meshy (spends real credits unless MESHY_API_BASE points at a mock).
 //   node scripts/generate-demo-model.mjs <spec.json> front   → text-to-image front view (~9 credits)
 //   node scripts/generate-demo-model.mjs <spec.json> views   → back/left/right from the front (~27 credits)
-//   node scripts/generate-demo-model.mjs <spec.json> model   → multi-image-to-3D + optimize (~35 credits)
+//   node scripts/generate-demo-model.mjs <spec.json> model [a-pose|t-pose] → multi-image-to-3D + optimize (~35 credits);
+//     a pose keeps the arms clear of the body so Meshy rigging can animate it, and writes <slug>-<pose>.glb
 //   node scripts/generate-demo-model.mjs <spec.json> backdrop → optional arena backdrop photo (~9 credits)
 // Work files go to $DEMO_WORK_DIR/<slug>/ (default ~/demo-models-work); the optimized GLB is written to
 // public/tenants/<slug>/models/<slug>.glb.
@@ -22,7 +23,7 @@ import {
 import { optimizeGlb } from "../netlify/lib/optimize-glb.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const [specPath, stage] = process.argv.slice(2);
+const [specPath, stage, poseMode] = process.argv.slice(2);
 if (!specPath || !["front", "views", "model", "backdrop"].includes(stage)) {
   console.error("usage: generate-demo-model.mjs <spec.json> front|views|model|backdrop");
   process.exit(2);
@@ -76,13 +77,16 @@ if (stage === "front") {
   }));
 } else {
   const imageUrls = ["front", "back", "left", "right"].map((angle) => dataUri(`${angle}.png`));
-  const id = await createMultiImageTo3D({ imageUrls });
-  writeFileSync(path.join(workDir, "model.task"), id);
+  if (poseMode && !["a-pose", "t-pose"].includes(poseMode)) throw new Error("pose must be a-pose or t-pose");
+  const name = poseMode ? `${spec.slug}-${poseMode}` : spec.slug;
+  const id = await createMultiImageTo3D({ imageUrls, poseMode });
+  writeFileSync(path.join(workDir, `${name}.task`), id);
+  console.log(`model task ${id}`);
   const task = await poll("model", getMultiImageTo3D, id, 20 * 60_000);
   const raw = await downloadModel(task.model_urls.glb);
-  writeFileSync(path.join(workDir, "raw.glb"), raw.bytes);
+  writeFileSync(path.join(workDir, `${name}-raw.glb`), raw.bytes);
   const optimized = await optimizeGlb(raw.bytes);
-  const target = path.join(root, "public/tenants", spec.slug, "models", `${spec.slug}.glb`);
+  const target = path.join(root, "public/tenants", spec.slug, "models", `${name}.glb`);
   mkdirSync(path.dirname(target), { recursive: true });
   writeFileSync(target, optimized.bytes);
   console.log(JSON.stringify({ target, bytes: optimized.bytes.length, rawBytes: raw.bytes.length,
