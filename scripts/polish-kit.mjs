@@ -39,7 +39,7 @@ const material = prim.getMaterial();
 const posAcc = prim.getAttribute("POSITION"), uvAcc = prim.getAttribute("TEXCOORD_0");
 const pos = Float32Array.from(posAcc.getArray()), uv = uvAcc.getArray(), idx = prim.getIndices().getArray();
 const n = pos.length / 3;
-const base = await sharp(Buffer.from(material.getBaseColorTexture().getImage())).resize(TEX, TEX).removeAlpha().raw().toBuffer();
+const base = await sharp(Buffer.from(material.getBaseColorTexture().getImage())).resize(TEX, TEX, { fit: "fill" }).removeAlpha().raw().toBuffer();
 const lumAt = (u, v) => {
   const x = Math.min(TEX - 1, Math.max(0, Math.floor(u * TEX))), y = Math.min(TEX - 1, Math.max(0, Math.floor(v * TEX)));
   const k = (y * TEX + x) * 3;
