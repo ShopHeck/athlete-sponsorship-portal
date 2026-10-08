@@ -505,7 +505,7 @@
         {
           "id": "TF-01",
           "name": "Front grid · Row 1, column 1",
-          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": -0.104,
           "y": 1.417,
@@ -516,7 +516,7 @@
         {
           "id": "TF-02",
           "name": "Front grid · Row 1, column 2",
-          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": 0,
           "y": 1.417,
@@ -527,7 +527,7 @@
         {
           "id": "TF-03",
           "name": "Front grid · Row 1, column 3",
-          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": 0.104,
           "y": 1.417,
@@ -538,10 +538,10 @@
         {
           "id": "TF-04",
           "name": "Front grid · Row 2, column 1",
-          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": -0.104,
-          "y": 1.339,
+          "y": 1.347,
           "w": 0.096,
           "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 2, column 1"
@@ -549,10 +549,10 @@
         {
           "id": "TF-05",
           "name": "Front grid · Row 2, column 2",
-          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": 0,
-          "y": 1.339,
+          "y": 1.347,
           "w": 0.096,
           "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 2, column 2"
@@ -560,10 +560,10 @@
         {
           "id": "TF-06",
           "name": "Front grid · Row 2, column 3",
-          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": 0.104,
-          "y": 1.339,
+          "y": 1.347,
           "w": 0.096,
           "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 2, column 3"
@@ -571,10 +571,10 @@
         {
           "id": "TF-07",
           "name": "Front grid · Row 3, column 1",
-          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": -0.104,
-          "y": 1.261,
+          "y": 1.277,
           "w": 0.096,
           "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 3, column 1"
@@ -582,10 +582,10 @@
         {
           "id": "TF-08",
           "name": "Front grid · Row 3, column 2",
-          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": 0,
-          "y": 1.261,
+          "y": 1.277,
           "w": 0.096,
           "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 3, column 2"
@@ -593,10 +593,10 @@
         {
           "id": "TF-09",
           "name": "Front grid · Row 3, column 3",
-          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": 0.104,
-          "y": 1.261,
+          "y": 1.277,
           "w": 0.096,
           "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 3, column 3"
@@ -604,10 +604,10 @@
         {
           "id": "TF-10",
           "name": "Front grid · Row 4, column 1",
-          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": -0.104,
-          "y": 1.183,
+          "y": 1.207,
           "w": 0.096,
           "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 4, column 1"
@@ -615,10 +615,10 @@
         {
           "id": "TF-11",
           "name": "Front grid · Row 4, column 2",
-          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": 0,
-          "y": 1.183,
+          "y": 1.207,
           "w": 0.096,
           "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 4, column 2"
@@ -626,46 +626,57 @@
         {
           "id": "TF-12",
           "name": "Front grid · Row 4, column 3",
-          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": 0.104,
-          "y": 1.183,
+          "y": 1.207,
           "w": 0.096,
           "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 4, column 3"
         },
         {
           "id": "TB-01",
-          "name": "Back · Left",
-          "detail": "Back of the walkout T-shirt, left of the three restored sponsors.",
-          "side": "back",
-          "x": -0.12,
-          "y": 1.34,
-          "w": 0.11,
-          "h": 0.085,
-          "label": "Walkout T-shirt · Back · Left"
+          "name": "Front grid · Row 5, column 1",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
+          "side": "front",
+          "x": -0.104,
+          "y": 1.137,
+          "w": 0.096,
+          "h": 0.066,
+          "label": "Walkout T-shirt · Front grid · Row 5, column 1"
         },
         {
           "id": "TB-02",
-          "name": "Back · Center",
-          "detail": "Back of the walkout T-shirt, centered beneath the collar.",
-          "side": "back",
+          "name": "Front grid · Row 5, column 2",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
+          "side": "front",
           "x": 0,
-          "y": 1.34,
-          "w": 0.11,
-          "h": 0.085,
-          "label": "Walkout T-shirt · Back · Center"
+          "y": 1.137,
+          "w": 0.096,
+          "h": 0.066,
+          "label": "Walkout T-shirt · Front grid · Row 5, column 2"
         },
         {
           "id": "TB-03",
-          "name": "Back · Right",
-          "detail": "Back of the walkout T-shirt, right of the three restored sponsors.",
+          "name": "Front grid · Row 5, column 3",
+          "detail": "Front walkout T-shirt placement in the 3 × 5 sponsor grid that starts 2 in below the neckline.",
+          "side": "front",
+          "x": 0.104,
+          "y": 1.137,
+          "w": 0.096,
+          "h": 0.066,
+          "label": "Walkout T-shirt · Front grid · Row 5, column 3"
+        },
+        {
+          "id": "TB-04",
+          "name": "Upper back · Got Your Six",
+          "detail": "Large Watchmen PMC / Got Your Six mark across the upper back and shoulders.",
           "side": "back",
-          "x": 0.12,
-          "y": 1.34,
-          "w": 0.11,
-          "h": 0.085,
-          "label": "Walkout T-shirt · Back · Right"
+          "x": 0,
+          "y": 1.39,
+          "w": 0.34,
+          "h": 0.17,
+          "label": "Walkout T-shirt · Upper back · Got Your Six"
         },
         {
           "id": "TS-01",
@@ -754,6 +765,10 @@
     "TB-03": {
       "sponsor": "PerGram App",
       "logo": "sponsors/pergram.png"
+    },
+    "TB-04": {
+      "sponsor": "Watchmen PMC",
+      "logo": "sponsors/watchmen-back-gold.png"
     },
     "TS-01": {
       "sponsor": "King Killers",
