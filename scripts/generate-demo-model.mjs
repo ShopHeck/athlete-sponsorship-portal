@@ -1,6 +1,7 @@
 // Generate a fictional demo athlete model with Meshy (spends real credits unless MESHY_API_BASE points at a mock).
 //   node scripts/generate-demo-model.mjs <spec.json> front   → text-to-image front view (~9 credits)
 //   node scripts/generate-demo-model.mjs <spec.json> views   → back/left/right from the front (~27 credits)
+//     views [front|back|left|right|remaining] allows reviewing the front before generating matching views.
 //   node scripts/generate-demo-model.mjs <spec.json> model [a-pose|t-pose] → multi-image-to-3D + optimize (~35 credits);
 //     a pose keeps the arms clear of the body so Meshy rigging can animate it, and writes <slug>-<pose>.glb
 //   node scripts/generate-demo-model.mjs <spec.json> backdrop → optional arena backdrop photo (~9 credits)
@@ -10,6 +11,8 @@
 // Meshy quality settings (8k textures cost 5 more credits; the optimizer still caps textures at 4096 for the 5 MB limit).
 // Work files go to $DEMO_WORK_DIR/<slug>/ (default ~/demo-models-work); the optimized GLB is written to
 // public/tenants/<slug>/models/<slug>.glb.
+// Optional identityReferences are original face close-ups. consistentViews generates the front first and uses it
+// to keep the other views' outfit consistent. pbr retains Meshy's material maps. DEMO_OUTPUT_DIR stages candidates.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -33,6 +36,9 @@ if (!specPath || !["front", "views", "model", "backdrop"].includes(stage)) {
   process.exit(2);
 }
 const spec = JSON.parse(readFileSync(specPath, "utf8"));
+if (stage === "views" && poseMode && !["front", "back", "left", "right", "remaining"].includes(poseMode)) {
+  throw new Error("view must be front, back, left, right or remaining");
+}
 const workDir = path.join(process.env.DEMO_WORK_DIR || path.join(homedir(), "demo-models-work"), spec.slug);
 mkdirSync(workDir, { recursive: true });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -75,24 +81,46 @@ if (stage === "front") {
 } else if (stage === "views") {
   const refs = spec.references || {};
   const front = refs.front ? dataUri(refs.front) : dataUri("front.png");
-  await Promise.all(Object.entries(spec.views).map(async ([angle, prompt]) => {
-    const referenceImageUrls = refs[angle] && angle !== "front" ? [dataUri(refs[angle]), front] : [front];
-    const id = await createImageToImage({ prompt, referenceImageUrls });
+  const identity = (spec.identityReferences || []).map(dataUri);
+  const generateView = async (angle, prompt) => {
+    const consistentFront = spec.consistentViews && angle !== "front" ? dataUri("front.png") : front;
+    const referenceImageUrls = [
+      ...(refs[angle] && angle !== "front" ? [dataUri(refs[angle]), consistentFront] : [consistentFront]),
+      ...identity
+    ];
+    const id = await createImageToImage({ prompt, referenceImageUrls, aspectRatio: spec.viewAspectRatio });
     writeFileSync(path.join(workDir, `${angle}.task`), id);
     await saveImage(await poll(angle, getImageToImage, id, 10 * 60_000), `${angle}.png`);
-  }));
+  };
+  const views = Object.entries(spec.views)
+    .filter(([angle]) => !poseMode || (poseMode === "remaining" ? angle !== "front" : angle === poseMode));
+  if (spec.consistentViews && views.some(([angle]) => angle === "front")) {
+    if (!spec.views.front) throw new Error("consistentViews requires a front view prompt");
+    await generateView("front", spec.views.front);
+  }
+  await Promise.all(views
+    .filter(([angle]) => !spec.consistentViews || angle !== "front")
+    .map(([angle, prompt]) => generateView(angle, prompt)));
 } else {
-  const imageUrls = ["front", "back", "left", "right"].map((angle) => dataUri(`${angle}.png`));
+  const modelViews = spec.modelViews || ["front", "back", "left", "right"];
+  if (!Array.isArray(modelViews) || !modelViews.length || modelViews.length > 4 ||
+      new Set(modelViews).size !== modelViews.length ||
+      modelViews.some((angle) => !["front", "back", "left", "right"].includes(angle))) {
+    throw new Error("modelViews must contain one to four unique reference angles.");
+  }
+  const imageUrls = modelViews.map((angle) => dataUri(`${angle}.png`));
   if (poseMode && !["a-pose", "t-pose"].includes(poseMode)) throw new Error("pose must be a-pose or t-pose");
   const name = poseMode ? `${spec.slug}-${poseMode}` : spec.slug;
-  const id = await createMultiImageTo3D({ imageUrls, poseMode, textureResolution: spec.texture, targetPolycount: spec.polycount });
+  const id = await createMultiImageTo3D({
+    imageUrls, poseMode, textureResolution: spec.texture, targetPolycount: spec.polycount, enablePbr: spec.pbr
+  });
   writeFileSync(path.join(workDir, `${name}.task`), id);
   console.log(`model task ${id}`);
   const task = await poll("model", getMultiImageTo3D, id, 20 * 60_000);
   const raw = await downloadModel(task.model_urls.glb);
   writeFileSync(path.join(workDir, `${name}-raw.glb`), raw.bytes);
-  const optimized = await optimizeGlb(raw.bytes);
-  const target = path.join(root, "public/tenants", spec.slug, "models", `${name}.glb`);
+  const optimized = await optimizeGlb(raw.bytes, { linearColor: spec.linearColor });
+  const target = path.join(process.env.DEMO_OUTPUT_DIR || path.join(root, "public/tenants", spec.slug, "models"), `${name}.glb`);
   mkdirSync(path.dirname(target), { recursive: true });
   writeFileSync(target, optimized.bytes);
   console.log(JSON.stringify({ target, bytes: optimized.bytes.length, rawBytes: raw.bytes.length,

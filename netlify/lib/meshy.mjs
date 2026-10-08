@@ -54,7 +54,7 @@ async function apiRequest(path, { timeoutMs = 8000, ...options } = {}) {
   return response;
 }
 
-export async function createImageToImage({ prompt, referenceImageUrls }) {
+export async function createImageToImage({ prompt, referenceImageUrls, aspectRatio = "9:16" }) {
   const response = await apiRequest("/openapi/v1/image-to-image", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -62,7 +62,7 @@ export async function createImageToImage({ prompt, referenceImageUrls }) {
       ai_model: "nano-banana-pro",
       prompt,
       reference_image_urls: referenceImageUrls,
-      aspect_ratio: "9:16",
+      aspect_ratio: aspectRatio,
       remove_background: true
     })
   });
@@ -109,7 +109,7 @@ export async function getImageToImage(id) {
   return response.json();
 }
 
-export async function createMultiImageTo3D({ imageUrls, poseMode, textureResolution = "4k", targetPolycount = 150000 }) {
+export async function createMultiImageTo3D({ imageUrls, poseMode, textureResolution = "4k", targetPolycount = 150000, enablePbr = false }) {
   const response = await apiRequest("/openapi/v1/multi-image-to-3d", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -119,7 +119,7 @@ export async function createMultiImageTo3D({ imageUrls, poseMode, textureResolut
       geometry_resolution: "2k",
       should_texture: true,
       texture_resolution: textureResolution,
-      enable_pbr: false,
+      enable_pbr: enablePbr,
       should_remesh: true,
       topology: "triangle",
       target_polycount: targetPolycount,
@@ -146,13 +146,19 @@ export async function getMultiImageTo3D(id) {
   return response.json();
 }
 
-// Auto-rig a humanoid from a finished Meshy 3D task (5 credits).
-export async function createRigging({ inputTaskId, heightMeters }) {
+// Auto-rig a textured humanoid from a Meshy task or a GLB URL/data URI (5 credits).
+export async function createRigging({ inputTaskId, modelUrl, heightMeters }) {
+  if (Boolean(inputTaskId) === Boolean(modelUrl)) {
+    throw new Error("Rigging requires exactly one task ID or model URL.");
+  }
   // Meshy fetches the source model before answering, which takes well over the default 8 s for 200k-triangle bodies.
   const response = await apiRequest("/openapi/v1/rigging", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ input_task_id: inputTaskId, height_meters: heightMeters }),
+    body: JSON.stringify({
+      ...(inputTaskId ? { input_task_id: inputTaskId } : { model_url: modelUrl }),
+      height_meters: heightMeters
+    }),
     timeoutMs: 90_000
   });
   const body = await response.json();
