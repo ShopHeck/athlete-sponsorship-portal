@@ -239,15 +239,77 @@ function torsoChain(root) {
   return chain;
 }
 
+/* -------------------------------------------------- authored moves */
+// Moves the library doesn't have are keyframed here on the stance pose. Rotations are given about axes of the
+// stance's world frame (+X right, +Y up, +Z towards the sponsor) and ride along with the parent bone, so an elbow
+// flexes about the elbow wherever the upper arm went.
+const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
+function turned(bone, rotations) {
+  const parent = bone.parent.getWorldQuaternion(new THREE.Quaternion());
+  const q = parent.clone().multiply(bone.quaternion);
+  for (const [axis, deg] of rotations) q.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, THREE.MathUtils.degToRad(deg)));
+  return parent.invert().multiply(q);
+}
+function quaternionTrack(bone, keys) {
+  const times = keys.map(([t]) => t), values = [];
+  for (const [, rotations] of keys) turned(bone, rotations).toArray(values, values.length);
+  return new THREE.QuaternionKeyframeTrack(`${bone.name}.quaternion`, times, values);
+}
+
+// Square to the sponsor, head bows, then the right fist goes up as the head lifts while the left fist beats the
+// chest three times; everything returns to the stance.
+function victoryChestBeat(root) {
+  const bone = (name) => root.getObjectByName(name);
+  const head = bone("Head"), spine = bone("Spine");
+  const rArm = bone("RightArm"), rFore = bone("RightForeArm"), lArm = bone("LeftArm"), lFore = bone("LeftForeArm");
+  if (![head, spine, rArm, rFore, lArm, lFore].every(Boolean)) return null;
+  const still = [];
+  const up = [[Z, -160], [X, 12]], upHold = [[Z, -165], [X, 14]];
+  // The beating arm rolls inward first so the elbow's hinge carries the fist across to the sternum.
+  const beatArm = [[Y, -80], [X, -20], [Z, 15]], liftArm = [[Y, -60], [X, -35], [Z, 25]];
+  const beatFore = [[X, -105]], liftFore = [[X, -80]];
+  const tracks = [
+    quaternionTrack(head, [[0, still], [0.45, [[X, 32]]], [1.0, [[X, 32]]], [1.55, [[X, -24]]], [3.0, [[X, -24]]], [3.7, still]]),
+    quaternionTrack(spine, [[0, still], [0.45, [[X, 7]]], [1.0, [[X, 7]]], [1.55, [[X, -5]]], [3.0, [[X, -5]]], [3.7, still]]),
+    quaternionTrack(rArm, [[0, still], [1.0, still], [1.55, up], [1.75, upHold], [3.0, upHold], [3.7, still]]),
+    quaternionTrack(rFore, [[0, still], [1.0, still], [1.55, [[X, -18]]], [3.0, [[X, -18]]], [3.7, still]]),
+    quaternionTrack(lArm, [
+      [0, still], [1.0, still], [1.4, liftArm], [1.6, beatArm], [1.82, liftArm], [2.05, beatArm], [2.27, liftArm], [2.5, beatArm],
+      [2.9, beatArm], [3.7, still]
+    ]),
+    quaternionTrack(lFore, [
+      [0, still], [1.0, still], [1.4, liftFore], [1.6, beatFore], [1.82, liftFore], [2.05, beatFore], [2.27, liftFore], [2.5, beatFore],
+      [2.9, beatFore], [3.7, still]
+    ])
+  ];
+  return new THREE.AnimationClip("Victory_Chest_Beat", 4.0, tracks);
+}
+
+function authoredClips(root) {
+  return [victoryChestBeat(root)].filter(Boolean);
+}
+
+// Puts the rig into a clip's first frame (used so authored moves start from the stance, not the bind pose).
+function poseFromFrame(root, clip) {
+  for (const track of clip.tracks) {
+    const { nodeName, propertyName } = THREE.PropertyBinding.parseTrackName(track.name);
+    const node = THREE.PropertyBinding.findNode(root, nodeName);
+    node?.[propertyName]?.fromArray?.(track.values, 0);
+  }
+  root.updateMatrixWorld(true);
+}
+
 // Plays the tenant's curated moves on demand; the athlete otherwise holds the rest stance.
 export function createMotion(root, gltfClips, entries, { onChange, onSettled, rest: restName } = {}) {
   const byName = new Map(gltfClips.map((clip) => [clip.name, clip]));
+  const torso = torsoChain(root).map((bone) => [bone, bone.quaternion.clone()]);
+  const stance = byName.has(restName) ? anchoredClip(root, byName.get(restName)) : null;
+  if (stance) poseFromFrame(root, stance);
+  for (const clip of authoredClips(root)) byName.set(clip.name, clip);
   const moves = new Map(entries.filter((e) => byName.has(e.clip)).map((e) => [e.clip, { ...e, clip: anchoredClip(root, byName.get(e.clip)) }]));
   if (!moves.size) return null;
   const mixer = new THREE.AnimationMixer(root);
-  const stance = byName.has(restName) ? anchoredClip(root, byName.get(restName)) : null;
   const rest = mixer.clipAction(restClip(root, [...moves.values()].map((m) => m.clip), stance));
-  const torso = torsoChain(root).map((bone) => [bone, bone.quaternion.clone()]);
   rest.play();
   mixer.update(0);
   root.updateMatrixWorld(true);
