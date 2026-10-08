@@ -176,17 +176,17 @@ for (let y = 0; y < TEX; y++) for (let x = 0; x < TEX; x++) {
 const png = (buf) => sharp(buf, { raw: { width: TEX, height: TEX, channels: 3 } }).png().toBuffer();
 const baseTex = material.getBaseColorTexture();
 const baseFull = await sharp(Buffer.from(baseTex.getImage())).metadata();
-if (baseFull.width > TEX) {
+if (baseFull.width > TEX || baseFull.height > TEX) {
   // Apply the shirt lift at the texture's native size so decal-free detail is kept.
   const full = await sharp(Buffer.from(baseTex.getImage())).removeAlpha().raw().toBuffer();
-  const W = baseFull.width;
-  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
-    const mi = Math.floor(y * TEX / W) * TEX + Math.floor(x * TEX / W);
+  const { width: W, height: H } = baseFull;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const mi = Math.floor(y * TEX / H) * TEX + Math.floor(x * TEX / W);
     if (mask[mi] !== 1) continue;
     const k = (y * W + x) * 3;
     for (let c = 0; c < 3; c++) full[k + c] = Math.round(full[k + c] * 0.8 + shirtBlack[c] * 0.6);
   }
-  baseTex.setImage(await sharp(full, { raw: { width: W, height: W, channels: 3 } }).png().toBuffer()).setMimeType("image/png");
+  baseTex.setImage(await sharp(full, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer()).setMimeType("image/png");
 } else baseTex.setImage(await png(baseOut)).setMimeType("image/png");
 material.setMetallicRoughnessTexture(doc.createTexture("kit-roughness").setImage(await png(mrPx)).setMimeType("image/png"))
   .setRoughnessFactor(1).setMetallicFactor(1)

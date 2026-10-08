@@ -240,7 +240,7 @@ function torsoChain(root) {
 }
 
 // Plays the tenant's curated moves on demand; the athlete otherwise holds the rest stance.
-export function createMotion(root, gltfClips, entries, { onChange, rest: restName } = {}) {
+export function createMotion(root, gltfClips, entries, { onChange, onSettled, rest: restName } = {}) {
   const byName = new Map(gltfClips.map((clip) => [clip.name, clip]));
   const moves = new Map(entries.filter((e) => byName.has(e.clip)).map((e) => [e.clip, { ...e, clip: anchoredClip(root, byName.get(e.clip)) }]));
   if (!moves.size) return null;
@@ -295,7 +295,11 @@ export function createMotion(root, gltfClips, entries, { onChange, rest: restNam
     update(dt) {
       if (!current && settling <= -0.1) return false; // one extra step lands exactly on the rest pose
       mixer.update(dt);
-      if (!current) settling -= dt;
+      if (!current) {
+        const wasSettling = settling > 0;
+        settling -= dt;
+        if (wasSettling && settling <= 0) onSettled?.();
+      }
       return true;
     }
   };

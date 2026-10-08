@@ -438,7 +438,7 @@ let bodyMoving = false;
 const motionBar = document.getElementById("motionBar");
 function setupMotion(root, clips) {
   if (!config.motion || !clips?.length) return;
-  motion = createMotion(root, clips, config.motion.clips, { rest: config.motion.rest, onChange: renderMotionBar });
+  motion = createMotion(root, clips, config.motion.clips, { rest: config.motion.rest, onChange: renderMotionBar, onSettled: startPendingTurntable });
   if (!motion || isCardCapture || !motionBar) return;
   motionBar.setAttribute("aria-label", config.motion.label || "Moves");
   const title = document.createElement("span");
@@ -460,10 +460,16 @@ function setupMotion(root, clips) {
   }));
   motionBar.hidden = false;
 }
+// The intro queues the turntable; it starts once the athlete has fully settled back into the stance, and any
+// camera command or interaction in the meantime cancels it.
 let turntablePending = false;
+function startPendingTurntable() {
+  if (!turntablePending) return;
+  turntablePending = false;
+  if (!userInteracted && !tween) controls.autoRotate = true;
+}
 function renderMotionBar(playing) {
   if (playing) controls.autoRotate = false;
-  else if (turntablePending) { turntablePending = false; if (!userInteracted) controls.autoRotate = true; }
   if (!motionBar) return;
   motionBar.querySelectorAll("[data-move]").forEach((b) => {
     const on = b.dataset.move === playing;
@@ -692,6 +698,7 @@ function cameraPose() {
 }
 function flyTo(to, { duration = 0.9, from = cameraPose(), onDone = null } = {}) {
   controls.autoRotate = false;
+  turntablePending = false;
   const pose = { ...from, ...to };
   let dAz = pose.az - from.az; dAz = Math.atan2(Math.sin(dAz), Math.cos(dAz));
   if (prefersReducedMotion) duration = 0.001;
@@ -738,7 +745,7 @@ function playIntro() {
   flyTo({ az: 0, ...homeFraming() }, { from, duration: 2.6, onDone: () => {
     if (userInteracted) return;
     // The intro move plays with the camera still (a turntable under a moving body reads as chaos); the slow
-    // turntable starts once the athlete has settled back into the stance.
+    // turntable starts once the athlete has settled back into the stance (startPendingTurntable).
     if (config.motion?.intro && motion) { turntablePending = true; motion.play(config.motion.intro); }
     else controls.autoRotate = true;
   } });
