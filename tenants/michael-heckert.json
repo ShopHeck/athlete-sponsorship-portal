@@ -84,24 +84,28 @@
   "model": "models/michael-heckert-animated.glb",
   "motion": {
     "label": "Moves",
-    "rest": "Idle",
-    "intro": "Chest_Pound_Taunt",
+    "rest": "Show_Both_Arm_Muscles",
+    "intro": "Punch_Combo",
     "clips": [
       {
-        "clip": "Boxing_Warmup",
-        "label": "Warm-up"
+        "clip": "Left_Jab_from_Guard",
+        "label": "Jab"
       },
       {
-        "clip": "Boxing_Practice",
-        "label": "Shadowbox"
+        "clip": "Left_Hook_from_Guard",
+        "label": "Hook"
       },
       {
-        "clip": "Dodge_and_Counter",
-        "label": "Slip & counter"
+        "clip": "Right_Uppercut_from_Guard",
+        "label": "Uppercut"
       },
       {
-        "clip": "Chest_Pound_Taunt",
-        "label": "Taunt"
+        "clip": "Punch_Combo",
+        "label": "Combo"
+      },
+      {
+        "clip": "Boxing_Guard_Prep_Straight_Punch",
+        "label": "Straight"
       },
       {
         "clip": "Show_Both_Arm_Muscles",

@@ -394,10 +394,12 @@ loader.load(
     root.traverse((o) => {
       if (!o.isMesh) return;
       o.castShadow = o.receiveShadow = true;
-      o.material.metalness = 0;
-      o.material.roughness = 0.9;
+      // Baked kits (scripts/polish-kit.mjs) bring their own roughness/normal maps; plain Meshy output gets a flat matte.
+      if (!o.material.roughnessMap) { o.material.metalness = 0; o.material.roughness = 0.9; }
       o.material.side = THREE.FrontSide;
-      if (o.material.map) { o.material.map.anisotropy = renderer.capabilities.getMaxAnisotropy(); o.material.map.needsUpdate = true; }
+      for (const map of [o.material.map, o.material.normalMap, o.material.roughnessMap]) {
+        if (map) { map.anisotropy = renderer.capabilities.getMaxAnisotropy(); map.needsUpdate = true; }
+      }
       if (o.isSkinnedMesh) o.frustumCulled = false; // limbs leave the rest-pose bounds mid-move
       meshes.push(o);
     });
@@ -458,7 +460,11 @@ function setupMotion(root, clips) {
   }));
   motionBar.hidden = false;
 }
+let turntablePending = false;
 function renderMotionBar(playing) {
+  if (playing) controls.autoRotate = false;
+  else if (turntablePending) { turntablePending = false; if (!userInteracted) controls.autoRotate = true; }
+  if (!motionBar) return;
   motionBar.querySelectorAll("[data-move]").forEach((b) => {
     const on = b.dataset.move === playing;
     b.classList.toggle("is-playing", on);
@@ -731,8 +737,10 @@ function playIntro() {
   applyPose(from);
   flyTo({ az: 0, ...homeFraming() }, { from, duration: 2.6, onDone: () => {
     if (userInteracted) return;
-    controls.autoRotate = true;
-    if (config.motion?.intro) motion?.play(config.motion.intro);
+    // The intro move plays with the camera still (a turntable under a moving body reads as chaos); the slow
+    // turntable starts once the athlete has settled back into the stance.
+    if (config.motion?.intro && motion) { turntablePending = true; motion.play(config.motion.intro); }
+    else controls.autoRotate = true;
   } });
 }
 document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => flyTo({ az: SIDE_AZIMUTH[b.dataset.view], ...homeFraming() })));

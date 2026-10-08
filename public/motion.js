@@ -145,15 +145,21 @@ export function readAnchor({ mesh, tri, sign }, outPoint, outNormal) {
 }
 
 /* ---------------------------------------------------------- moves */
-const CROSSFADE = 0.35, SETTLE = 0.5, MIN_PLAY_SECONDS = 2.8;
+const CROSSFADE = 0.45, SETTLE = 0.7, MIN_PLAY_SECONDS = 2.8;
+const YAW_ALLOWANCE = THREE.MathUtils.degToRad(28);
 
-// Library moves step and lunge around the ring (some even start off-centre); pin the root's horizontal position to
-// its bind pose so the athlete performs in place and stays framed. Vertical bob and crouch are kept.
+// Library moves step and lunge around the ring (some even start off-centre) and turn the athlete away from the
+// camera, some by a quarter turn. Pin the root's horizontal position to its bind pose and centre the hips' yaw on
+// the bind facing (a soft allowance keeps the natural sway), so the athlete performs in place, facing the sponsor.
+// Vertical bob and crouch are kept.
 function anchoredClip(root, clip) {
   const out = clip.clone();
+  const hips = torsoChain(root)[0];
   for (const track of out.tracks) {
+    const { nodeName } = THREE.PropertyBinding.parseTrackName(track.name);
+    if (track.name.endsWith(".quaternion") && nodeName === hips?.name) { centreYaw(track, hips); continue; }
     if (!track.name.endsWith(".position") || track.times.length < 2) continue;
-    const bone = root.getObjectByName(THREE.PropertyBinding.parseTrackName(track.name).nodeName);
+    const bone = root.getObjectByName(nodeName);
     if (!bone) continue;
     const { values } = track;
     for (let i = 0; i < values.length; i += 3) {
@@ -162,6 +168,24 @@ function anchoredClip(root, clip) {
     }
   }
   return out;
+}
+
+const yawOf = (q, f = new THREE.Vector3()) => { f.set(0, 0, 1).applyQuaternion(q); return Math.atan2(f.x, f.z); };
+function centreYaw(track, hips) {
+  const { values } = track;
+  const q = new THREE.Quaternion(), turn = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+  const yaws = [];
+  let sin = 0, cos = 0;
+  for (let i = 0; i < values.length; i += 4) {
+    const yaw = yawOf(q.fromArray(values, i));
+    yaws.push(yaw); sin += Math.sin(yaw); cos += Math.cos(yaw);
+  }
+  const mean = Math.atan2(sin, cos), bind = yawOf(hips.quaternion);
+  for (let k = 0; k < yaws.length; k++) {
+    let d = yaws[k] - mean; d = Math.atan2(Math.sin(d), Math.cos(d));
+    const target = bind + YAW_ALLOWANCE * Math.tanh(d / YAW_ALLOWANCE);
+    q.fromArray(values, k * 4).premultiply(turn.setFromAxisAngle(up, target - yaws[k])).toArray(values, k * 4);
+  }
 }
 
 // One-frame clip holding the stance for every animated property, so moves can blend back to it: the first frame
@@ -221,7 +245,8 @@ export function createMotion(root, gltfClips, entries, { onChange, rest: restNam
   const moves = new Map(entries.filter((e) => byName.has(e.clip)).map((e) => [e.clip, { ...e, clip: anchoredClip(root, byName.get(e.clip)) }]));
   if (!moves.size) return null;
   const mixer = new THREE.AnimationMixer(root);
-  const rest = mixer.clipAction(restClip(root, [...moves.values()].map((m) => m.clip), byName.get(restName)));
+  const stance = byName.has(restName) ? anchoredClip(root, byName.get(restName)) : null;
+  const rest = mixer.clipAction(restClip(root, [...moves.values()].map((m) => m.clip), stance));
   const torso = torsoChain(root).map((bone) => [bone, bone.quaternion.clone()]);
   rest.play();
   mixer.update(0);
