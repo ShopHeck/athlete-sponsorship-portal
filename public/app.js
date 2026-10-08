@@ -287,8 +287,13 @@ const SIDE_RAY = {
 };
 const projector = new THREE.Raycaster();
 
+const LATERAL = new Set(["left", "right"]);
+
 function makeSlot(spot, side, meshes) {
-  const spec = { ...spot, side };
+  // Side rays map x to +z on the left and -z on the right, so a left/right mirror negates x to land on the
+  // world-symmetric spot (e.g. both sleeves when the arms hang slightly behind the torso).
+  const lateralMirror = side !== spot.side && LATERAL.has(side) && LATERAL.has(spot.side);
+  const spec = { ...spot, side, x: lateralMirror ? -spot.x : spot.x };
   const [origin, dir] = SIDE_RAY[side](spec.x, spec.y);
   projector.set(origin, dir);
   const hit = projector.intersectObjects(meshes, false)[0];
@@ -296,6 +301,9 @@ function makeSlot(spot, side, meshes) {
   const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
   if (normal.dot(dir) > 0) normal.negate();
   const m = new THREE.Matrix4().lookAt(hit.point.clone().add(normal), hit.point, new THREE.Vector3(0, 1, 0));
+  // `rotate` (degrees, counter-clockwise as seen by the sponsor) turns the artwork on the surface; w/h stay in
+  // the logo's own frame, so a 90° side panel is w long up the leg and h thick.
+  if (spec.rotate) m.multiply(new THREE.Matrix4().makeRotationZ(THREE.MathUtils.degToRad(spec.rotate)));
   const orientation = new THREE.Euler().setFromRotationMatrix(m);
   // DecalGeometry only reads geometry + matrixWorld, so skinned bodies are projected as currently posed.
   const target = hit.object.isSkinnedMesh

@@ -58,7 +58,7 @@
     "accentPanel": "#1a1512",
     "accentGradient": "#1d120b"
   },
-  "model": "/tenants/michael-heckert/models/heckert.glb",
+  "model": "/tenants/michael-heckert/models/michael-heckert-animated.glb",
   "ring": {
     "enabled": true,
     "padText": "BKFC",

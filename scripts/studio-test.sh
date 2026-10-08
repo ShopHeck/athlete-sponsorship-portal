@@ -259,7 +259,7 @@ check "live model blocks athlete rebuild" "$(curl -sS -o /dev/null -w '%{http_co
   "$BASE/api/dashboard/jordan-reyes/model/review" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" \
   -H 'content-type: application/json' -d "{\"jobId\":\"$JOB_ID\",\"decision\":\"rebuild\"}")" "409"
 curl -sS -o "$TMP_DIR/michael-portal.html" "$BASE/michael-heckert"
-if grep -Fq '/tenants/michael-heckert/models/heckert.glb' "$TMP_DIR/michael-portal.html"; then
+if grep -Fq '/tenants/michael-heckert/models/michael-heckert-animated.glb' "$TMP_DIR/michael-portal.html"; then
   echo "  ok   Michael portal keeps its tenant-configured model URL"
 else
   echo "  FAIL Michael portal keeps its tenant-configured model URL"
