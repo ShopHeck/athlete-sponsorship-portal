@@ -304,160 +304,158 @@
         {
           "id": "SF-L1",
           "name": "Front upper · Wearer's left",
-          "detail": "Camera-facing placement on the upper left leg of the black-and-gold shorts.",
+          "detail": "Front of the fight shorts, upper row of the 2 × 3 grid on the wearer's left leg.",
           "side": "front",
           "x": 0.09,
-          "y": 0.875,
+          "y": 0.865,
           "w": 0.15,
-          "h": 0.048,
-          "label": "Fight shorts · Front upper left leg"
+          "h": 0.058,
+          "label": "Fight shorts · Front upper · Wearer's left"
         },
         {
           "id": "SF-R1",
           "name": "Front upper · Wearer's right",
-          "detail": "Camera-facing placement on the upper right leg of the black-and-gold shorts.",
+          "detail": "Front of the fight shorts, upper row of the 2 × 3 grid on the wearer's right leg.",
           "side": "front",
           "x": -0.09,
-          "y": 0.875,
+          "y": 0.865,
           "w": 0.15,
-          "h": 0.048,
-          "label": "Fight shorts · Front upper right leg"
+          "h": 0.058,
+          "label": "Fight shorts · Front upper · Wearer's right"
         },
         {
           "id": "SF-L2",
           "name": "Front middle · Wearer's left",
-          "detail": "Camera-facing placement on the middle left leg of the black-and-gold shorts.",
+          "detail": "Front of the fight shorts, middle row of the 2 × 3 grid on the wearer's left leg.",
           "side": "front",
           "x": 0.09,
-          "y": 0.82,
+          "y": 0.795,
           "w": 0.15,
-          "h": 0.048,
-          "label": "Fight shorts · Front middle left leg"
+          "h": 0.058,
+          "label": "Fight shorts · Front middle · Wearer's left"
         },
         {
           "id": "SF-R2",
           "name": "Front middle · Wearer's right",
-          "detail": "Camera-facing placement on the middle right leg of the black-and-gold shorts.",
+          "detail": "Front of the fight shorts, middle row of the 2 × 3 grid on the wearer's right leg.",
           "side": "front",
           "x": -0.09,
-          "y": 0.82,
+          "y": 0.795,
           "w": 0.15,
-          "h": 0.048,
-          "label": "Fight shorts · Front middle right leg"
+          "h": 0.058,
+          "label": "Fight shorts · Front middle · Wearer's right"
         },
         {
           "id": "SF-L3",
           "name": "Front lower · Wearer's left",
-          "detail": "Camera-facing placement on the lower left leg of the black-and-gold shorts.",
+          "detail": "Front of the fight shorts, lower row of the 2 × 3 grid on the wearer's left leg.",
           "side": "front",
           "x": 0.09,
-          "y": 0.765,
+          "y": 0.725,
           "w": 0.15,
-          "h": 0.048,
-          "label": "Fight shorts · Front lower left leg"
+          "h": 0.058,
+          "label": "Fight shorts · Front lower · Wearer's left"
         },
         {
           "id": "SF-R3",
           "name": "Front lower · Wearer's right",
-          "detail": "Camera-facing placement on the lower right leg of the black-and-gold shorts.",
+          "detail": "Front of the fight shorts, lower row of the 2 × 3 grid on the wearer's right leg.",
           "side": "front",
           "x": -0.09,
-          "y": 0.765,
+          "y": 0.725,
           "w": 0.15,
-          "h": 0.048,
-          "label": "Fight shorts · Front lower right leg"
+          "h": 0.058,
+          "label": "Fight shorts · Front lower · Wearer's right"
         },
         {
           "id": "SS-L1",
-          "name": "Left side panel · Front stripe",
-          "detail": "Vertical wordmark running up the outer left thigh along the front seam, visible when he turns.",
+          "name": "Left side panel · Vertical",
+          "detail": "Vertical wordmark running down the wearer's left side panel.",
           "side": "left",
-          "x": 0.03,
-          "y": 0.82,
-          "w": 0.16,
-          "h": 0.04,
+          "x": 0,
+          "y": 0.765,
+          "w": 0.135,
+          "h": 0.036,
           "rotate": 90,
-          "label": "Fight shorts · Left side · Front stripe"
-        },
-        {
-          "id": "SS-L2",
-          "name": "Left side panel · Back stripe",
-          "detail": "Vertical wordmark running up the outer left thigh along the back seam, visible when he turns.",
-          "side": "left",
-          "x": -0.03,
-          "y": 0.82,
-          "w": 0.16,
-          "h": 0.04,
-          "rotate": 90,
-          "label": "Fight shorts · Left side · Back stripe"
+          "label": "Fight shorts · Left side panel · Vertical"
         },
         {
           "id": "SS-R1",
-          "name": "Right side panel · Front stripe",
-          "detail": "Vertical wordmark running up the outer right thigh along the front seam, visible when he turns.",
+          "name": "Right side panel · Vertical",
+          "detail": "Vertical wordmark running down the wearer's right side panel.",
           "side": "right",
-          "x": 0.03,
-          "y": 0.82,
-          "w": 0.16,
-          "h": 0.04,
+          "x": 0,
+          "y": 0.765,
+          "w": 0.135,
+          "h": 0.036,
           "rotate": 90,
-          "label": "Fight shorts · Right side · Front stripe"
-        },
-        {
-          "id": "SS-R2",
-          "name": "Right side panel · Back stripe",
-          "detail": "Vertical wordmark running up the outer right thigh along the back seam, visible when he turns.",
-          "side": "right",
-          "x": -0.03,
-          "y": 0.82,
-          "w": 0.16,
-          "h": 0.04,
-          "rotate": 90,
-          "label": "Fight shorts · Right side · Back stripe"
+          "label": "Fight shorts · Right side panel · Vertical"
         },
         {
           "id": "SB-L1",
           "name": "Back upper · Wearer's left",
-          "detail": "Broadcast and photo placement on the upper back of the left leg.",
+          "detail": "Back of the fight shorts, upper row of the 2 × 3 grid on the wearer's left leg.",
           "side": "back",
           "x": 0.09,
-          "y": 0.815,
+          "y": 0.81,
           "w": 0.15,
-          "h": 0.048,
-          "label": "Fight shorts · Back upper left leg"
+          "h": 0.052,
+          "label": "Fight shorts · Back upper · Wearer's left"
         },
         {
           "id": "SB-R1",
           "name": "Back upper · Wearer's right",
-          "detail": "Broadcast and photo placement on the upper back of the right leg.",
+          "detail": "Back of the fight shorts, upper row of the 2 × 3 grid on the wearer's right leg.",
           "side": "back",
           "x": -0.09,
-          "y": 0.815,
+          "y": 0.81,
           "w": 0.15,
-          "h": 0.048,
-          "label": "Fight shorts · Back upper right leg"
+          "h": 0.052,
+          "label": "Fight shorts · Back upper · Wearer's right"
         },
         {
           "id": "SB-L2",
-          "name": "Back lower · Wearer's left",
-          "detail": "Broadcast and photo placement on the lower back of the left leg.",
+          "name": "Back middle · Wearer's left",
+          "detail": "Back of the fight shorts, middle row of the 2 × 3 grid on the wearer's left leg.",
           "side": "back",
           "x": 0.09,
-          "y": 0.762,
+          "y": 0.75,
           "w": 0.15,
-          "h": 0.048,
-          "label": "Fight shorts · Back lower left leg"
+          "h": 0.052,
+          "label": "Fight shorts · Back middle · Wearer's left"
         },
         {
           "id": "SB-R2",
-          "name": "Back lower · Wearer's right",
-          "detail": "Broadcast and photo placement on the lower back of the right leg.",
+          "name": "Back middle · Wearer's right",
+          "detail": "Back of the fight shorts, middle row of the 2 × 3 grid on the wearer's right leg.",
           "side": "back",
           "x": -0.09,
-          "y": 0.762,
+          "y": 0.75,
           "w": 0.15,
-          "h": 0.048,
-          "label": "Fight shorts · Back lower right leg"
+          "h": 0.052,
+          "label": "Fight shorts · Back middle · Wearer's right"
+        },
+        {
+          "id": "SB-L3",
+          "name": "Back lower · Wearer's left",
+          "detail": "Back of the fight shorts, lower row of the 2 × 3 grid on the wearer's left leg.",
+          "side": "back",
+          "x": 0.09,
+          "y": 0.69,
+          "w": 0.15,
+          "h": 0.052,
+          "label": "Fight shorts · Back lower · Wearer's left"
+        },
+        {
+          "id": "SB-R3",
+          "name": "Back lower · Wearer's right",
+          "detail": "Back of the fight shorts, lower row of the 2 × 3 grid on the wearer's right leg.",
+          "side": "back",
+          "x": -0.09,
+          "y": 0.69,
+          "w": 0.15,
+          "h": 0.052,
+          "label": "Fight shorts · Back lower · Wearer's right"
         }
       ]
     },
@@ -470,156 +468,156 @@
         {
           "id": "TF-01",
           "name": "Front grid · Row 1, column 1",
-          "detail": "Front walkout T-shirt placement in the 3 × 3 sponsor grid.",
+          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
-          "x": -0.105,
-          "y": 1.432,
-          "w": 0.095,
-          "h": 0.072,
+          "x": -0.104,
+          "y": 1.392,
+          "w": 0.096,
+          "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 1, column 1"
         },
         {
           "id": "TF-02",
           "name": "Front grid · Row 1, column 2",
-          "detail": "Front walkout T-shirt placement in the 3 × 3 sponsor grid.",
+          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": 0,
-          "y": 1.432,
-          "w": 0.095,
-          "h": 0.072,
+          "y": 1.392,
+          "w": 0.096,
+          "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 1, column 2"
         },
         {
           "id": "TF-03",
           "name": "Front grid · Row 1, column 3",
-          "detail": "Front walkout T-shirt placement in the 3 × 3 sponsor grid.",
+          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
-          "x": 0.105,
-          "y": 1.432,
-          "w": 0.095,
-          "h": 0.072,
+          "x": 0.104,
+          "y": 1.392,
+          "w": 0.096,
+          "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 1, column 3"
         },
         {
           "id": "TF-04",
           "name": "Front grid · Row 2, column 1",
-          "detail": "Front walkout T-shirt placement in the 3 × 3 sponsor grid.",
+          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
-          "x": -0.105,
-          "y": 1.35,
-          "w": 0.095,
-          "h": 0.072,
+          "x": -0.104,
+          "y": 1.314,
+          "w": 0.096,
+          "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 2, column 1"
         },
         {
           "id": "TF-05",
           "name": "Front grid · Row 2, column 2",
-          "detail": "Front walkout T-shirt placement in the 3 × 3 sponsor grid.",
+          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": 0,
-          "y": 1.35,
-          "w": 0.095,
-          "h": 0.072,
+          "y": 1.314,
+          "w": 0.096,
+          "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 2, column 2"
         },
         {
           "id": "TF-06",
           "name": "Front grid · Row 2, column 3",
-          "detail": "Front walkout T-shirt placement in the 3 × 3 sponsor grid.",
+          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
-          "x": 0.105,
-          "y": 1.35,
-          "w": 0.095,
-          "h": 0.072,
+          "x": 0.104,
+          "y": 1.314,
+          "w": 0.096,
+          "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 2, column 3"
         },
         {
           "id": "TF-07",
           "name": "Front grid · Row 3, column 1",
-          "detail": "Front walkout T-shirt placement in the 3 × 3 sponsor grid.",
+          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
-          "x": -0.105,
-          "y": 1.268,
-          "w": 0.095,
-          "h": 0.072,
+          "x": -0.104,
+          "y": 1.236,
+          "w": 0.096,
+          "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 3, column 1"
         },
         {
           "id": "TF-08",
           "name": "Front grid · Row 3, column 2",
-          "detail": "Front walkout T-shirt placement in the 3 × 3 sponsor grid.",
+          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
           "x": 0,
-          "y": 1.268,
-          "w": 0.095,
-          "h": 0.072,
+          "y": 1.236,
+          "w": 0.096,
+          "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 3, column 2"
         },
         {
           "id": "TF-09",
           "name": "Front grid · Row 3, column 3",
-          "detail": "Front walkout T-shirt placement in the 3 × 3 sponsor grid.",
+          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
           "side": "front",
-          "x": 0.105,
-          "y": 1.268,
-          "w": 0.095,
-          "h": 0.072,
+          "x": 0.104,
+          "y": 1.236,
+          "w": 0.096,
+          "h": 0.066,
           "label": "Walkout T-shirt · Front grid · Row 3, column 3"
         },
         {
-          "id": "TB-01",
-          "name": "Upper back · Full width",
-          "detail": "Wide statement placement across the upper back of the walkout T-shirt.",
-          "side": "back",
-          "x": 0,
-          "y": 1.44,
-          "w": 0.26,
-          "h": 0.07,
-          "label": "Walkout T-shirt · Upper back"
+          "id": "TF-10",
+          "name": "Front grid · Row 4, column 1",
+          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "side": "front",
+          "x": -0.104,
+          "y": 1.158,
+          "w": 0.096,
+          "h": 0.066,
+          "label": "Walkout T-shirt · Front grid · Row 4, column 1"
         },
         {
-          "id": "TB-02",
-          "name": "Mid back · Full width",
-          "detail": "Wide statement placement across the mid back of the walkout T-shirt.",
-          "side": "back",
+          "id": "TF-11",
+          "name": "Front grid · Row 4, column 2",
+          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "side": "front",
           "x": 0,
-          "y": 1.35,
-          "w": 0.26,
-          "h": 0.07,
-          "label": "Walkout T-shirt · Mid back"
+          "y": 1.158,
+          "w": 0.096,
+          "h": 0.066,
+          "label": "Walkout T-shirt · Front grid · Row 4, column 2"
         },
         {
-          "id": "TB-03",
-          "name": "Lower back · Full width",
-          "detail": "Wide statement placement across the lower back of the walkout T-shirt.",
-          "side": "back",
-          "x": 0,
-          "y": 1.26,
-          "w": 0.26,
-          "h": 0.07,
-          "label": "Walkout T-shirt · Lower back"
+          "id": "TF-12",
+          "name": "Front grid · Row 4, column 3",
+          "detail": "Front walkout T-shirt placement in the 3 × 4 sponsor grid that starts 2 in below the neckline.",
+          "side": "front",
+          "x": 0.104,
+          "y": 1.158,
+          "w": 0.096,
+          "h": 0.066,
+          "label": "Walkout T-shirt · Front grid · Row 4, column 3"
         },
         {
           "id": "TS-01",
           "name": "Sleeve pair · Upper",
-          "detail": "Matching logo placement on both sleeves near the shoulder.",
+          "detail": "Wordmark on the outside of both sleeves, upper position.",
           "side": "left",
-          "x": 0,
-          "y": 1.47,
-          "w": 0.075,
-          "h": 0.042,
+          "x": -0.11,
+          "y": 1.365,
+          "w": 0.085,
+          "h": 0.0225,
           "mirror": "right",
           "label": "Walkout T-shirt · Sleeve pair · Upper"
         },
         {
           "id": "TS-02",
           "name": "Sleeve pair · Lower",
-          "detail": "Matching logo placement on both sleeves near the shoulder.",
+          "detail": "Wordmark on the outside of both sleeves, lower position.",
           "side": "left",
-          "x": 0,
-          "y": 1.415,
-          "w": 0.075,
-          "h": 0.042,
+          "x": -0.11,
+          "y": 1.318,
+          "w": 0.085,
+          "h": 0.0225,
           "mirror": "right",
           "label": "Walkout T-shirt · Sleeve pair · Lower"
         }
@@ -644,44 +642,44 @@
       "logo": "sponsors/sammy-sharks-gold.png"
     },
     "TF-05": {
-      "sponsor": "King Killers",
-      "logo": "sponsors/king-killers-gold.png"
-    },
-    "TF-06": {
       "sponsor": "LJC Construction",
       "logo": "sponsors/ljc-construction-gold.png"
+    },
+    "TF-06": {
+      "sponsor": "Nitro",
+      "logo": "sponsors/nitro-gold.png"
     },
     "TF-07": {
       "sponsor": "askkling",
       "logo": "sponsors/askkling.png"
     },
     "TF-08": {
-      "sponsor": "Boxrope",
-      "logo": "sponsors/boxrope-gold.png"
+      "sponsor": "Tummo Studios",
+      "logo": "sponsors/tummo-studios-gold.png"
     },
     "TF-09": {
       "sponsor": "Daunt",
       "logo": "sponsors/daunt-gold.png"
     },
-    "TB-01": {
-      "sponsor": "Nitro",
-      "logo": "sponsors/nitro-gold.png"
-    },
-    "TB-02": {
-      "sponsor": "Tummo Studios",
-      "logo": "sponsors/tummo-studios-gold.png"
-    },
-    "TB-03": {
+    "TF-10": {
       "sponsor": "BluefitMD",
       "logo": "sponsors/bluefitmd-gold.png"
     },
-    "TS-01": {
+    "TF-11": {
       "sponsor": "BabySNEK",
       "logo": "sponsors/babysnek-gold.png"
     },
-    "TS-02": {
+    "TF-12": {
       "sponsor": "Dustin LaChance Foundation",
       "logo": "sponsors/dustin-lachance-foundation-gold.png"
+    },
+    "TS-01": {
+      "sponsor": "King Killers",
+      "logo": "sponsors/king-killers-gold.png"
+    },
+    "TS-02": {
+      "sponsor": "Boxrope",
+      "logo": "sponsors/boxrope-gold.png"
     },
     "SF-L1": {
       "sponsor": "LJC Construction",
@@ -711,17 +709,9 @@
       "sponsor": "King Killers",
       "logo": "sponsors/king-killers-gold.png"
     },
-    "SS-L2": {
-      "sponsor": "Dustin LaChance Foundation",
-      "logo": "sponsors/dustin-lachance-foundation-gold.png"
-    },
     "SS-R1": {
       "sponsor": "Boxrope",
       "logo": "sponsors/boxrope-gold.png"
-    },
-    "SS-R2": {
-      "sponsor": "BabySNEK",
-      "logo": "sponsors/babysnek-gold.png"
     },
     "SB-L1": {
       "sponsor": "Sammy Sharks",
@@ -738,6 +728,14 @@
     "SB-R2": {
       "sponsor": "Daunt",
       "logo": "sponsors/daunt-gold.png"
+    },
+    "SB-L3": {
+      "sponsor": "BabySNEK",
+      "logo": "sponsors/babysnek-gold.png"
+    },
+    "SB-R3": {
+      "sponsor": "Dustin LaChance Foundation",
+      "logo": "sponsors/dustin-lachance-foundation-gold.png"
     }
   }
 }

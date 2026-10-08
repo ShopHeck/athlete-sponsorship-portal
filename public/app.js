@@ -287,8 +287,13 @@ const SIDE_RAY = {
 };
 const projector = new THREE.Raycaster();
 
+const LATERAL = new Set(["left", "right"]);
+
 function makeSlot(spot, side, meshes) {
-  const spec = { ...spot, side };
+  // Side rays map x to +z on the left and -z on the right, so a left/right mirror negates x to land on the
+  // world-symmetric spot (e.g. both sleeves when the arms hang slightly behind the torso).
+  const lateralMirror = side !== spot.side && LATERAL.has(side) && LATERAL.has(spot.side);
+  const spec = { ...spot, side, x: lateralMirror ? -spot.x : spot.x };
   const [origin, dir] = SIDE_RAY[side](spec.x, spec.y);
   projector.set(origin, dir);
   const hit = projector.intersectObjects(meshes, false)[0];
