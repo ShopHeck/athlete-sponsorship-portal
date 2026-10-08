@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Document } from "@gltf-transform/core";
 import { cloneDocument } from "@gltf-transform/functions";
-import { transferRigAnimations } from "../netlify/lib/rig-animations.mjs";
+import { sameUvLayout, transferRigAnimations } from "../netlify/lib/rig-animations.mjs";
 
 function fixture() {
   const doc = new Document(), buffer = doc.createBuffer();
@@ -78,4 +78,42 @@ test("refuses missing clips and ambiguous node names", () => {
   animate(source);
   rig.createNode("Hips");
   assert.throws(() => transferRigAnimations(rig, source), /unique target/);
+});
+
+test("matches reordered UV triangles within tolerance, including duplicates and vertex permutations", () => {
+  const a = [.5, .1, .5, .3, .7, .2], b = [.8, .1, .8, .3, .9, .2];
+  const shifted = [.5000002, .3, .7, .2, .5, .1];
+  const original = Object.freeze([a, b, a].map(t => Object.freeze([...t])));
+  assert.equal(sameUvLayout(original, [b, shifted, shifted]), true);
+  assert.equal(sameUvLayout([a, b], [b, a]), true);
+  assert.equal(sameUvLayout([a], [shifted]), true);
+  const edge = [.5000019, .1, .5000019, .2, .5000019, .3];
+  const across = edge.map((v, i) => i % 2 ? v : v + 2e-7);
+  assert.equal(sameUvLayout([edge, b], [b, across]), true);
+});
+
+test("reassigns ambiguous near-duplicates rather than consuming a needed triangle", () => {
+  const triangle = x => [x, .1, x, .2, x, .3];
+  const a = [triangle(.5000004), triangle(.5)];
+  const b = [triangle(.5000009), triangle(.5000013)];
+  assert.equal(sameUvLayout(a, b), true);
+  assert.equal(sameUvLayout(b, a), true);
+});
+
+test("rejects changed UV layouts, duplicate counts and invalid coordinates", () => {
+  const a = [.5, .1, .5, .3, .7, .2], b = [.8, .1, .8, .3, .9, .2];
+  const changed = [...a];
+  changed[0] += 2e-6;
+  assert.equal(sameUvLayout([a, b], [b, changed]), false);
+  assert.equal(sameUvLayout([a, a, b], [a, b, b]), false);
+  assert.equal(sameUvLayout([a], [a, a]), false);
+  assert.equal(sameUvLayout([[NaN, ...a.slice(1)]], [[NaN, ...a.slice(1)]]), false);
+});
+
+test("matches large duplicate UV layouts without recursive search or input mutation", () => {
+  const a = [0, .1, .2, .1, .1, .2], b = [.8, .1, 1, .1, .9, .2];
+  const originals = [b, ...Array(20000).fill(a)];
+  const shifted = a.map(v => v + 2e-7);
+  assert.equal(sameUvLayout(originals, [...Array(20000).fill(shifted), b]), true);
+  assert.equal(originals[0], b);
 });

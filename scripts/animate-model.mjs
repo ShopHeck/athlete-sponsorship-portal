@@ -11,7 +11,6 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { createHash } from "node:crypto";
 import { createAnimation, createRigging, downloadModel, getAnimation, getRigging } from "../netlify/lib/meshy.mjs";
 import { NodeIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
@@ -19,7 +18,7 @@ import { copyToDocument } from "@gltf-transform/functions";
 import draco3d from "draco3dgltf";
 import { optimizeGlb } from "../netlify/lib/optimize-glb.mjs";
 import { separateLimbWeights } from "../netlify/lib/skin-cleanup.mjs";
-import { transferRigAnimations } from "../netlify/lib/rig-animations.mjs";
+import { sameUvLayout, transferRigAnimations } from "../netlify/lib/rig-animations.mjs";
 
 // Idle, boxing warm-up, boxing practice, chest-pound taunt, victory fist pump, double-biceps flex, dodge & counter.
 const DEFAULT_ACTIONS = [0, 385, 87, 88, 403, 388, 93];
@@ -77,13 +76,6 @@ function uvTriangles(document, material, texCoord) {
     }
   }
   return triangles;
-}
-
-function sameUvLayout(a, b) {
-  if (a.length !== b.length) return false;
-  if (a.every((triangle, i) => triangle.every((value, c) => Math.abs(value - b[i][c]) <= 1e-6))) return true;
-  const signature = triangles => createHash("sha256").update(triangles.map(t => t.join(",")).sort().join("\n")).digest("hex");
-  return signature(a) === signature(b);
 }
 
 function restoreMaterials(document, source) {
