@@ -128,6 +128,12 @@ const TARGET = new THREE.Vector3(0, HOME.targetY, 0);
 camera.position.setFromSpherical(new THREE.Spherical(HOME.dist, HOME.polar, HOME.az)).add(TARGET);
 
 const controls = new OrbitControls(camera, canvas);
+const narrowViewport = window.matchMedia("(max-width:1100px)");
+function syncTouchScrolling() {
+  canvas.style.touchAction = narrowViewport.matches ? "pan-y" : "none";
+}
+narrowViewport.addEventListener("change", syncTouchScrolling);
+syncTouchScrolling();
 controls.target.copy(TARGET);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
@@ -551,7 +557,11 @@ function renderInventory() {
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function scrollSelectedIntoView() {
   const el = inventoryList.querySelector(".inventory-item.is-selected");
-  if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  if (!el) return;
+  const item = el.getBoundingClientRect();
+  const list = inventoryList.getBoundingClientRect();
+  const offset = item.top < list.top ? item.top - list.top : item.bottom > list.bottom ? item.bottom - list.bottom : 0;
+  if (offset) inventoryList.scrollBy({ top: offset, behavior: "smooth" });
 }
 const luminanceCache = new WeakMap();
 function isDarkArtwork(img) {
@@ -773,6 +783,7 @@ function pickSlot(e) {
   return raycaster.intersectObjects(slotMeshes.map((s) => s.mesh), false)[0];
 }
 canvas.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
+canvas.addEventListener("pointercancel", () => { downAt = null; setHovered(null); });
 canvas.addEventListener("pointerup", (e) => {
   if (!downAt) return;
   const moved = Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]);

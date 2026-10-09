@@ -24,25 +24,28 @@
 <body>
   <header class="nav" id="top">
     <a class="wordmark" href="/" aria-label="Athlete Sponsorship Portal home"><span class="wordmark-mark">ASP</span><span class="wordmark-text">Athlete Sponsorship Portal</span></a>
-    <nav class="nav-links" aria-label="Primary">
+    <nav class="nav-links" id="primaryNav" aria-label="Primary">
       <a href="#how">How it works</a>
       <a href="#case-study">Case study</a>
       <a href="#demos">Pick your sport</a>
       <a href="#founding">Founding offer</a>
       <a href="#faq">FAQ</a>
     </nav>
-    <a class="btn btn--primary btn--sm" href="#apply">Apply</a>
+    <div class="nav-actions">
+      <a class="btn btn--primary btn--sm" href="#apply">Apply</a>
+      <button class="nav-toggle" type="button" aria-controls="primaryNav" aria-expanded="false" hidden>Menu</button>
+    </div>
   </header>
 
   <main>
     <section class="hero">
       <div class="hero-copy">
         <p class="kicker">For fighters and athletes</p>
-        <h1>Sell every<br>inch of your<br><em>fight kit.</em></h1>
-        <p class="lede">A 360° sponsorship portal built around a 3D model of you. Sponsors spin you around, pick a placement on your shorts or walkout shirt, bid or lock it in — and pay you directly.</p>
+        <h1>Sell every inch<br>of your <em>fight kit.</em></h1>
+        <p class="lede">Your likeness. Every placement. One link. Give sponsors a 360° view of your fight kit, let them choose their spot, and get paid directly through Stripe.</p>
         <div class="hero-actions">
           <a class="btn btn--primary" href="#apply">Apply for a founding spot</a>
-          <a class="btn btn--ghost" href="/michael-heckert">See a sold-out portal</a>
+          <a class="btn btn--ghost" href="/michael-heckert">Explore Michael's portal</a>
         </div>
         <dl class="proof">
           <div><dt>Placements sold</dt><dd>12/12</dd></div>
@@ -53,26 +56,37 @@
       <figure class="hero-shot">
         <div class="browser">
           <div class="browser-bar"><i></i><i></i><i></i><span>athletes.michaelheckert.com/michael-heckert</span></div>
-          <img src="/assets/marketing/portal-hero.webp" width="1440" height="900" alt="Michael Heckert's sold-out sponsorship portal: a 3D model of Michael in his fight shorts and walkout shirt with every sponsor logo placed">
+          <a class="hero-preview" href="/michael-heckert" aria-label="Explore Michael Heckert's current kit in 3D">
+            <picture>
+              <source media="(max-width:640px)" srcset="/assets/marketing/portal-hero-mobile.webp" width="780" height="900">
+              <img src="/assets/marketing/portal-hero.webp" width="1440" height="900" fetchpriority="high" alt="Michael Heckert's current 3D likeness in a black sponsor T-shirt and knee-length boxing trunks with gold sponsor artwork">
+            </picture>
+            <span class="hero-preview-label">Explore the kit in 3D <span aria-hidden="true">→</span></span>
+          </a>
         </div>
-        <figcaption>Michael Heckert · BKFC Fight Night Clearwater · every placement sold</figcaption>
+        <figcaption>Michael Heckert · Current likeness &amp; sponsor kit</figcaption>
       </figure>
     </section>
 
     <section class="sponsors" aria-label="Brands that sponsored Michael Heckert">
-      <p class="kicker kicker--muted">Brands that bought placements on Michael's kit</p>
+      <p class="kicker kicker--muted">17 brands on Michael's current kit</p>
       <ul class="sponsor-wall">
-        <li><img src="/tenants/michael-heckert/sponsors/boxrope.png" alt="Boxrope" loading="lazy"></li>
-        <li><img src="/tenants/michael-heckert/sponsors/ljc-construction.png" alt="LJC Construction" loading="lazy"></li>
-        <li><img src="/tenants/michael-heckert/sponsors/nitro.png" alt="Nitro" loading="lazy"></li>
-        <li><img src="/tenants/michael-heckert/sponsors/tummo-studios.png" alt="Tummo Studios" loading="lazy"></li>
-        <li><img src="/tenants/michael-heckert/sponsors/sammy-sharks.png" alt="Sammy Sharks" loading="lazy"></li>
-        <li><img src="/tenants/michael-heckert/sponsors/bluefitmd.png" alt="BluefitMD" loading="lazy"></li>
-        <li><img src="/tenants/michael-heckert/sponsors/mekkalabs.png" alt="Mekkalabs" loading="lazy"></li>
-        <li><img src="/tenants/michael-heckert/sponsors/babysnek.png" alt="BabySNEK" loading="lazy"></li>
-        <li><img src="/tenants/michael-heckert/sponsors/watchmen.png" alt="Watchmen" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/king-killers-gold.png" alt="King Killers" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/boxrope-gold.png" alt="Boxrope" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/watchmen-gold.png" alt="Watchmen PMC" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/bhg-gold.png" alt="BHG" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/ljc-construction-gold.png" alt="LJC Construction" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/nitro-gold.png" alt="Nitro" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/tummo-studios-gold.png" alt="Tummo Studios" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/sammy-sharks-gold.png" alt="Sammy Sharks" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/bluefitmd-gold.png" alt="BluefitMD" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/mekkalabs-gold.png" alt="Mekkalabs" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/babysnek-gold.png" alt="BabySNEK" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/daunt-gold.png" alt="Daunt" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/dustin-lachance-foundation-gold.png" alt="Dustin LaChance Foundation" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/askkling.png" alt="askkling" loading="lazy"></li>
+        <li><img src="/tenants/michael-heckert/sponsors/beastmode-white.png" alt="#BEASTMODE App" loading="lazy"></li>
         <li><img src="/tenants/michael-heckert/sponsors/suited-ape-society.png" alt="Suited Ape Society" loading="lazy"></li>
-        <li><img src="/tenants/michael-heckert/sponsors/beastmode.png" alt="#BEASTMODE App" loading="lazy"></li>
         <li><img src="/tenants/michael-heckert/sponsors/pergram.png" alt="PerGram App" loading="lazy"></li>
       </ul>
     </section>
@@ -92,7 +106,7 @@
 
     <section class="section section--split">
       <figure class="feature-shot">
-        <img src="/assets/marketing/placement-closeup.webp" width="1440" height="900" alt="A selected sponsor placement on the 3D fight shorts with its print size and sponsor shown in a callout" loading="lazy">
+        <img src="/assets/marketing/placement-closeup.webp" width="800" height="900" alt="A selected sponsor placement on Michael's updated boxing trunks with its print size and sponsor shown in a callout" loading="lazy">
       </figure>
       <div>
         <header class="section-head">
@@ -113,14 +127,14 @@
       <div class="case-copy">
         <p class="kicker">Case study · BKFC Fight Night Clearwater</p>
         <h2>Sold out before<br><em>fight night.</em></h2>
-        <p>Michael “King Killer” Heckert put every sponsor placement on his fight shorts and walkout T-shirt into his portal, and every one sold — even though the portal launched late in his campaign.</p>
+        <p>Michael “King Killer” Heckert sold out his original 12-placement campaign, even with a late launch. Explore his updated likeness, 3×5 front-shirt grid, upper-back Watchmen artwork and knee-length boxing trunks in the current portal.</p>
         <a class="btn btn--ghost" href="/michael-heckert">Explore Michael's portal in 3D</a>
       </div>
       <dl class="case-stats">
         <div><dd>12/12</dd><dt>Placements sold</dt></div>
         <div><dd>$1,100</dd><dt>Average per placement</dt></div>
         <div><dd>$13K+</dd><dt>Sponsorship raised</dt></div>
-        <div><dd>9</dd><dt>Brands on one kit</dt></div>
+        <div><dd>17</dd><dt>Brands on the current kit</dt></div>
       </dl>
     </section>
 
