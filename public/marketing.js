@@ -2,6 +2,27 @@ const form = document.getElementById("applyForm");
 const errorEl = document.getElementById("applyError");
 const button = document.getElementById("applyButton");
 const success = document.getElementById("applySuccess");
+const navToggle = document.querySelector(".nav-toggle");
+const primaryNav = document.getElementById("primaryNav");
+if (navToggle && primaryNav) {
+  navToggle.hidden = false;
+  const setNavOpen = (open) => {
+    primaryNav.classList.toggle("is-open", open);
+    navToggle.setAttribute("aria-expanded", String(open));
+    navToggle.textContent = open ? "Close" : "Menu";
+  };
+  navToggle.addEventListener("click", () => setNavOpen(navToggle.getAttribute("aria-expanded") !== "true"));
+  primaryNav.addEventListener("click", (event) => {
+    if (event.target.closest("a")) setNavOpen(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && navToggle.getAttribute("aria-expanded") === "true") {
+      setNavOpen(false);
+      navToggle.focus();
+    }
+  });
+  window.matchMedia("(min-width:1081px)").addEventListener("change", () => setNavOpen(false));
+}
 
 function showError(message) {
   errorEl.textContent = message;
