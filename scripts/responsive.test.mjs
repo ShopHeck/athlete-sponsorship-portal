@@ -97,3 +97,13 @@ test("viewer allows vertical touch scrolling on narrow screens and resets on des
   onChange();
   assert.equal(canvas.style.touchAction, "none");
 });
+
+test("private studio scrolling and fixed-height breakpoints match the portal", () => {
+  const portal = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
+  const studio = readFileSync(new URL("../public/studio.css", import.meta.url), "utf8");
+  const desktop = css => Number(css.match(/@media\(min-width:(\d+)px\) and \(min-height:600px\)/)[1]);
+  const narrow = css => Number(css.match(/@media\(max-width:(\d+)px\)/)[1]);
+  assert.equal(desktop(studio), desktop(portal));
+  assert.equal(narrow(studio), narrow(portal));
+  assert.equal(narrow(studio) + 1, desktop(studio));
+});
