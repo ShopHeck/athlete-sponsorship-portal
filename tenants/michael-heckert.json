@@ -85,31 +85,10 @@
   "motion": {
     "label": "Moves",
     "rest": "Show_Both_Arm_Muscles",
-    "intro": "Punch_Combo",
     "clips": [
       {
         "clip": "Left_Jab_from_Guard",
         "label": "Jab"
-      },
-      {
-        "clip": "Left_Hook_from_Guard",
-        "label": "Hook"
-      },
-      {
-        "clip": "Right_Uppercut_from_Guard",
-        "label": "Uppercut"
-      },
-      {
-        "clip": "Punch_Combo",
-        "label": "Combo"
-      },
-      {
-        "clip": "Boxing_Guard_Prep_Straight_Punch",
-        "label": "Straight"
-      },
-      {
-        "clip": "Show_Both_Arm_Muscles",
-        "label": "Flex"
       },
       {
         "clip": "Victory_Chest_Beat",
