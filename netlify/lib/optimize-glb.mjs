@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NodeIO } from "@gltf-transform/core";
+import { NodeIO, TextureInfo } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { dedup, draco, prune, textureCompress } from "@gltf-transform/functions";
 import draco3d from "draco3dgltf";
@@ -122,12 +122,36 @@ async function largestTextureSize(document) {
   return largest;
 }
 
-export async function optimizeGlb(inputBytes) {
+export async function optimizeGlb(inputBytes, { linearColor = false, pbrTextureSize, texcoordBits = 12 } = {}) {
+  if (pbrTextureSize !== undefined && (!Number.isInteger(pbrTextureSize) || pbrTextureSize < 256 || pbrTextureSize > 4096)) {
+    throw new Error("PBR texture size must be an integer between 256 and 4096.");
+  }
+  if (!Number.isInteger(texcoordBits) || texcoordBits < 8 || texcoordBits > 16) {
+    throw new Error("Texture coordinate precision must be an integer between 8 and 16.");
+  }
   const io = new NodeIO()
     .registerExtensions(ALL_EXTENSIONS)
     .registerDependencies(await dracoModules());
   const document = await io.readBinary(new Uint8Array(inputBytes));
   const stats = modelStats(document);
+  if (linearColor) {
+    // Meshy's tightly packed color atlas bleeds at garment seams; other maps keep their mipmaps.
+    for (const material of document.getRoot().listMaterials()) {
+      if (material.getBaseColorTexture()) material.getBaseColorTextureInfo().setMinFilter(TextureInfo.MinFilter.LINEAR);
+    }
+  }
+  if (pbrTextureSize !== undefined) {
+    const materials = document.getRoot().listMaterials();
+    const colors = new Set(materials.flatMap((m) => [m.getBaseColorTexture(), m.getEmissiveTexture()]));
+    const maps = new Set(materials.flatMap((m) => [m.getNormalTexture(), m.getMetallicRoughnessTexture()]));
+    for (const texture of maps) {
+      if (!texture || colors.has(texture)) continue;
+      const image = await sharp(Buffer.from(texture.getImage()))
+        .resize({ width: pbrTextureSize, height: pbrTextureSize, fit: "inside", withoutEnlargement: true })
+        .png().toBuffer();
+      texture.setImage(image).setMimeType("image/png");
+    }
+  }
 
   await document.transform(
     dedup(),
@@ -138,7 +162,7 @@ export async function optimizeGlb(inputBytes) {
       resize: [4096, 4096],
       quality: 85
     }),
-    draco()
+    draco({ quantizeTexcoord: texcoordBits })
   );
 
   const textureSize = await largestTextureSize(document);

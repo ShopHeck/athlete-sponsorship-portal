@@ -259,7 +259,15 @@ check "live model blocks athlete rebuild" "$(curl -sS -o /dev/null -w '%{http_co
   "$BASE/api/dashboard/jordan-reyes/model/review" -H "Origin: $BASE" -H "Cookie: asp_dash=$JORDAN_COOKIE" \
   -H 'content-type: application/json' -d "{\"jobId\":\"$JOB_ID\",\"decision\":\"rebuild\"}")" "409"
 curl -sS -o "$TMP_DIR/michael-portal.html" "$BASE/michael-heckert"
-if grep -Fq '/tenants/michael-heckert/models/michael-heckert-animated.glb' "$TMP_DIR/michael-portal.html"; then
+if node -e '
+  const fs = require("fs");
+  const tenant = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+  const html = fs.readFileSync(process.argv[1], "utf8");
+  const raw = html.match(/<script type="application\/json" id="portal-config">([\s\S]*?)<\/script>/)?.[1];
+  const configured = tenant.model.startsWith("/") || /^https?:\/\//.test(tenant.model)
+    ? tenant.model : `/tenants/${tenant.slug}/${tenant.model}`;
+  process.exit(raw && JSON.parse(raw).model === configured ? 0 : 1);
+' "$TMP_DIR/michael-portal.html" tenants/michael-heckert.json; then
   echo "  ok   Michael portal keeps its tenant-configured model URL"
 else
   echo "  FAIL Michael portal keeps its tenant-configured model URL"
