@@ -146,6 +146,7 @@ export function readAnchor({ mesh, tri, sign }, outPoint, outNormal) {
 
 /* ---------------------------------------------------------- moves */
 const CROSSFADE = 0.45, SETTLE = 0.7, MIN_PLAY_SECONDS = 2.8;
+const GUARD_ENTER = 0.6, GUARD_EXIT = 0.15, GUARD_HOLD = 0.18;
 const YAW_ALLOWANCE = THREE.MathUtils.degToRad(28);
 
 // Library moves step and lunge around the ring (some even start off-centre) and turn the athlete away from the
@@ -243,46 +244,101 @@ function torsoChain(root) {
 // Moves the library doesn't have are keyframed here on the stance pose. Rotations are given about axes of the
 // stance's world frame (+X right, +Y up, +Z towards the sponsor) and ride along with the parent bone, so an elbow
 // flexes about the elbow wherever the upper arm went.
-const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
+const X = new THREE.Vector3(1, 0, 0);
 function turned(bone, rotations) {
   const parent = bone.parent.getWorldQuaternion(new THREE.Quaternion());
   const q = parent.clone().multiply(bone.quaternion);
   for (const [axis, deg] of rotations) q.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, THREE.MathUtils.degToRad(deg)));
   return parent.invert().multiply(q);
 }
-function quaternionTrack(bone, keys) {
-  const times = keys.map(([t]) => t), values = [];
-  for (const [, rotations] of keys) turned(bone, rotations).toArray(values, values.length);
-  return new THREE.QuaternionKeyframeTrack(`${bone.name}.quaternion`, times, values);
+const ease = (t, start, end) => {
+  const x = THREE.MathUtils.clamp((t - start) / (end - start), 0, 1);
+  return x * x * (3 - 2 * x);
+};
+
+function bendArm(arm, forearm, hand, target, pole, amount) {
+  const shoulder = arm.getWorldPosition(new THREE.Vector3());
+  const elbow = forearm.getWorldPosition(new THREE.Vector3());
+  const wrist = hand.getWorldPosition(new THREE.Vector3());
+  const upperLength = shoulder.distanceTo(elbow), lowerLength = elbow.distanceTo(wrist);
+  const direction = target.clone().sub(shoulder);
+  const distance = direction.length();
+  if (distance < 1e-6) return;
+  direction.divideScalar(distance);
+  const reach = THREE.MathUtils.clamp(distance, Math.abs(upperLength - lowerLength) + 1e-5, upperLength + lowerLength - 1e-5);
+  const along = (upperLength ** 2 - lowerLength ** 2 + reach ** 2) / (2 * reach);
+  const outward = pole.clone().projectOnPlane(direction).normalize();
+  const desiredElbow = shoulder.clone().addScaledVector(direction, along)
+    .addScaledVector(outward, Math.sqrt(Math.max(0, upperLength ** 2 - along ** 2)));
+  const baseArm = arm.quaternion.clone(), baseForearm = forearm.quaternion.clone();
+
+  const pointBone = (bone, from, to) => {
+    const parent = bone.parent.getWorldQuaternion(new THREE.Quaternion());
+    const swing = new THREE.Quaternion().setFromUnitVectors(from.normalize(), to.normalize());
+    bone.quaternion.premultiply(parent.clone().invert().multiply(swing).multiply(parent));
+  };
+  pointBone(arm, elbow.sub(shoulder), desiredElbow.sub(shoulder));
+  arm.updateMatrixWorld(true);
+  const rotatedElbow = forearm.getWorldPosition(new THREE.Vector3());
+  const rotatedWrist = hand.getWorldPosition(new THREE.Vector3());
+  pointBone(forearm, rotatedWrist.sub(rotatedElbow), target.clone().sub(rotatedElbow));
+  const finalArm = arm.quaternion.clone(), finalForearm = forearm.quaternion.clone();
+  arm.quaternion.copy(baseArm).slerp(finalArm, amount);
+  forearm.quaternion.copy(baseForearm).slerp(finalForearm, amount);
+  arm.updateMatrixWorld(true);
 }
 
-// Square to the sponsor, head bows, then the right fist goes up as the head lifts while the left fist beats the
-// chest three times; everything returns to the stance.
+function between(t, stops) {
+  for (let i = 1; i < stops.length; i++) {
+    if (t <= stops[i][0]) {
+      const [start, before] = stops[i - 1], [end, after] = stops[i];
+      return THREE.MathUtils.lerp(before, after, ease(t, start, end));
+    }
+  }
+  return stops.at(-1)[1];
+}
+
 function victoryChestBeat(root) {
   const bone = (name) => root.getObjectByName(name);
   const head = bone("Head"), spine = bone("Spine");
-  const rArm = bone("RightArm"), rFore = bone("RightForeArm"), lArm = bone("LeftArm"), lFore = bone("LeftForeArm");
-  if (![head, spine, rArm, rFore, lArm, lFore].every(Boolean)) return null;
-  const still = [];
-  const up = [[Z, -160], [X, 12]], upHold = [[Z, -165], [X, 14]];
-  // The beating arm rolls inward first so the elbow's hinge carries the fist across to the sternum.
-  const beatArm = [[Y, -80], [X, -20], [Z, 15]], liftArm = [[Y, -60], [X, -35], [Z, 25]];
-  const beatFore = [[X, -105]], liftFore = [[X, -80]];
-  const tracks = [
-    quaternionTrack(head, [[0, still], [0.45, [[X, 32]]], [1.0, [[X, 32]]], [1.55, [[X, -24]]], [3.0, [[X, -24]]], [3.7, still]]),
-    quaternionTrack(spine, [[0, still], [0.45, [[X, 7]]], [1.0, [[X, 7]]], [1.55, [[X, -5]]], [3.0, [[X, -5]]], [3.7, still]]),
-    quaternionTrack(rArm, [[0, still], [1.0, still], [1.55, up], [1.75, upHold], [3.0, upHold], [3.7, still]]),
-    quaternionTrack(rFore, [[0, still], [1.0, still], [1.55, [[X, -18]]], [3.0, [[X, -18]]], [3.7, still]]),
-    quaternionTrack(lArm, [
-      [0, still], [1.0, still], [1.4, liftArm], [1.6, beatArm], [1.82, liftArm], [2.05, beatArm], [2.27, liftArm], [2.5, beatArm],
-      [2.9, beatArm], [3.7, still]
-    ]),
-    quaternionTrack(lFore, [
-      [0, still], [1.0, still], [1.4, liftFore], [1.6, beatFore], [1.82, liftFore], [2.05, beatFore], [2.27, liftFore], [2.5, beatFore],
-      [2.9, beatFore], [3.7, still]
-    ])
-  ];
-  return new THREE.AnimationClip("Victory_Chest_Beat", 4.0, tracks);
+  const rArm = bone("RightArm"), rFore = bone("RightForeArm"), rHand = bone("RightHand");
+  const lArm = bone("LeftArm"), lFore = bone("LeftForeArm"), lHand = bone("LeftHand");
+  const bones = [head, spine, rArm, rFore, lArm, lFore];
+  if (![...bones, rHand, lHand].every(Boolean)) return null;
+  const initial = bones.map((b) => b.quaternion.clone());
+  const values = bones.map(() => []);
+  const times = [];
+  const beats = [[0, 0], [1.4, 0], [1.6, 1], [1.82, 0], [2.05, 1], [2.27, 0], [2.5, 1], [2.9, 1], [3.2, 0]];
+  for (let frame = 0; frame <= 120; frame++) {
+    const t = frame / 30;
+    bones.forEach((b, i) => b.quaternion.copy(initial[i]));
+    root.updateMatrixWorld(true);
+    const bow = ease(t, 0, 0.5) * (1 - ease(t, 1, 1.55));
+    const raised = ease(t, 1, 1.55) * (1 - ease(t, 3, 3.7));
+    spine.quaternion.copy(turned(spine, [[X, 7 * bow - 5 * raised]]));
+    spine.updateMatrixWorld(true);
+    head.quaternion.copy(turned(head, [[X, 32 * bow - 24 * raised]]));
+    head.updateMatrixWorld(true);
+
+    if (raised > 0) {
+      const shoulder = rArm.getWorldPosition(new THREE.Vector3());
+      const target = shoulder.clone().add(new THREE.Vector3(-0.015, 0.43, 0.16));
+      bendArm(rArm, rFore, rHand, target, new THREE.Vector3(-0.3, 0.15, 0.13), raised);
+    }
+    const left = ease(t, 1, 1.4) * (1 - ease(t, 3.1, 3.7));
+    if (left > 0) {
+      const shoulder = lArm.getWorldPosition(new THREE.Vector3());
+      const beat = between(t, beats);
+      const target = shoulder.clone().add(new THREE.Vector3(-0.14, -0.18 + 0.045 * (1 - beat), 0.11 + 0.10 * (1 - beat)));
+      bendArm(lArm, lFore, lHand, target, new THREE.Vector3(0.09, -0.3, 0.1), left);
+    }
+    times.push(t);
+    bones.forEach((b, i) => b.quaternion.toArray(values[i], values[i].length));
+  }
+  bones.forEach((b, i) => b.quaternion.copy(initial[i]));
+  root.updateMatrixWorld(true);
+  return new THREE.AnimationClip("Victory_Chest_Beat", 4,
+    bones.map((b, i) => new THREE.QuaternionKeyframeTrack(`${b.name}.quaternion`, times, values[i])));
 }
 
 function authoredClips(root) {
@@ -310,6 +366,8 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
   if (!moves.size) return null;
   const mixer = new THREE.AnimationMixer(root);
   const rest = mixer.clipAction(restClip(root, [...moves.values()].map((m) => m.clip), stance));
+  const jab = moves.get("Left_Jab_from_Guard");
+  const guard = jab && mixer.clipAction(restClip(root, [jab.clip], jab.clip));
   rest.play();
   mixer.update(0);
   root.updateMatrixWorld(true);
@@ -324,18 +382,36 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
     settling = SETTLE;
     onChange?.(null);
   }
-  mixer.addEventListener("finished", (e) => { if (e.action === current?.action) settle(); });
+  mixer.addEventListener("finished", (e) => {
+    if (e.action !== current?.action) return;
+    if (current.phase === "strike") {
+      const from = current.action;
+      guard.reset().play();
+      guard.crossFadeFrom(from, GUARD_EXIT, false);
+      current.action = guard;
+      current.phase = "recover";
+      current.elapsed = 0;
+    } else settle();
+  });
 
   function play(name) {
     const move = moves.get(name);
     if (!move) return;
     const prev = current ? current.action : rest;
+    if (current?.name === name) return;
+    if (move === jab) {
+      guard.reset().play();
+      guard.crossFadeFrom(prev, GUARD_ENTER, false);
+      current = { name, action: guard, phase: "enter", elapsed: 0 };
+      settling = 0;
+      onChange?.(name);
+      return;
+    }
     const action = mixer.clipAction(move.clip);
-    if (current?.action === action) return;
     const reps = Math.max(1, Math.round(MIN_PLAY_SECONDS / move.clip.duration));
     action.reset().setLoop(THREE.LoopRepeat, reps).play();
     action.clampWhenFinished = true;
-    action.crossFadeFrom(prev, CROSSFADE, false);
+    action.crossFadeFrom(prev, name === "Victory_Chest_Beat" ? 0.3 : CROSSFADE, false);
     current = { name, action };
     settling = 0;
     onChange?.(name);
@@ -357,6 +433,19 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
     update(dt) {
       if (!current && settling <= -0.1) return false; // one extra step lands exactly on the rest pose
       mixer.update(dt);
+      if (current?.phase === "enter" || current?.phase === "recover") {
+        current.elapsed += dt;
+        if (current.phase === "enter" && current.elapsed >= GUARD_ENTER) {
+          const action = mixer.clipAction(jab.clip);
+          action.reset().setLoop(THREE.LoopOnce, 1).play();
+          action.clampWhenFinished = true;
+          action.crossFadeFrom(guard, 0.1, false);
+          current.action = action;
+          current.phase = "strike";
+        } else if (current.phase === "recover" && current.elapsed >= GUARD_EXIT + GUARD_HOLD) {
+          settle();
+        }
+      }
       if (!current) {
         const wasSettling = settling > 0;
         settling -= dt;

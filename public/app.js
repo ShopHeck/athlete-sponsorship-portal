@@ -119,7 +119,8 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.55;
 
-const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 40);
+const HOME_FOV = 38;
+const camera = new THREE.PerspectiveCamera(HOME_FOV, 1, 0.1, 40);
 const HOME = isCardCapture
   ? { dist: 2.4, polar: 1.5, targetY: 1.6, az: -0.75 }
   : { dist: 3.05, polar: 1.57, targetY: 0.95, az: 0 };
@@ -470,6 +471,9 @@ function startPendingTurntable() {
 }
 function renderMotionBar(playing) {
   if (playing) controls.autoRotate = false;
+  if (playing === "Victory_Chest_Beat") {
+    flyTo({ polar: HOME.polar, dist: controls.maxDistance, targetY: 1.08, fov: 42 }, { duration: 0.6 });
+  }
   if (!motionBar) return;
   motionBar.querySelectorAll("[data-move]").forEach((b) => {
     const on = b.dataset.move === playing;
@@ -692,23 +696,25 @@ function setGarment(garment) {
 // One eased camera move at a time across azimuth, polar angle, distance and look-at height.
 let tween = null;
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-const homeFraming = () => ({ polar: HOME.polar, dist: HOME.dist, targetY: HOME.targetY });
+const homeFraming = () => ({ polar: HOME.polar, dist: HOME.dist, targetY: HOME.targetY, fov: HOME_FOV });
 function cameraPose() {
-  return { az: controls.getAzimuthalAngle(), polar: controls.getPolarAngle(), dist: camera.position.distanceTo(controls.target), targetY: controls.target.y };
+  return { az: controls.getAzimuthalAngle(), polar: controls.getPolarAngle(), dist: camera.position.distanceTo(controls.target), targetY: controls.target.y, fov: camera.fov };
 }
 function flyTo(to, { duration = 0.9, from = cameraPose(), onDone = null } = {}) {
   controls.autoRotate = false;
   turntablePending = false;
+  from = { ...cameraPose(), ...from };
   const pose = { ...from, ...to };
   let dAz = pose.az - from.az; dAz = Math.atan2(Math.sin(dAz), Math.cos(dAz));
   if (prefersReducedMotion) duration = 0.001;
-  tween = { from, delta: { az: dAz, polar: pose.polar - from.polar, dist: pose.dist - from.dist, targetY: pose.targetY - from.targetY }, t: 0, duration, onDone };
+  tween = { from, delta: { az: dAz, polar: pose.polar - from.polar, dist: pose.dist - from.dist, targetY: pose.targetY - from.targetY, fov: pose.fov - from.fov }, t: 0, duration, onDone };
   invalidate();
 }
 function rotateTo(azimuth) { flyTo({ az: azimuth }, { duration: 0.75 }); }
-function applyPose({ az, polar, dist, targetY }) {
+function applyPose({ az, polar, dist, targetY, fov = camera.fov }) {
   controls.target.y = targetY;
   camera.position.setFromSpherical(new THREE.Spherical(dist, polar, az)).add(controls.target);
+  if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
   camera.lookAt(controls.target);
 }
 function stepTween(dt) {
@@ -716,7 +722,7 @@ function stepTween(dt) {
   tween.t = Math.min(1, tween.t + dt / tween.duration);
   const e = easeInOut(tween.t);
   const { from, delta } = tween;
-  applyPose({ az: from.az + delta.az * e, polar: from.polar + delta.polar * e, dist: from.dist + delta.dist * e, targetY: from.targetY + delta.targetY * e });
+  applyPose({ az: from.az + delta.az * e, polar: from.polar + delta.polar * e, dist: from.dist + delta.dist * e, targetY: from.targetY + delta.targetY * e, fov: from.fov + delta.fov * e });
   invalidate();
   if (tween.t >= 1) {
     const done = tween.onDone;
@@ -732,7 +738,7 @@ function flyToPlacement(spot) {
   motion?.settle();
   const slot = slotFor(spot);
   const targetY = slot ? THREE.MathUtils.clamp(slot.point.y, 0.55, 1.5) : HOME.targetY;
-  flyTo({ az: SIDE_AZIMUTH[spot.side], polar: 1.55, dist: 1.85, targetY }, { duration: 1.05 });
+  flyTo({ az: SIDE_AZIMUTH[spot.side], polar: 1.55, dist: 1.85, targetY, fov: HOME_FOV }, { duration: 1.05 });
 }
 // Opening shot: start tight on the face, then pull back to the full athlete and begin a slow turntable.
 function playIntro() {
