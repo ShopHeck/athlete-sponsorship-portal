@@ -738,7 +738,7 @@ function flyToPlacement(spot) {
   motion?.settle();
   const slot = slotFor(spot);
   const targetY = slot ? THREE.MathUtils.clamp(slot.point.y, 0.55, 1.5) : HOME.targetY;
-  flyTo({ az: SIDE_AZIMUTH[spot.side], polar: 1.55, dist: 1.85, targetY }, { duration: 1.05 });
+  flyTo({ az: SIDE_AZIMUTH[spot.side], polar: 1.55, dist: 1.85, targetY, fov: HOME_FOV }, { duration: 1.05 });
 }
 // Opening shot: start tight on the face, then pull back to the full athlete and begin a slow turntable.
 function playIntro() {
