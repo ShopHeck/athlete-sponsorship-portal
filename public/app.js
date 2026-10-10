@@ -445,7 +445,7 @@ let bodyMoving = false;
 const motionBar = document.getElementById("motionBar");
 function setupMotion(root, clips) {
   if (!config.motion || !clips?.length) return;
-  motion = createMotion(root, clips, config.motion.clips, { rest: config.motion.rest, onChange: renderMotionBar, onSettled: startPendingTurntable });
+  motion = createMotion(root, clips, config.motion.clips, { rest: config.motion.rest, stance: config.motion.stance, onChange: renderMotionBar, onSettled: startPendingTurntable });
   if (!motion || isCardCapture || !motionBar) return;
   motionBar.setAttribute("aria-label", config.motion.label || "Moves");
   const title = document.createElement("span");

@@ -45,7 +45,7 @@
   "model": "models/demo-bjj-gi-women-animated.glb",
   "motion": {
     "label": "Moves",
-    "rest": "Idle",
+    "rest": "Power_Stance",
     "intro": "Chest_Pound_Taunt",
     "clips": [
       {
@@ -262,7 +262,7 @@
           "detail": "Sponsor mark on the athlete’s right chest panel.",
           "side": "front",
           "x": -0.12,
-          "y": 1.4,
+          "y": 1.452,
           "w": 0.11,
           "h": 0.08,
           "label": "Gi jacket · Front right chest"
@@ -272,8 +272,8 @@
           "name": "Front left chest",
           "detail": "Sponsor mark on the athlete’s left chest panel.",
           "side": "front",
-          "x": 0.12,
-          "y": 1.4,
+          "x": 0.115,
+          "y": 1.44,
           "w": 0.11,
           "h": 0.08,
           "label": "Gi jacket · Front left chest"
@@ -283,8 +283,8 @@
           "name": "Lower front · Left lapel",
           "detail": "Visible placement on the lower left lapel and skirt of the jacket.",
           "side": "front",
-          "x": 0.11,
-          "y": 1.08,
+          "x": 0.106,
+          "y": 1.11,
           "w": 0.13,
           "h": 0.09,
           "label": "Gi jacket · Lower front left lapel"
@@ -294,8 +294,8 @@
           "name": "Upper back · Large",
           "detail": "Wide statement placement across the upper back of the gi jacket.",
           "side": "back",
-          "x": 0,
-          "y": 1.43,
+          "x": 0.006,
+          "y": 1.456,
           "w": 0.25,
           "h": 0.13,
           "label": "Gi jacket · Upper back · Large"
@@ -305,8 +305,8 @@
           "name": "Lower back · Above belt",
           "detail": "Centered placement on the lower jacket just above the belt.",
           "side": "back",
-          "x": 0,
-          "y": 1.1,
+          "x": -0.001,
+          "y": 1.132,
           "w": 0.18,
           "h": 0.08,
           "label": "Gi jacket · Lower back above belt"
@@ -316,8 +316,8 @@
           "name": "Left sleeve · Center",
           "detail": "Sponsor mark on the athlete’s left gi sleeve.",
           "side": "left",
-          "x": 0,
-          "y": 1.4,
+          "x": 0.022,
+          "y": 1.449,
           "w": 0.13,
           "h": 0.08,
           "label": "Gi jacket · Left sleeve"
@@ -327,8 +327,8 @@
           "name": "Right sleeve · Center",
           "detail": "Sponsor mark on the athlete’s right gi sleeve.",
           "side": "right",
-          "x": 0,
-          "y": 1.4,
+          "x": 0.006,
+          "y": 1.464,
           "w": 0.13,
           "h": 0.08,
           "label": "Gi jacket · Right sleeve"
@@ -346,8 +346,8 @@
           "name": "Front left thigh",
           "detail": "Sponsor placement on the athlete’s left thigh.",
           "side": "front",
-          "x": 0.12,
-          "y": 0.82,
+          "x": 0.116,
+          "y": 0.834,
           "w": 0.12,
           "h": 0.1,
           "label": "Gi pants · Front left thigh"
@@ -357,8 +357,8 @@
           "name": "Front right thigh",
           "detail": "Sponsor placement on the athlete’s right thigh.",
           "side": "front",
-          "x": -0.12,
-          "y": 0.82,
+          "x": -0.102,
+          "y": 0.862,
           "w": 0.12,
           "h": 0.1,
           "label": "Gi pants · Front right thigh"
@@ -368,8 +368,8 @@
           "name": "Back left thigh",
           "detail": "Visible placement on the back of the athlete’s left thigh.",
           "side": "back",
-          "x": 0.12,
-          "y": 0.82,
+          "x": 0.129,
+          "y": 0.871,
           "w": 0.12,
           "h": 0.1,
           "label": "Gi pants · Back left thigh"

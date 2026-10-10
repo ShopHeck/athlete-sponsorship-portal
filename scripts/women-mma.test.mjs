@@ -34,7 +34,9 @@ async function load(document) {
 }
 
 test("Rosa opens in the new rest stance and keeps both distinct front sports-bra slots", () => {
-  assert.equal(config.motion.rest, spec.rest);
+  // The offline Fight_Stance clip stays in the GLB; the portal now synthesizes the shared Power_Stance instead.
+  assert.equal(config.motion.rest, "Power_Stance");
+  assert.ok(ready.getRoot().listAnimations().some((clip) => clip.getName() === spec.rest));
   assert.equal(config.motion.intro, undefined);
   assert.ok(config.demo);
   const placements = config.garments.flatMap((garment) => garment.placements);
@@ -86,7 +88,7 @@ test("the arms stay beside the thighs, feet are planted and settling restores th
     assert.ok(Math.abs(hand.x - hip.x) > 0.28, "Gloves must clear the shorts");
   }
   assert.ok(point("LeftFoot").x - point("RightFoot").x > 0.35);
-  assert.ok(Math.abs(point("LeftFoot").z - point("RightFoot").z) > 0.2);
+  assert.ok(Math.abs(point("LeftFoot").z - point("RightFoot").z) < 0.08, "The power stance is square-on");
   root.traverse((mesh) => {
     if (!mesh.isSkinnedMesh) return;
     mesh.skeleton.update();

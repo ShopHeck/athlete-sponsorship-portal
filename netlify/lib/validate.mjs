@@ -181,4 +181,25 @@ function validateMotion(config) {
   if (motion.intro !== undefined && !motion.clips.some((entry) => entry.clip === motion.intro)) {
     throw new Error(`tenant ${config.slug} motion.intro must name one of motion.clips`);
   }
+  if (motion.stance !== undefined) validateStance(config);
+}
+
+// Tuning for the "Power_Stance" rest that public/motion.js builds from the rig's bind pose.
+const STANCE_RANGES = {
+  stanceWidth: [0.8, 2], toeOutDegrees: [0, 30], kneeBend: [0, 0.1], chestDegrees: [-10, 15], chinDegrees: [-10, 20],
+  handDrop: [0.6, 1], handOut: [0, 0.5], handForward: [-0.2, 0.3], palmTurnDegrees: [-180, 180]
+};
+function validateStance(config) {
+  const { stance, rest } = config.motion;
+  if (rest !== "Power_Stance") throw new Error(`tenant ${config.slug} motion.stance requires motion.rest "Power_Stance"`);
+  if (!stance || typeof stance !== "object" || Array.isArray(stance)) {
+    throw new Error(`tenant ${config.slug} motion.stance must be an object`);
+  }
+  for (const [key, value] of Object.entries(stance)) {
+    const range = STANCE_RANGES[key];
+    if (!range) throw new Error(`tenant ${config.slug} motion.stance.${key} is not a stance option`);
+    if (!Number.isFinite(value) || value < range[0] || value > range[1]) {
+      throw new Error(`tenant ${config.slug} motion.stance.${key} must be a number from ${range[0]} to ${range[1]}`);
+    }
+  }
 }
