@@ -1,0 +1,96 @@
+{
+  "slug": "demo-mma-women",
+  "model": "models/demo-mma-women-animated.glb",
+  "placements": {
+    "SF-L1": {
+      "overhang": 0,
+      "palette": [
+        [
+          7,
+          106,
+          109
+        ]
+      ]
+    },
+    "SF-L2": {
+      "overhang": 0,
+      "palette": [
+        [
+          5,
+          102,
+          106
+        ]
+      ]
+    },
+    "SF-R1": {
+      "overhang": 0,
+      "palette": [
+        [
+          4,
+          104,
+          107
+        ]
+      ]
+    },
+    "SF-R2": {
+      "overhang": 0,
+      "palette": [
+        [
+          5,
+          102,
+          108
+        ]
+      ]
+    },
+    "SB-L1": {
+      "overhang": 0,
+      "palette": [
+        [
+          3,
+          108,
+          109
+        ]
+      ]
+    },
+    "SB-R1": {
+      "overhang": 0,
+      "palette": [
+        [
+          5,
+          107,
+          111
+        ]
+      ]
+    },
+    "TF-01": {
+      "overhang": 0,
+      "palette": [
+        [
+          5,
+          4,
+          9
+        ]
+      ]
+    },
+    "TF-02": {
+      "overhang": 0,
+      "palette": [
+        [
+          5,
+          7,
+          13
+        ]
+      ]
+    },
+    "TB-01": {
+      "overhang": 0,
+      "palette": [
+        [
+          5,
+          4,
+          7
+        ]
+      ]
+    }
+  }
+}

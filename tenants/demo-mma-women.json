@@ -47,30 +47,9 @@
     "label": "Moves",
     "rest": "Power_Stance",
     "clips": [
-      {
-        "clip": "Boxing_Warmup",
-        "label": "Warm-up"
-      },
-      {
-        "clip": "Boxing_Practice",
-        "label": "Shadowbox"
-      },
-      {
-        "clip": "Dodge_and_Counter",
-        "label": "Slip & counter"
-      },
-      {
-        "clip": "Chest_Pound_Taunt",
-        "label": "Taunt"
-      },
-      {
-        "clip": "Show_Both_Arm_Muscles",
-        "label": "Flex"
-      },
-      {
-        "clip": "Victory_Fist_Pump",
-        "label": "Victory"
-      }
+      { "clip": "Victory_Fist_Pump", "label": "Victory" },
+      { "clip": "Boxing_Practice", "label": "Shadowbox" },
+      { "clip": "Chest_Pound_Taunt", "label": "Taunt" }
     ]
   },
   "modelFacing": "positive-z",
