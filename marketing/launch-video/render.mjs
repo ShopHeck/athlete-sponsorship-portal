@@ -7,7 +7,7 @@ import { createServer } from 'node:http';
 import { createReadStream, existsSync, mkdirSync, statSync } from 'node:fs';
 import { spawn, execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { dirname, extname, join, resolve } from 'node:path';
+import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -22,7 +22,7 @@ try { pw = require('playwright'); } catch { pw = require(join(execSync('npm root
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.ttf': 'font/ttf', '.svg': 'image/svg+xml' };
 const server = createServer((req, res) => {
   const path = join(ROOT, decodeURIComponent(new URL(req.url, 'http://x').pathname));
-  if (!path.startsWith(ROOT) || !existsSync(path) || statSync(path).isDirectory()) { res.writeHead(404); res.end(); return; }
+  if (!(path === ROOT || path.startsWith(ROOT + sep)) || !existsSync(path) || statSync(path).isDirectory()) { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { 'content-type': TYPES[extname(path)] || 'application/octet-stream' });
   createReadStream(path).pipe(res);
 }).listen(0, '127.0.0.1');
@@ -52,16 +52,22 @@ if (args.stills) {
     ...(withAudio ? ['-ss', String(from), '-t', String(to - from), '-i', wav] : []),
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '17', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
     ...(withAudio ? ['-c:a', 'aac', '-b:a', '256k', '-shortest'] : []), out], { stdio: ['pipe', 'inherit', 'inherit'] });
+  const ffDone = new Promise((res, rej) => {
+    ff.on('error', rej);
+    ff.on('close', (code) => (code === 0 ? res() : rej(new Error(`ffmpeg exited with code ${code}`))));
+  });
+  ffDone.catch(() => {}); // surfaced below; keeps an early exit from becoming an unhandled rejection
+  ff.stdin.on('error', () => {}); // EPIPE when ffmpeg dies early; ffDone carries the real error
   const total = Math.round((to - from) * fps);
   const started = Date.now();
   for (let i = 0; i < total; i++) {
     await page.evaluate((t) => window.__seek(t), from + i / fps);
     const buf = await page.screenshot({ type: 'jpeg', quality: 96 });
-    if (!ff.stdin.write(buf)) await new Promise((r) => ff.stdin.once('drain', r));
+    if (!ff.stdin.write(buf)) await Promise.race([new Promise((r) => ff.stdin.once('drain', r)), ffDone]);
     if (i % 60 === 0) console.log(`frame ${i}/${total} · ${Math.round((Date.now() - started) / 1000)}s`);
   }
   ff.stdin.end();
-  await new Promise((r) => ff.on('close', r));
+  await ffDone;
   console.log('wrote', out);
 }
 await browser.close();

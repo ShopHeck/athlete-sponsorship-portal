@@ -333,7 +333,7 @@ let pending = [];
 function foot(img, shot, f) {
   const n = SHOTS[shot];
   const src = `frames/${shot}/${pad(clamp(Math.floor(f), 0, n - 1))}.jpg`;
-  if (img.dataset.src !== src) { img.dataset.src = src; img.src = src; pending.push(img.decode().catch(() => {})); }
+  if (img.dataset.src !== src) { img.dataset.src = src; img.src = src; pending.push(img.decode().catch(() => { throw new Error(`missing footage ${src} (run capture.mjs ${shot})`); })); }
 }
 
 /* ------------------------------------------------------------- timeline */
@@ -465,7 +465,7 @@ function draw(t) {
     $('#s2-frame .clip').style.clipPath = `inset(0 0 ${(1 - reveal) * 100}% 0)`;
     css($('#s2-edge'), { top: `${reveal * 800 - 2}px`, opacity: reveal > 0 && reveal < 1 ? 1 : 0 });
     $('#s2-wire').style.opacity = 1 - prog(t, 9.9, 10.8);
-    const spinF = (t - 9.45) * 30 * 1.45;
+    const spinF = (t - 9.45) * 30 * 1.58; // full 360° (149 frames) by the 12.6 s cut
     foot($('#s2-img'), 'heck-spin', Math.max(0, spinF));
     fadeUp($('#s2-label'), t, 10.0, 0.4, 10);
     fadeUp($('#s2-deg'), t, 10.0, 0.4, -10);

@@ -35,15 +35,19 @@ const STAGE_CSS = `
   #modelStage{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;z-index:99999!important;margin:0!important;border:0!important;border-radius:0!important}
   #rotatePrev,#rotateNext,.orientation,.viewer-hint,.stage-hint,.viewer-foot{display:none!important}`;
 
+const pages = [];
 async function open(browser, slug, { w, h, stage = true }) {
   const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
   await page.addInitScript(INIT);
   page.on('pageerror', (e) => console.error(slug, 'pageerror:', e.message));
   await page.goto(`${BASE}/${slug}`, { waitUntil: 'networkidle' });
   await page.waitForFunction(() => { const l = document.getElementById('viewerLoading'); return !l || l.hidden || getComputedStyle(l).display === 'none' || getComputedStyle(l).opacity === '0'; }, null, { timeout: 180000 });
-  if (stage) { await page.addStyleTag({ content: STAGE_CSS }); await page.evaluate(() => window.dispatchEvent(new Event('resize'))); }
-  await page.waitForTimeout(1500);
+  // Freeze as soon as the model is up so intro shots start on the intro's opening pose.
   await page.evaluate(() => window.__freeze());
+  if (stage) { await page.addStyleTag({ content: STAGE_CSS }); await page.evaluate(() => window.dispatchEvent(new Event('resize'))); }
+  await page.waitForTimeout(1500); // logo textures and the resized canvas settle; the frozen clock does not advance
+  await skip(page, 1);
+  pages.push(page);
   return page;
 }
 // Advance without capturing; reading one pixel back makes the GPU finish each frame so work does not pile up.
@@ -87,7 +91,8 @@ const SHOTS = {
   },
   'heck-close': async (b) => {
     const p = await open(b, 'michael-heckert', { w: 1920, h: 1080 }); await skip(p, 85);
-    const plan = { 0: () => selectSpot(p, 'SF-L1'), 40: () => selectSpot(p, 'SF-R2'), 80: async () => { await garment(p, 'shirt'); await selectSpot(p, 'TF-05'); }, 125: () => selectSpot(p, 'TB-04') };
+    // The inventory lists only the side facing the camera, so every target here is a front placement.
+    const plan = { 0: () => selectSpot(p, 'SF-L1'), 40: () => selectSpot(p, 'SF-R2'), 80: async () => { await garment(p, 'shirt'); await selectSpot(p, 'TF-05'); } };
     await record(p, 'heck-close', 170, (i) => plan[i]?.());
   },
   'heck-victory': async (b) => {
@@ -121,6 +126,8 @@ const names = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys
 const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 for (const name of names) {
   if (!SHOTS[name]) throw new Error(`unknown shot ${name}; known: ${Object.keys(SHOTS).join(', ')}`);
-  const t = Date.now(); await SHOTS[name](browser); console.log(name, `done in ${Math.round((Date.now() - t) / 1000)}s`);
+  const t = Date.now();
+  try { await SHOTS[name](browser); } finally { await Promise.all(pages.splice(0).map((p) => p.close())); } // free each shot's WebGL scene
+  console.log(name, `done in ${Math.round((Date.now() - t) / 1000)}s`);
 }
 await browser.close();
