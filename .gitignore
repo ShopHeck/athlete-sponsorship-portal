@@ -7,3 +7,8 @@ deno.lock
 dist/
 public/vendor/
 netlify/lib/platform.generated.json
+
+# launch video: captured footage and render scratch
+marketing/launch-video/frames
+marketing/launch-video/soundtrack.wav
+marketing/launch-video/soundtrack-reels.wav
