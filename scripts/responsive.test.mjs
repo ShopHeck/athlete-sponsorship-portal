@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 
 const marketing = readFileSync(new URL("../public/marketing.js", import.meta.url), "utf8");
 const viewer = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
@@ -84,6 +85,15 @@ test("homepage hero showcases the product with explicitly illustrative data and 
   assert.match(hero, /Michael Heckert’s original campaign/);
   assert.doesNotMatch(hero, /portal-hero(?:-mobile)?\.webp/);
   assert.doesNotMatch(hero, /<(?:button|input|select)\b/);
+});
+
+test("homepage stylesheet URL changes with its contents to avoid stale cached hero styles", () => {
+  const homepage = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../public/marketing.css", import.meta.url));
+  const href = homepage.match(/<link rel="stylesheet" href="([^"]+)">/)[1];
+  const url = new URL(href, "https://example.test");
+  assert.equal(url.pathname, "/marketing.css");
+  assert.equal(url.searchParams.get("v"), createHash("sha256").update(css).digest("hex").slice(0, 12));
 });
 
 test("homepage social preview exists and agrees with its declared dimensions", async () => {

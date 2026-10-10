@@ -117,6 +117,13 @@ echo "4. marketing and tenant routes"
 ROOT_CODE=$(curl -sS -o "$TMP_DIR/root.html" -w '%{http_code}' "$BASE/")
 check "homepage returns 200" "$ROOT_CODE" "200"
 if grep -Fq 'Your kit.' "$TMP_DIR/root.html"; then echo "  ok   homepage contains the marketing headline"; else echo "  FAIL homepage contains the marketing headline"; FAIL=1; fi
+CSS_PATH=$(sed -n 's/.*href="\(\/marketing\.css[^"]*\)".*/\1/p' "$TMP_DIR/root.html")
+if [[ "$CSS_PATH" == /marketing.css\?v=* ]]; then
+  check "homepage's versioned stylesheet returns 200" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE$CSS_PATH")" "200"
+else
+  echo "  FAIL homepage references a versioned stylesheet"
+  FAIL=1
+fi
 for path in \
   /terms/ /privacy/ /robots.txt /sitemap.xml /marketing.css /marketing.js \
   /assets/marketing/feature-overview.jpg /assets/marketing/placement-closeup.webp
