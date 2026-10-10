@@ -10,10 +10,13 @@ operating one. `reference/gotchas.md` first when debugging.
 
 ## Commands
 - Build and validate every tenant: `npm run build`
-- Dev server (functions + Blobs sandbox): run `npm run build` first, then `npx netlify dev`
-- End-to-end test, no real Stripe/Resend:
+- Unit tests (no server needed): `node --test scripts/*.test.mjs`; one file or test:
+  `node --test --test-name-pattern="<name>" scripts/motion.test.mjs`. `npm test` is a stub; do not use it.
+- Dev server (functions + Blobs sandbox): run `npm run build` first, then `npx netlify dev --offline --port 8890`
+- End-to-end test, no real Stripe/Resend/Meshy:
   First build the test-only tenant registry with `INCLUDE_TEST_TENANTS=1 npm run build`.
-  `MOCK_PORT=4343 node scripts/mock-services.mjs &` then `netlify dev` with
+  `MOCK_PORT=4343 node scripts/mock-services.mjs &` then `npx netlify dev --offline --port 8890` with
+  `STRIPE_SECRET_KEY=sk_test_mock`, `RESEND_API_KEY=re_mock`,
   `STRIPE_API_BASE`/`RESEND_API_BASE=http://127.0.0.1:4343`, `PLATFORM_URL=http://localhost:8890`,
   `PREVIEW_TOKEN=devpreview`, `ADMIN_TOKEN=devtoken`, `STRIPE_WEBHOOK_SECRET=whsec_platform_test`, and
   `STRIPE_CONNECT_WEBHOOK_SECRET=whsec_connect_test`, `DASHBOARD_SECRET=devdashboard`,
@@ -28,11 +31,39 @@ operating one. `reference/gotchas.md` first when debugging.
   `scripts/studio-test.sh http://localhost:8890` and
   `scripts/apply-test.sh http://localhost:8890`
   → must print `SMOKE TEST PASSED`, `TENANT TEST PASSED`, `CONNECT TEST PASSED`, `WEBHOOK TEST PASSED`,
-  `DASHBOARD TEST PASSED`, `SELFSERVE TEST PASSED`, and `APPLY TEST PASSED`.
+  `DASHBOARD TEST PASSED`, `SELFSERVE TEST PASSED`, `STUDIO TEST PASSED`, and `APPLY TEST PASSED`.
   Reset the sandbox with `rm -rf .netlify/blobs-serve` and restart the mock service before each script.
-- Syntax check: `for f in public/app.js public/arena.js public/motion.js netlify/lib/*.mjs netlify/functions/*.mjs scripts/*.mjs; do node --check "$f" || exit 1; done; for f in scripts/*.sh; do bash -n "$f" || exit 1; done`
+- Syntax check: `for f in public/*.js netlify/lib/*.mjs netlify/functions/*.mjs scripts/*.mjs; do node --check "$f" || exit 1; done; for f in scripts/*.sh; do bash -n "$f" || exit 1; done`
 - Package the skill for Claude / Codex / ChatGPT: `scripts/package-skill.sh` → `dist/skill/`
 - Production deploys happen from Git (`main`) via Netlify; do not `netlify deploy` a linked site.
+
+## Architecture
+- **No framework, no frontend bundler.** Netlify Functions (`netlify/functions/*.mjs`, esbuild) each declare their
+  own route via `export const config = { path }`; `netlify.toml` has no redirects. The browser loads plain ES
+  modules from `public/`; `three` and MediaPipe are copied into the ignored `public/vendor/` by the build.
+- **Static tenant registry.** `scripts/build.mjs` validates `tenants/*.json` with `netlify/lib/validate.mjs`,
+  smoke-renders each, and writes the ignored `netlify/lib/platform.generated.json` (configs + `src/index.template.html`).
+  Functions import that file, so rebuild after any tenant, template or validator change.
+  `INCLUDE_TEST_TENANTS=1` also pulls in `scripts/fixtures/tenants/` (e.g. `platform-fixture`).
+- **Dynamic (self-serve) tenants.** `netlify/lib/tenant-store.mjs` stores athlete settings plus a starter `kitId`;
+  `starter-kits.mjs` `materializeConfig` expands them into a full config that passes the same `validateConfig`.
+  `netlify/lib/tenants.mjs` `getTenant` resolves static first, then dynamic; `resolveTenantForApi` applies
+  draft/preview-token rules for API handlers.
+- **Rendering.** `portal.mjs` → `render.mjs` fills the `{{…}}` template and inlines the tenant config as
+  `#portal-config`. `public/app.js` is the Three.js viewer and bid UI; `arena.js` builds ring styles, `motion.js`
+  handles rigged clips and skinned decals. `dashboard.js`, `studio.js`, `admin.js` drive the athlete and operator UIs.
+- **Sponsorship logic.** `netlify/lib/sponsorship.mjs` `forTenant(config)` returns tenant-bound bid/lock/invoice/
+  email handlers (Stripe and Resend over raw `fetch`, base URLs overridable for mocks). `connect.mjs` decides
+  platform vs. connected account. `lib/close-auction.mjs` is shared by the `@daily` `close-auction` function and
+  the admin `/api/close-auction` endpoint.
+- **Model Studio.** `dashboard-api.mjs` drives `reference-views.mjs` (Meshy image generation, athlete approval) →
+  `model-build.mjs` `startBuild`, which POSTs to `model-build-background` signed with `x-build-signature`
+  (HMAC of `DASHBOARD_SECRET`) → `model-build-process.mjs` (`optimize-glb`, `rig-animations`, `skin-cleanup`) →
+  `model-review.mjs` publishes a live pointer served by `live-model.mjs`.
+- **Auth.** `netlify/lib/dashboard-auth.mjs` owns emailed login tokens, athlete and admin session cookies, and the
+  same-origin check.
+- **Tests.** The `scripts/*-test.sh` suites are curl-based black-box tests against `netlify dev`;
+  `scripts/mock-services.mjs` fakes Stripe, Resend and Meshy (`/__mock/...` control endpoints).
 
 ## Rules
 - Base PRs on `main`; never stack. Verify the Netlify build is live after merging.
