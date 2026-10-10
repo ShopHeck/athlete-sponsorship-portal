@@ -28,7 +28,7 @@ cp "$SRC/gpt/instructions.md" "$OUT/chatgpt/instructions.md"
 chars=$(wc -m < "$OUT/chatgpt/instructions.md" | tr -d ' ')
 if [ "$chars" -gt 8000 ]; then echo "ERROR: GPT instructions are $chars characters (limit 8000)"; exit 1; fi
 cp "$SRC/SKILL.md" "$OUT/chatgpt/knowledge/00-playbook-SKILL.md"
-for f in intake configuration launch-checklist gotchas; do cp "$SRC/reference/$f.md" "$OUT/chatgpt/knowledge/$f.md"; done
+cp "$SRC"/reference/*.md "$OUT/chatgpt/knowledge/"
 cp "$ROOT/scripts/smoke-test.sh" "$OUT/chatgpt/knowledge/smoke-test.sh.md"          # GPT knowledge accepts .md reliably
 cp "$ROOT/netlify.toml" "$OUT/chatgpt/knowledge/netlify.toml.md"
 
