@@ -67,6 +67,20 @@ test("missing homepage elements are safe", () => {
   });
 });
 
+test("homepage sponsor board includes 18 distinct brands without adding HKA to apparel", () => {
+  const homepage = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+  const board = homepage.match(/<ul class="sponsor-wall">([\s\S]*?)<\/ul>/)[1];
+  const brands = [...board.matchAll(/<img src="([^"]+)" alt="([^"]+)"/g)];
+  assert.equal(brands.length, 18);
+  assert.equal(new Set(brands.map(([, , name]) => name)).size, 18);
+  for (const [, src] of brands) assert.ok(readFileSync(new URL(`../public${src}`, import.meta.url)).length);
+  assert.equal(brands.filter(([, src, name]) => src.endsWith("/hka-usa-gold.png") && name === "HKA USA").length, 1);
+  assert.match(homepage, /18 brands backing Michael Heckert/);
+  assert.match(homepage, /<dd>18<\/dd><dt>Brands on the sponsor board<\/dt>/);
+  const tenant = readFileSync(new URL("../tenants/michael-heckert.json", import.meta.url), "utf8");
+  assert.doesNotMatch(tenant, /hka-usa|HKA USA/);
+});
+
 const scrollSource = viewer.match(/function scrollSelectedIntoView\(\) \{[\s\S]*?\n\}/)[0];
 for (const [name, item, expected] of [
   ["above", { top: 50, bottom: 100 }, -50],
