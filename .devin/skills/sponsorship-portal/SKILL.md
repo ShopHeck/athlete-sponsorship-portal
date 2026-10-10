@@ -14,6 +14,7 @@ skip what the user has already completed. Read the relevant reference before edi
 | `configuration.md` | Tenant JSON, placements, sold sponsors, assets, copy, branding, ring and model setup — Phase 1 |
 | `launch-checklist.md` | Tenant preview, Netlify, Stripe, Resend, domain, embed, and operations — Phases 2–4 |
 | `gotchas.md` | Known build, API, and operational traps |
+| `model-studio-testing.md` | Fake-only browser testing of Model Studio review and publication |
 
 ## How the platform works
 
