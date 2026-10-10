@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 import * as THREE from "three";
-import { POWER_STANCE, powerStance } from "../public/motion.js";
+import { POWER_STANCE, createMotion, powerStance } from "../public/motion.js";
 import { validateConfig } from "../netlify/lib/validate.mjs";
-import { loadPosed } from "./refit-placements.mjs";
+import { loadPosed, refit } from "./refit-placements.mjs";
 
 const tenantsDir = new URL("../tenants/", import.meta.url);
 const configs = [];
@@ -116,4 +116,21 @@ test("motion.stance accepts known options in range and only with the power stanc
   assert.throws(() => validateConfig(withStance({ stance: { elbowFlare: 1 } }), `${base.slug}.json`), /not a stance option/);
   assert.throws(() => validateConfig(withStance({ stance: { kneeBend: 0.5 } }), `${base.slug}.json`), /from 0 to 0.1/);
   assert.throws(() => validateConfig(withStance({ rest: "Idle", stance: {} }), `${base.slug}.json`), /requires motion.rest/);
+});
+
+test("a rig without GLB clips still gets the stance and authored moves", async () => {
+  const config = configs.find(({ slug }) => slug === "demo-nogi-men");
+  const { root } = await loadPosed(new URL(`../public/tenants/${config.slug}/${config.model}`, import.meta.url).pathname,
+    { ...config, motion: { ...config.motion, rest: "none" } }, "none");
+  const motion = createMotion(root, [], [{ clip: "Victory_Chest_Beat", label: "Victory" }], { rest: POWER_STANCE });
+  assert.deepEqual(motion.moves.map(({ name }) => name), ["Victory_Chest_Beat"]);
+  assert.ok(root.getObjectByName("LeftHand").getWorldPosition(new THREE.Vector3()).y < root.getObjectByName("Hips").getWorldPosition(new THREE.Vector3()).y);
+  assert.equal(createMotion(new THREE.Group(), [], [{ clip: "Victory_Chest_Beat", label: "Victory" }], { rest: POWER_STANCE }), null,
+    "a static mesh has no stance and no moves");
+});
+
+test("refitting refuses an old rest the GLB does not have", async () => {
+  const config = configs.find(({ slug }) => slug === "demo-boxing-men");
+  await assert.rejects(refit(config, new URL(`../public/tenants/${config.slug}/${config.model}`, import.meta.url).pathname, "Idel"),
+    /--from Idel is not an animation/);
 });

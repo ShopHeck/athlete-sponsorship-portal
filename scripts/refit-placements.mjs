@@ -11,7 +11,7 @@ import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import draco from "draco3dgltf";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { createMotion } from "../public/motion.js";
+import { POWER_STANCE, createMotion } from "../public/motion.js";
 
 const MODEL_HEIGHT = 1.86; // public/app.js
 const TOLERANCE = 0.03;    // metres of corner drift worth a visual check
@@ -61,7 +61,7 @@ export async function loadPosed(file, config, rest) {
   const facesPositiveZ = config.modelFacing === "positive-z" || (config.modelFacing !== "negative-z" && extent(1) >= extent(-1));
   if (!facesPositiveZ) { root.rotateY(Math.PI); normalise(); }
   const motion = createMotion(root, gltf.animations, config.motion.clips, { rest, stance: rest === config.motion.rest ? config.motion.stance : undefined });
-  return { root, meshes, motion };
+  return { root, meshes, motion, clips: gltf.animations.map((clip) => clip.name) };
 }
 
 // The surface under a ray as (mesh, triangle vertices, barycentric weights), so it can be followed into another pose.
@@ -81,11 +81,19 @@ function follow(meshes, surface) {
   return pa.multiplyScalar(surface.bary.x).addScaledVector(pb, surface.bary.y).addScaledVector(pc, surface.bary.z);
 }
 
-const corners = (spot) => [[0, 0], ...[-0.5, 0.5].flatMap((u) => [-0.5, 0.5].map((v) => [u, v]))]
-  .map(([u, v]) => [spot.x + u * spot.w, spot.y + v * spot.h]);
+// Centre and corners of the footprint. A quarter-turned decal swaps its extent; other angles are flagged instead.
+const quarterTurns = (spot) => Math.round((spot.rotate || 0) / 90);
+const corners = (spot) => {
+  const [w, h] = quarterTurns(spot) % 2 ? [spot.h, spot.w] : [spot.w, spot.h];
+  return [[0, 0], ...[-0.5, 0.5].flatMap((u) => [-0.5, 0.5].map((v) => [u, v]))].map(([u, v]) => [spot.x + u * w, spot.y + v * h]);
+};
 
 export async function refit(config, file, fromRest) {
   const before = await loadPosed(file, config, fromRest);
+  // createMotion falls back to the bind pose for an unknown rest, which would silently measure the wrong surface.
+  if (fromRest !== POWER_STANCE && !before.clips.includes(fromRest)) {
+    throw new Error(`--from ${fromRest} is not an animation in ${file} (has: ${before.clips.join(", ") || "none"})`);
+  }
   const after = await loadPosed(file, config, config.motion.rest);
   const results = [];
   for (const garment of config.garments) for (const spot of garment.placements) {
@@ -98,15 +106,16 @@ export async function refit(config, file, fromRest) {
       // The new ray at each shifted corner must land on the surface the old corner sat on.
       let worst = 0;
       corners(spot).forEach(([cx, cy], k) => {
-        if (!traced[k]) return;
+        if (!traced[k]) { worst = Infinity; return; } // the old footprint already overhung here
         const hit = new THREE.Raycaster(...SIDE_RAY[spot.side](cx + shift[0], cy + shift[1])).intersectObjects(after.meshes, false)[0];
         const expected = follow(after.meshes, traced[k]);
         worst = Math.max(worst, hit ? hit.point.distanceTo(expected) : Infinity);
       });
       return { x, y, worst };
     });
+    const rotated = Boolean(spot.rotate) && quarterTurns(spot) * 90 !== spot.rotate;
     results.push({ id: spot.id, side: spot.side, from: [spot.x, spot.y], to: [moved.x, moved.y], drift: moved.worst,
-      ok: moved.worst <= TOLERANCE, offBody: moved.worst === Infinity });
+      ok: moved.worst <= TOLERANCE && !rotated, offBody: moved.worst === Infinity, rotated });
   }
   return results;
 }
@@ -123,7 +132,7 @@ async function main() {
   for (const r of results) {
     console.log(r.error ? `${r.id}: ${r.error}` :
       `${r.ok ? "ok   " : "CHECK"} ${r.id.padEnd(8)} ${r.side.padEnd(5)} ${r.from.join(",").padEnd(14)} → ${r.to.join(",").padEnd(14)} ` +
-      (r.offBody ? "corner off body" : `drift ${(r.drift * 1000).toFixed(1)}mm`));
+      (r.offBody ? "corner off body" : `drift ${(r.drift * 1000).toFixed(1)}mm`) + (r.rotated ? " (rotated: corners not checked)" : ""));
   }
   if (!values.write) return;
   let out = text;
