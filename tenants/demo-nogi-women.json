@@ -45,7 +45,7 @@
   "model": "models/demo-nogi-women-animated.glb",
   "motion": {
     "label": "Moves",
-    "rest": "Idle",
+    "rest": "Power_Stance",
     "intro": "Chest_Pound_Taunt",
     "clips": [
       {
@@ -262,8 +262,8 @@
           "name": "Chest · Center",
           "detail": "Centered logo placement on the front of the rash guard.",
           "side": "front",
-          "x": 0,
-          "y": 1.4,
+          "x": -0.004,
+          "y": 1.431,
           "w": 0.18,
           "h": 0.08,
           "label": "Rash guard · Chest center"
@@ -273,8 +273,8 @@
           "name": "Upper back · Left",
           "detail": "A placement on the athlete's left upper back, clear of the center braid.",
           "side": "back",
-          "x": 0.16,
-          "y": 1.43,
+          "x": 0.152,
+          "y": 1.486,
           "w": 0.1,
           "h": 0.08,
           "label": "Rash guard · Upper back · Left"
@@ -284,8 +284,8 @@
           "name": "Left sleeve · Center",
           "detail": "Sponsor placement on the athlete’s left sleeve.",
           "side": "left",
-          "x": 0,
-          "y": 1.39,
+          "x": -0.005,
+          "y": 1.436,
           "w": 0.13,
           "h": 0.07,
           "label": "Rash guard · Left sleeve"
@@ -295,8 +295,8 @@
           "name": "Right sleeve · Center",
           "detail": "Sponsor placement on the athlete’s right sleeve.",
           "side": "right",
-          "x": 0,
-          "y": 1.39,
+          "x": 0.028,
+          "y": 1.453,
           "w": 0.13,
           "h": 0.07,
           "label": "Rash guard · Right sleeve"
@@ -314,8 +314,8 @@
           "name": "Front left thigh",
           "detail": "Sponsor placement on the athlete’s left thigh.",
           "side": "front",
-          "x": 0.1,
-          "y": 0.78,
+          "x": 0.091,
+          "y": 0.785,
           "w": 0.11,
           "h": 0.11,
           "label": "Spats · Front left thigh"
@@ -325,8 +325,8 @@
           "name": "Front right thigh",
           "detail": "Sponsor placement on the athlete’s right thigh.",
           "side": "front",
-          "x": -0.1,
-          "y": 0.78,
+          "x": -0.074,
+          "y": 0.83,
           "w": 0.11,
           "h": 0.11,
           "label": "Spats · Front right thigh"
@@ -336,8 +336,8 @@
           "name": "Back left thigh",
           "detail": "Visible placement on the back of the athlete’s left thigh.",
           "side": "back",
-          "x": 0.1,
-          "y": 0.78,
+          "x": 0.114,
+          "y": 0.835,
           "w": 0.11,
           "h": 0.11,
           "label": "Spats · Back left thigh"
@@ -347,8 +347,8 @@
           "name": "Back right thigh",
           "detail": "Visible placement on the back of the athlete’s right thigh.",
           "side": "back",
-          "x": -0.1,
-          "y": 0.78,
+          "x": -0.124,
+          "y": 0.802,
           "w": 0.11,
           "h": 0.11,
           "label": "Spats · Back right thigh"

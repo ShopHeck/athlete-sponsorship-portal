@@ -345,6 +345,118 @@ function authoredClips(root) {
   return [victoryChestBeat(root)].filter(Boolean);
 }
 
+/* ---------------------------------------------------- power stance */
+// A fighter's square-on power stance built from the bind pose of any Meshy rig: feet planted wider than the
+// shoulders with the toes turned out, knees softly bent, chest up, chin tucked and the arms hanging by the sides
+// with the palms turned to the thighs. Directions come from the body itself (toes are forward, the left hip is
+// left), so it works whatever way the model faces and at any scale. Each option scales the default.
+export const POWER_STANCE = "Power_Stance";
+export const POWER_STANCE_DEFAULTS = Object.freeze({
+  stanceWidth: 1.3,     // ankle spacing ÷ shoulder-joint spacing
+  toeOutDegrees: 12,    // each foot turned out from straight ahead
+  kneeBend: 0.035,      // hips lowered by this fraction of the standing hip height
+  chestDegrees: 4,      // upper spine lifted back
+  chinDegrees: 6,       // head tipped down, eyes level with the sponsor
+  handDrop: 0.94,       // hand below the shoulder, as a fraction of the arm's length
+  handOut: 0.2,         // hand outside the shoulder, clearing the thigh
+  handForward: 0.04,    // hand slightly in front of the thigh
+  palmTurnDegrees: 80   // forearm roll that turns Meshy's forward-facing palms to the thighs (thumbs forward)
+});
+const STANCE_BONES = ["Hips", "Head", ...["Left", "Right"].flatMap((side) =>
+  ["Arm", "ForeArm", "Hand", "UpLeg", "Leg", "Foot", "ToeBase"].map((joint) => side + joint))];
+
+// Rotates `bone` (in world space) so that its child direction `from` points along `to`.
+function aimBone(bone, from, to) {
+  const parent = bone.parent.getWorldQuaternion(new THREE.Quaternion());
+  const swing = new THREE.Quaternion().setFromUnitVectors(from.clone().normalize(), to.clone().normalize());
+  bone.quaternion.premultiply(parent.clone().invert().multiply(swing).multiply(parent));
+  bone.updateMatrixWorld(true);
+}
+
+// Rotates `bone` by `degrees` about a world axis.
+function spinBone(bone, axis, degrees) {
+  const parent = bone.parent.getWorldQuaternion(new THREE.Quaternion());
+  const turn = new THREE.Quaternion().setFromAxisAngle(axis, THREE.MathUtils.degToRad(degrees));
+  bone.quaternion.premultiply(parent.clone().invert().multiply(turn).multiply(parent));
+  bone.updateMatrixWorld(true);
+}
+
+// Two-bone IK: places `end` at `target` with the middle joint bent towards `pole`.
+function reach(upper, lower, end, target, pole) {
+  const start = upper.getWorldPosition(new THREE.Vector3());
+  const middle = lower.getWorldPosition(new THREE.Vector3());
+  const tip = end.getWorldPosition(new THREE.Vector3());
+  const a = start.distanceTo(middle), b = middle.distanceTo(tip);
+  const direction = target.clone().sub(start);
+  const distance = THREE.MathUtils.clamp(direction.length(), Math.abs(a - b) + 1e-5, a + b - 1e-5);
+  direction.normalize();
+  const along = (a ** 2 - b ** 2 + distance ** 2) / (2 * distance);
+  const bend = pole.clone().projectOnPlane(direction).normalize();
+  const elbow = start.clone().addScaledVector(direction, along).addScaledVector(bend, Math.sqrt(Math.max(0, a ** 2 - along ** 2)));
+  aimBone(upper, middle.sub(start), elbow.sub(start));
+  const placed = lower.getWorldPosition(new THREE.Vector3());
+  aimBone(lower, end.getWorldPosition(new THREE.Vector3()).sub(placed), start.addScaledVector(direction, distance).sub(placed));
+}
+
+// Returns a one-frame clip holding the power stance, or null if the rig lacks the bones. Leaves the rig as found.
+export function powerStance(root, options = {}) {
+  const o = { ...POWER_STANCE_DEFAULTS, ...options };
+  if (Object.values(o).some((value) => !Number.isFinite(value))) throw new Error("Power stance options must be finite numbers");
+  const bone = (name) => root.getObjectByName(name);
+  if (!STANCE_BONES.every((name) => bone(name)?.isBone)) return null;
+  const bones = [];
+  root.traverse((node) => { if (node.isBone) bones.push(node); });
+  const saved = bones.map((node) => [node, node.quaternion.clone(), node.position.clone()]);
+  root.updateMatrixWorld(true);
+  const at = (name) => bone(name).getWorldPosition(new THREE.Vector3());
+  const up = new THREE.Vector3(0, 1, 0);
+  const flat = (v) => v.projectOnPlane(up).normalize();
+  const left = flat(at("LeftUpLeg").sub(at("RightUpLeg")));
+  const forward = flat(at("LeftToeBase").sub(at("LeftFoot")).add(at("RightToeBase").sub(at("RightFoot"))));
+  const across = new THREE.Vector3().crossVectors(up, forward).normalize(); // points to the athlete's left
+  if (across.dot(left) < 0.5) return null; // toes and hips disagree: not a standing humanoid
+  const ankles = { Left: at("LeftFoot"), Right: at("RightFoot") };
+  const feet = Object.fromEntries(["Left", "Right"].map((side) => [side, bone(`${side}Foot`).getWorldQuaternion(new THREE.Quaternion())]));
+  const hipsBone = bone("Hips"), hips = at("Hips");
+  const shoulders = at("LeftArm").distanceTo(at("RightArm"));
+  const legLength = hips.y - (ankles.Left.y + ankles.Right.y) / 2;
+
+  const lowered = hips.clone().addScaledVector(up, -o.kneeBend * legLength);
+  hipsBone.position.copy(hipsBone.parent.worldToLocal(lowered));
+  root.updateMatrixWorld(true);
+  const centre = ankles.Left.clone().add(ankles.Right).multiplyScalar(0.5);
+  for (const [side, sign] of [["Left", 1], ["Right", -1]]) {
+    const target = centre.clone().addScaledVector(across, sign * o.stanceWidth * shoulders / 2);
+    target.y = ankles[side].y; // square: both ankles level with the bind pose's midpoint, front to back
+    reach(bone(`${side}UpLeg`), bone(`${side}Leg`), bone(`${side}Foot`), target,
+      forward.clone().addScaledVector(across, sign * 0.35));
+    const foot = bone(`${side}Foot`);
+    const turned = new THREE.Quaternion().setFromAxisAngle(up, THREE.MathUtils.degToRad(sign * o.toeOutDegrees)).multiply(feet[side]);
+    foot.quaternion.copy(foot.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(turned));
+    foot.updateMatrixWorld(true);
+  }
+
+  const chest = bone("Spine02") || bone("Spine01") || bone("Spine");
+  if (chest) spinBone(chest, across, -o.chestDegrees);
+  spinBone(bone("Head"), across, o.chinDegrees + o.chestDegrees);
+  for (const [side, sign] of [["Left", 1], ["Right", -1]]) {
+    const arm = bone(`${side}Arm`), forearm = bone(`${side}ForeArm`), hand = bone(`${side}Hand`);
+    const shoulder = at(`${side}Arm`);
+    const length = shoulder.distanceTo(at(`${side}ForeArm`)) + at(`${side}ForeArm`).distanceTo(at(`${side}Hand`));
+    const target = shoulder.clone().addScaledVector(up, -o.handDrop * length)
+      .addScaledVector(across, sign * o.handOut * length).addScaledVector(forward, o.handForward * length);
+    reach(arm, forearm, hand, target, forward.clone().negate().addScaledVector(across, sign * 0.5));
+    // A single hand bone carries no palm direction, so the roll is a per-rig option (positive turns thumbs forward).
+    if (o.palmTurnDegrees) spinBone(forearm, at(`${side}Hand`).sub(at(`${side}ForeArm`)).normalize(), sign * o.palmTurnDegrees);
+  }
+
+  const tracks = bones.map((node) => new THREE.QuaternionKeyframeTrack(`${node.name}.quaternion`, [0], node.quaternion.toArray()));
+  tracks.push(new THREE.VectorKeyframeTrack(`${hipsBone.name}.position`, [0], hipsBone.position.toArray()));
+  for (const [node, quaternion, position] of saved) { node.quaternion.copy(quaternion); node.position.copy(position); }
+  root.updateMatrixWorld(true);
+  return new THREE.AnimationClip(POWER_STANCE, 0, tracks);
+}
+
 // Puts the rig into a clip's first frame (used so authored moves start from the stance, not the bind pose).
 function poseFromFrame(root, clip) {
   for (const track of clip.tracks) {
@@ -356,8 +468,12 @@ function poseFromFrame(root, clip) {
 }
 
 // Plays the tenant's curated moves on demand; the athlete otherwise holds the rest stance.
-export function createMotion(root, gltfClips, entries, { onChange, onSettled, rest: restName } = {}) {
+export function createMotion(root, gltfClips, entries, { onChange, onSettled, rest: restName, stance: stanceOptions } = {}) {
   const byName = new Map(gltfClips.map((clip) => [clip.name, clip]));
+  if (restName === POWER_STANCE && !byName.has(POWER_STANCE)) {
+    const clip = powerStance(root, stanceOptions);
+    if (clip) byName.set(POWER_STANCE, clip);
+  }
   const torso = torsoChain(root).map((bone) => [bone, bone.quaternion.clone()]);
   const stance = byName.has(restName) ? anchoredClip(root, byName.get(restName)) : null;
   if (stance) poseFromFrame(root, stance);
@@ -424,9 +540,11 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
     // Runs fn with the stance's arms and legs but the bind pose's square-on torso, so placements authored as
     // front/back/side rays land where intended even though the idle stance turns the athlete slightly.
     withProjectionPose(fn) {
+      const posed = torso.map(([bone]) => bone.quaternion.clone());
       for (const [bone, q] of torso) bone.quaternion.copy(q);
       root.updateMatrixWorld(true);
-      try { return fn(); } finally { mixer.update(0); root.updateMatrixWorld(true); }
+      // A zero-length mixer step does not rewrite unchanged bindings, so put the stance's torso back by hand.
+      try { return fn(); } finally { torso.forEach(([bone], i) => bone.quaternion.copy(posed[i])); root.updateMatrixWorld(true); }
     },
     get playing() { return current?.name || null; },
     // Advances the pose; returns true while the body is moving and the frame must be redrawn.

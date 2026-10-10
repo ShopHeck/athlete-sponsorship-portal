@@ -45,7 +45,7 @@
   "model": "models/demo-nogi-men-animated.glb",
   "motion": {
     "label": "Moves",
-    "rest": "Idle",
+    "rest": "Power_Stance",
     "intro": "Chest_Pound_Taunt",
     "clips": [
       {
@@ -261,8 +261,8 @@
           "name": "Chest · Center",
           "detail": "Centered logo placement on the front of the rash guard.",
           "side": "front",
-          "x": 0,
-          "y": 1.42,
+          "x": -0.005,
+          "y": 1.451,
           "w": 0.19,
           "h": 0.08,
           "label": "Rash guard · Chest center"
@@ -272,8 +272,8 @@
           "name": "Upper back · Center",
           "detail": "Wide placement across the upper back of the rash guard.",
           "side": "back",
-          "x": 0,
-          "y": 1.45,
+          "x": 0.009,
+          "y": 1.48,
           "w": 0.2,
           "h": 0.09,
           "label": "Rash guard · Upper back"
@@ -283,8 +283,8 @@
           "name": "Lower back · Center",
           "detail": "Centered placement on the lower back of the rash guard.",
           "side": "back",
-          "x": 0,
-          "y": 1.23,
+          "x": -0.001,
+          "y": 1.262,
           "w": 0.17,
           "h": 0.07,
           "label": "Rash guard · Lower back"
@@ -294,8 +294,8 @@
           "name": "Left sleeve · Center",
           "detail": "Sponsor placement on the athlete’s left sleeve.",
           "side": "left",
-          "x": 0,
-          "y": 1.4,
+          "x": 0.001,
+          "y": 1.45,
           "w": 0.13,
           "h": 0.07,
           "label": "Rash guard · Left sleeve"
@@ -305,8 +305,8 @@
           "name": "Right sleeve · Center",
           "detail": "Sponsor placement on the athlete’s right sleeve.",
           "side": "right",
-          "x": 0,
-          "y": 1.4,
+          "x": 0.025,
+          "y": 1.467,
           "w": 0.13,
           "h": 0.07,
           "label": "Rash guard · Right sleeve"
@@ -324,8 +324,8 @@
           "name": "Front left · Leg",
           "detail": "Sponsor placement on the athlete’s left short leg.",
           "side": "front",
-          "x": 0.105,
-          "y": 0.88,
+          "x": 0.1,
+          "y": 0.902,
           "w": 0.1,
           "h": 0.08,
           "label": "Grappling shorts · Front left"
@@ -335,8 +335,8 @@
           "name": "Front right · Leg",
           "detail": "Sponsor placement on the athlete’s right short leg.",
           "side": "front",
-          "x": -0.105,
-          "y": 0.88,
+          "x": -0.085,
+          "y": 0.924,
           "w": 0.1,
           "h": 0.08,
           "label": "Grappling shorts · Front right"
@@ -346,8 +346,8 @@
           "name": "Back left · Leg",
           "detail": "Sponsor placement on the back of the athlete’s left short leg.",
           "side": "back",
-          "x": 0.105,
-          "y": 0.88,
+          "x": 0.11,
+          "y": 0.922,
           "w": 0.1,
           "h": 0.08,
           "label": "Grappling shorts · Back left"
@@ -357,8 +357,8 @@
           "name": "Back right · Leg",
           "detail": "Sponsor placement on the back of the athlete’s right short leg.",
           "side": "back",
-          "x": -0.105,
-          "y": 0.88,
+          "x": -0.123,
+          "y": 0.901,
           "w": 0.1,
           "h": 0.08,
           "label": "Grappling shorts · Back right"
