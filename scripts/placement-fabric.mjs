@@ -6,6 +6,8 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { NodeIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import draco from "draco3dgltf";
@@ -79,6 +81,19 @@ export async function checkPlacements(config, file, fixture) {
   });
 }
 
+// The short HEAD revision if HEAD contains exactly these model bytes, else null.
+function committedRevision(file, sha256) {
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const git = (...args) => execFileSync("git", args, { cwd: root, maxBuffer: 64 * 1024 * 1024 });
+  try {
+    const committed = git("show", `HEAD:${path.relative(root, file).split(path.sep).join("/")}`);
+    if (createHash("sha256").update(committed).digest("hex") !== sha256) return null;
+    return git("rev-parse", "--short", "HEAD").toString().trim();
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   const [mode, slug] = process.argv.slice(2);
   if (!["record", "check"].includes(mode) || !slug) throw new Error("usage: placement-fabric.mjs record|check <slug>");
@@ -92,10 +107,12 @@ async function main() {
       return [id, { overhang: samples.filter((rgb) => !rgb).length, palette }];
     }));
     await mkdir(new URL("./fixtures/placement-fabric/", import.meta.url), { recursive: true });
-    // Name the exact approved model, so the baseline stays traceable after the model is replaced.
-    const commit = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
+    // Name the exact approved model, so the baseline stays traceable after the model is replaced. The commit is only
+    // recorded when that revision holds these exact bytes; record again after committing an uncommitted model.
     const sha256 = createHash("sha256").update(await readFile(file)).digest("hex");
-    await writeFile(fixturePath(slug), `${JSON.stringify({ slug, model: config.model, baseline: { commit, sha256 }, placements }, null, 2)}\n`);
+    const baseline = { commit: committedRevision(file, sha256), sha256 };
+    if (!baseline.commit) console.warn(`${slug}: model is not committed as-is; commit it and record again for a traceable baseline`);
+    await writeFile(fixturePath(slug), `${JSON.stringify({ slug, model: config.model, baseline, placements }, null, 2)}\n`);
     console.log(`recorded ${Object.keys(placements).length} placements for ${slug}`);
     return;
   }
