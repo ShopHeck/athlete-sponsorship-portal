@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ASP Launch Video</title>
+<!--
+  Seekable 1920×1080 composition. Nothing animates on its own: window.__seek(t) draws the exact frame for time t
+  (seconds), so render.mjs can screenshot it frame by frame. Open with ?t=12.5 to inspect one moment, or ?play to
+  preview in real time (footage frames must exist in ./frames, see capture.mjs).
+-->
+<style>
+@font-face{font-family:BC;font-weight:600;src:url(fonts/bc600.ttf)}
+@font-face{font-family:BC;font-weight:700;src:url(fonts/bc700.ttf)}
+@font-face{font-family:BC;font-weight:800;src:url(fonts/bc800.ttf)}
+@font-face{font-family:BC;font-weight:900;src:url(fonts/bc900.ttf)}
+@font-face{font-family:BC;font-weight:900;font-style:italic;src:url(fonts/bc900i.ttf)}
+@font-face{font-family:IN;font-weight:400;src:url(fonts/in400.ttf)}
+@font-face{font-family:IN;font-weight:500;src:url(fonts/in500.ttf)}
+@font-face{font-family:IN;font-weight:600;src:url(fonts/in600.ttf)}
+:root{--bg:#0b0a09;--ink:#f4efe6;--muted:#a59d92;--accent:#f36a16;--accent2:#ff8a3d;--deep:#9d3008}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#000;width:1920px;height:1080px;overflow:hidden}
+#stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--bg);color:var(--ink);font-family:BC,sans-serif;text-transform:uppercase}
+#world{position:absolute;inset:0;will-change:transform}
+.scene{position:absolute;inset:0;display:none;overflow:hidden}
+.abs{position:absolute}
+.cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.d900{font-weight:900;font-style:italic;line-height:.86;letter-spacing:-.01em}
+.d800{font-weight:800;line-height:.9}
+.kicker{font:700 26px/1 BC;letter-spacing:.28em;color:var(--accent)}
+.body{font:500 30px/1.38 IN;text-transform:none;color:#d8d1c6;letter-spacing:-.005em}
+.o{color:var(--accent)}
+.outline{color:transparent;-webkit-text-stroke:3px var(--accent)}
+.line{display:block;overflow:hidden;padding:.04em .08em .06em 0;margin:-.04em 0 -.06em}
+.line>span{display:inline-block}
+.grad-l{position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,7,6,.94) 0%,rgba(8,7,6,.78) 34%,rgba(8,7,6,0) 62%)}
+.grad-b{position:absolute;inset:0;background:linear-gradient(0deg,rgba(8,7,6,.95) 0%,rgba(8,7,6,.6) 30%,rgba(8,7,6,0) 55%)}
+.glow{position:absolute;inset:0;background:radial-gradient(60% 70% at 72% 55%,rgba(243,106,22,.22),transparent 70%),radial-gradient(40% 50% at 10% 10%,rgba(243,106,22,.08),transparent 70%)}
+.chip{position:absolute;display:flex;align-items:center;gap:14px;padding:16px 22px;background:rgba(14,12,10,.86);border:1px solid rgba(243,106,22,.55);font:700 24px/1 BC;letter-spacing:.16em;white-space:nowrap}
+.chip b{color:var(--accent);font-weight:800}
+.tick{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#111;font:900 20px/1 BC}
+.hud{position:absolute;border:0}
+.hud i{position:absolute;width:46px;height:46px;border-color:var(--accent);border-style:solid}
+.hud i:nth-child(1){left:-14px;top:-14px;border-width:4px 0 0 4px}
+.hud i:nth-child(2){right:-14px;top:-14px;border-width:4px 4px 0 0}
+.hud i:nth-child(3){left:-14px;bottom:-14px;border-width:0 0 4px 4px}
+.hud i:nth-child(4){right:-14px;bottom:-14px;border-width:0 4px 4px 0}
+
+/* overlays */
+#wipe{position:absolute;inset:-20% -60%;pointer-events:none;display:none}
+#wipe div{position:absolute;top:0;bottom:0;width:62%;transform:skewX(-18deg)}
+#wipe .w1{background:var(--accent)}
+#wipe .w2{background:#151210}
+#wipe .w3{background:var(--ink)}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;mix-blend-mode:screen}
+#leak{position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen;opacity:.55}
+#grain{position:absolute;inset:-50px;pointer-events:none;opacity:.11;mix-blend-mode:overlay}
+#vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 95% at 50% 50%,transparent 58%,rgba(0,0,0,.62) 100%)}
+#fade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none}
+
+/* s0 */
+#s0-num{left:0;right:0;top:250px;text-align:center;font-size:420px;color:var(--accent);text-shadow:0 0 80px rgba(243,106,22,.45)}
+#s0-sub{left:0;right:0;top:690px;text-align:center;font:800 64px/1 BC;letter-spacing:.2em}
+#s0-pitch{background:#0b0a09}
+#s0-pitch .lines{left:140px;top:300px;font-size:170px}
+#pdf{left:1270px;top:330px;width:440px;height:300px;background:#f4efe6;color:#1a1714;padding:34px;border-radius:6px;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+#pdf .ic{width:70px;height:88px;background:#c9361b;color:#fff;font:900 24px/88px BC;text-align:center;border-radius:4px}
+#pdf .nm{margin-top:26px;font:600 30px/1.2 IN;text-transform:none}
+#pdf .meta{margin-top:10px;font:500 22px/1.2 IN;text-transform:none;color:#7b736a}
+#pdf .x{position:absolute;left:-30px;right:-30px;top:50%;height:16px;background:var(--accent);transform-origin:left center;transform:rotate(-14deg) scaleX(0)}
+#s0-this{left:0;right:0;top:330px;text-align:center;font-size:330px;text-shadow:0 10px 60px rgba(0,0,0,.6)}
+
+/* s1 */
+#s1-360{left:96px;top:70px;font-size:400px}
+#s1-title{left:120px;top:470px;font-size:124px}
+#s1-intro{left:124px;top:432px}
+#s1-tag{right:120px;top:300px;text-align:right;font-size:110px}
+
+/* s2 */
+#s2-num{left:120px;top:110px;font-size:230px}
+#s2-kick{left:124px;top:380px}
+#s2-title{left:120px;top:430px;font-size:132px}
+#s2-body{left:124px;top:860px;width:640px}
+#grid{left:1000px;top:76px;width:704px;height:928px}
+#grid img{position:absolute;width:166px;height:300px;object-fit:cover;border:2px solid rgba(244,239,230,.12);backface-visibility:hidden}
+#scan{left:960px;width:784px;height:6px;background:var(--accent);box-shadow:0 0 30px 8px rgba(243,106,22,.7),0 0 120px 20px rgba(243,106,22,.35)}
+#s2-frame{left:1030px;top:140px;width:640px;height:800px}
+#s2-frame .clip{position:absolute;inset:0;overflow:hidden;background:#000}
+#s2-frame img{width:100%;height:100%;object-fit:cover}
+#s2-wire{position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(243,106,22,.5) 0 1px,transparent 1px 26px),repeating-linear-gradient(90deg,rgba(243,106,22,.5) 0 1px,transparent 1px 26px);mix-blend-mode:screen}
+#s2-edge{position:absolute;left:-20px;right:-20px;height:4px;background:var(--accent);box-shadow:0 0 24px 6px rgba(243,106,22,.8)}
+#s2-label{left:1030px;top:92px;font:700 22px/1 BC;letter-spacing:.22em;color:var(--muted)}
+#s2-deg{left:1030px;top:962px;font:800 34px/1 BC;letter-spacing:.12em}
+#s2-checks{left:1700px;top:150px;display:flex;flex-direction:column;gap:18px}
+#s2-checks .chip{position:relative}
+
+/* s3 */
+#s3a-title{left:110px;top:120px;font-size:128px}
+#s3a-kick{left:114px;top:76px}
+#s3a-body{left:114px;top:500px;width:560px}
+#card{width:300px;height:190px;background:#f4efe6;border-radius:10px;padding:22px;box-shadow:0 30px 70px rgba(0,0,0,.55);transform-origin:center}
+#card img{width:100%;height:100px;object-fit:contain}
+#card div{margin-top:14px;font:600 20px/1 IN;text-transform:none;color:#5f574e}
+#burst{width:40px;height:40px;border-radius:50%;border:6px solid var(--accent);left:940px;top:520px}
+#s3a-chip{right:90px;bottom:90px}
+#s3b-title{left:110px;top:250px;font-size:132px}
+#s3b-chips{left:116px;top:700px;display:flex;flex-direction:column;align-items:flex-start;gap:14px}
+#s3b-chips .chip{position:relative}
+
+/* s4 */
+#s4-title{left:110px;top:240px;font-size:150px}
+#s4-kick{left:114px;top:190px}
+#s4-body{left:114px;top:700px;width:560px}
+#device{left:700px;top:190px;width:1150px;height:647px;transform-origin:50% 50%}
+#device .scr{position:absolute;inset:0;transform-origin:83% 60%;box-shadow:0 50px 120px rgba(0,0,0,.7),0 0 0 1px rgba(244,239,230,.12)}
+#device img{width:100%;height:100%;display:block}
+#toasts{left:1240px;top:150px;width:560px}
+.toast{position:absolute;left:0;width:560px;display:flex;align-items:center;gap:20px;padding:22px 26px;background:#14110f;border:1px solid rgba(244,239,230,.14);border-left:6px solid var(--accent);box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.toast .k{font:700 20px/1 BC;letter-spacing:.2em;color:var(--muted)}
+.toast .v{margin-left:auto;font:900 52px/1 BC;font-style:italic}
+.toast.lock{background:var(--accent);border-color:var(--accent);color:#111}
+.toast.lock .k{color:#2a1205}
+.toast.stripe{border-left-color:#7a73ff}
+
+/* s5 */
+#strips{position:absolute;inset:0}
+.strip{position:absolute;top:0;width:378px;height:1080px;overflow:hidden;background:#000}
+.strip img{position:absolute;top:0;height:1080px;width:864px;left:-243px}
+.strip .lab{position:absolute;left:28px;bottom:44px}
+.strip .lab b{display:block;font:900 italic 74px/.86 BC}
+.strip .lab span{display:block;margin-top:12px;font:700 22px/1 BC;letter-spacing:.24em;color:var(--accent)}
+.strip .bar{position:absolute;left:0;right:0;bottom:0;height:10px;background:var(--accent)}
+.strip .shade{position:absolute;inset:0;background:linear-gradient(0deg,rgba(0,0,0,.85),rgba(0,0,0,0) 40%)}
+#s5-head{left:0;right:0;top:0;height:200px;background:linear-gradient(180deg,rgba(8,7,6,.92),rgba(8,7,6,0));text-align:center;padding-top:46px}
+#s5-head .t{font:900 italic 96px/1 BC}
+
+/* s6 */
+#s6-kick{left:120px;top:110px}
+#s6-name{left:120px;top:150px;font:800 66px/1 BC}
+#s6-num{left:106px;top:228px;font-size:300px;color:var(--accent);text-shadow:0 0 70px rgba(243,106,22,.4)}
+#s6-numlab{left:124px;top:500px;font:800 46px/1 BC;letter-spacing:.14em}
+#bars{left:124px;top:600px;width:820px}
+.brow{position:relative;height:64px;margin-bottom:18px}
+.brow .bl{position:absolute;left:0;top:0;font:700 22px/64px BC;letter-spacing:.2em;width:230px;color:var(--muted)}
+.brow .bf{position:absolute;left:240px;top:10px;height:44px;background:#3a3430}
+.brow .bf.o2{background:linear-gradient(90deg,var(--deep),var(--accent))}
+.brow .bt{position:absolute;top:6px;font:900 italic 52px/1 BC;color:var(--accent)}
+#stats{left:124px;top:790px;display:flex;gap:22px}
+.stat{width:250px;padding:20px 22px;border-top:4px solid var(--accent);background:rgba(20,17,15,.85)}
+.stat b{display:block;font:900 italic 70px/1 BC}
+.stat span{display:block;margin-top:8px;font:700 18px/1.2 BC;letter-spacing:.18em;color:var(--muted)}
+#s6-frame{left:1170px;top:110px;width:640px;height:800px;overflow:hidden;box-shadow:0 40px 100px rgba(0,0,0,.7)}
+#s6-frame img{width:100%;height:100%;object-fit:cover}
+#stamp{left:1110px;top:770px;padding:18px 34px;border:7px solid var(--accent);color:var(--accent);background:rgba(10,8,7,.82);font:900 italic 78px/.95 BC;text-align:center;transform-origin:center}
+#marquee{left:0;right:0;top:978px;height:102px;background:rgba(8,7,6,.92);border-top:1px solid rgba(244,239,230,.1);overflow:hidden}
+#marquee .lab{position:absolute;left:0;top:0;bottom:0;z-index:2;display:flex;align-items:center;padding:0 40px 0 120px;background:linear-gradient(90deg,#080706 80%,rgba(8,7,6,0));font:800 24px/1 BC;letter-spacing:.2em;color:var(--accent);white-space:nowrap}
+#marquee .row{position:absolute;top:21px;display:flex;gap:80px;align-items:center;white-space:nowrap}
+#marquee img{height:60px;width:auto}
+
+/* s7 */
+#s7-photo{right:0;top:0;width:1300px;height:1080px;overflow:hidden}
+#s7-photo img{position:absolute;width:2400px;height:1260px;left:-330px;top:-60px;object-fit:cover;filter:grayscale(1) contrast(1.35) brightness(.8)}
+#s7-photo .tint{position:absolute;inset:0;background:linear-gradient(90deg,#0b0a09 0%,rgba(11,10,9,.2) 40%,rgba(11,10,9,0) 70%),linear-gradient(0deg,rgba(243,106,22,.28),rgba(243,106,22,.1));mix-blend-mode:normal}
+#s7-a{left:120px;top:260px;font-size:176px}
+#s7-a2{left:124px;top:600px;font:700 italic 62px/1.1 BC;color:var(--ink)}
+#s7-cred{left:124px;top:720px;font:700 24px/1 BC;letter-spacing:.24em;color:var(--muted)}
+#s7-b{left:120px;top:200px;font-size:210px}
+#s7-kick{left:124px;top:200px}
+
+/* s8 */
+#s8-bg{filter:blur(10px) brightness(.32) saturate(1.1);transform:scale(1.1)}
+#s8-lock{left:0;right:0;top:170px;display:flex;justify-content:center;align-items:center;gap:22px}
+#s8-lock .mk{font:800 44px/1 BC;letter-spacing:.04em;padding:10px 12px 8px;border:4px solid var(--ink);transform:skewX(-8deg)}
+#s8-lock .tx{font:700 34px/1 BC;letter-spacing:.2em}
+#s8-head{left:0;right:0;top:300px;text-align:center;font-size:150px}
+#s8-btn{left:50%;top:640px;transform:translateX(-50%);padding:30px 56px;background:var(--accent);color:#111;font:800 46px/1 BC;letter-spacing:.12em;white-space:nowrap}
+#s8-offer{left:0;right:0;top:790px;text-align:center;font:700 30px/1 BC;letter-spacing:.24em;color:var(--muted)}
+#s8-url{left:0;right:0;top:850px;text-align:center;font:800 54px/1 BC;letter-spacing:.06em;text-transform:none}
+</style>
+</head>
+<body>
+<div id="stage">
+<div id="world">
+
+  <!-- S0 · HOOK -->
+  <section class="scene" id="s0">
+    <img class="cover" id="s0-bg" alt="">
+    <div class="abs" id="s0-dark" style="inset:0;background:#000"></div>
+    <div class="abs d900" id="s0-num"><span>+</span><span id="s0-digits">60</span><span>%</span></div>
+    <div class="abs" id="s0-sub">More sponsorship revenue</div>
+    <div class="abs" id="s0-pitch" style="inset:0">
+      <div class="abs d900 lines"><span class="line"><span>He didn’t send</span></span><span class="line"><span>a pitch deck.</span></span></div>
+      <div class="abs" id="pdf"><div class="ic">PDF</div><div class="nm">sponsorship-deck-FINAL-v7.pdf</div><div class="meta">24 slides · 38 MB · unread</div><div class="x"></div></div>
+    </div>
+    <div class="abs d900" id="s0-this">He sent <span class="o">this.</span></div>
+  </section>
+
+  <!-- S1 · REVEAL -->
+  <section class="scene" id="s1">
+    <img class="cover" id="s1-bg" alt="">
+    <div class="grad-l"></div>
+    <div class="abs" style="inset:0;background:linear-gradient(270deg,rgba(8,7,6,.85),rgba(8,7,6,0) 38%)"></div>
+    <div class="abs d900 outline" id="s1-360">360°</div>
+    <div class="abs kicker" id="s1-intro">Introducing the</div>
+    <div class="abs d900" id="s1-title"><span class="line"><span>Athlete</span></span><span class="line"><span>Sponsorship</span></span><span class="line"><span class="o">Portal</span></span></div>
+    <div class="abs d900" id="s1-tag"><span class="line"><span>Your kit.</span></span><span class="line"><span>Your sponsors.</span></span><span class="line"><span class="o">One portal.</span></span></div>
+  </section>
+
+  <!-- S2 · LIKENESS -->
+  <section class="scene" id="s2">
+    <div class="glow"></div>
+    <div class="abs d900 outline" id="s2-num">01</div>
+    <div class="abs kicker" id="s2-kick">Custom athlete likeness</div>
+    <div class="abs d900" id="s2-title"><span class="line"><span>Your face.</span></span><span class="line"><span>Your ink.</span></span><span class="line"><span class="o">Your build.</span></span></div>
+    <div class="abs body" id="s2-body">A few phone photos become a realistic 3D you — approved by you before any sponsor sees it.</div>
+    <div class="abs" id="grid"></div>
+    <div class="abs" id="scan"></div>
+    <div class="abs" id="s2-label">Likeness model · approved ✓</div>
+    <div class="abs hud" id="s2-frame"><i></i><i></i><i></i><i></i><div class="clip"><img id="s2-img" alt=""><div id="s2-wire"></div><div id="s2-edge"></div></div></div>
+    <div class="abs" id="s2-deg">360° · <span id="s2-degv">000</span>°</div>
+  </section>
+
+  <!-- S3 · MOCKUPS -->
+  <section class="scene" id="s3a">
+    <img class="cover" id="s3a-bg" alt="">
+    <div class="grad-l"></div>
+    <div class="abs kicker" id="s3a-kick">02 · Hyper-real brand mockups</div>
+    <div class="abs d900" id="s3a-title"><span class="line"><span>Sponsors</span></span><span class="line"><span>see their</span></span><span class="line"><span class="o">logo on you.</span></span></div>
+    <div class="abs body" id="s3a-body">Drop in a logo. It wraps the real kit in real-time 3D — at print size, from every angle — before a dollar changes hands.</div>
+    <div class="abs" id="burst"></div>
+    <div class="abs" id="card"><img src="assets/your-brand-dark.png" alt=""><div>your-logo.png</div></div>
+    <div class="chip" id="s3a-chip"><span class="tick">✓</span>Live preview · <b id="s3a-spot">Front waistband</b></div>
+  </section>
+  <section class="scene" id="s3b">
+    <img class="cover" id="s3b-bg" alt="">
+    <div class="grad-b"></div>
+    <div class="abs" style="inset:0;background:linear-gradient(90deg,rgba(8,7,6,.92),rgba(8,7,6,.7) 28%,rgba(8,7,6,0) 46%)"></div>
+    <div class="abs d900" id="s3b-title"><span class="line"><span>Every</span></span><span class="line"><span>placement.</span></span><span class="line"><span class="o">Every angle.</span></span></div>
+    <div class="abs" id="s3b-chips"><div class="chip">Print-size accurate</div><div class="chip">Front · back · sides</div><div class="chip"><b>Live:</b> Michael Heckert’s kit</div></div>
+  </section>
+
+  <!-- S4 · BIDDING -->
+  <section class="scene" id="s4">
+    <div class="glow"></div>
+    <div class="abs kicker" id="s4-kick">03 · Built to close</div>
+    <div class="abs d900" id="s4-title"><span class="line"><span>Bid.</span></span><span class="line"><span>Or lock</span></span><span class="line"><span class="o">it now.</span></span></div>
+    <div class="abs body" id="s4-body">Live auctions and instant buyouts create urgency. Invoices go out from your own Stripe — payouts go straight to you.</div>
+    <div class="abs" id="device"><div class="scr"><img src="frames/ui-demo-boxing-women.png" alt=""></div></div>
+    <div class="abs" id="toasts">
+      <div class="toast" data-at="22.75"><span class="k">New bid</span><span class="v">$650</span></div>
+      <div class="toast" data-at="23.3"><span class="k">New bid</span><span class="v">$900</span></div>
+      <div class="toast lock" data-at="23.85"><span class="k">⚡ Locked it now</span><span class="v">$1,500</span></div>
+      <div class="toast stripe" data-at="24.5"><span class="k">Stripe invoice sent</span><span class="v">✓</span></div>
+    </div>
+  </section>
+
+  <!-- S5 · SPORTS -->
+  <section class="scene" id="s5">
+    <div id="strips"></div>
+    <div class="abs" id="s5-head"><div class="kicker" style="margin-bottom:14px">04 · Multi-sport</div><div class="t">Built for <span class="o">every fight sport.</span></div></div>
+  </section>
+
+  <!-- S6 · CASE STUDY -->
+  <section class="scene" id="s6">
+    <img class="cover" id="s6-bg" src="../../public/tenants/michael-heckert/backdrop/og-image.jpg" alt="" style="filter:blur(18px) brightness(.22) saturate(.8);transform:scale(1.15)">
+    <div class="glow"></div>
+    <div class="abs kicker" id="s6-kick">Case study · BKFC Fight Night Clearwater</div>
+    <div class="abs" id="s6-name">Michael “King Killer” Heckert</div>
+    <div class="abs d900" id="s6-num">+<span id="s6-digits">0</span>%</div>
+    <div class="abs" id="s6-numlab">Sponsorship revenue</div>
+    <div class="abs" id="bars">
+      <div class="brow"><div class="bl">Before</div><div class="bf" id="bar1"></div></div>
+      <div class="brow"><div class="bl" style="color:var(--ink)">With the portal</div><div class="bf o2" id="bar2"></div><div class="bt" id="bartag">+60%</div></div>
+    </div>
+    <div class="abs" id="stats">
+      <div class="stat"><b>12/12</b><span>Placements sold</span></div>
+      <div class="stat"><b>$1,100</b><span>Avg. per placement</span></div>
+      <div class="stat"><b>$13K+</b><span>Raised for one fight</span></div>
+    </div>
+    <div class="abs" id="s6-frame"><img id="s6-img" alt=""></div>
+    <div class="abs" id="stamp">Sold out before<br>fight night</div>
+    <div class="abs" id="marquee"><div class="lab">18 brands on the sponsor board</div><div class="row" id="mrow"></div></div>
+  </section>
+
+  <!-- S7 · ORIGIN -->
+  <section class="scene" id="s7">
+    <div class="abs" id="s7-photo"><img id="s7-img" src="../../public/tenants/michael-heckert/backdrop/og-image.jpg" alt=""><div class="tint"></div></div>
+    <div class="abs kicker" id="s7-kick">The origin</div>
+    <div class="abs d900" id="s7-a"><span class="line"><span>Built by a</span></span><span class="line"><span class="o">pro fighter</span></span></div>
+    <div class="abs" id="s7-a2">to land his own sponsors.</div>
+    <div class="abs" id="s7-cred">Michael Heckert · Pro bare-knuckle fighter · BKFC</div>
+    <div class="abs d900" id="s7-b"><span class="line"><span>Now open</span></span><span class="line"><span>to every</span></span><span class="line"><span class="o">athlete.</span></span></div>
+  </section>
+
+  <!-- S8 · CTA -->
+  <section class="scene" id="s8">
+    <img class="cover" id="s8-bg" alt="">
+    <div class="glow" style="background:radial-gradient(50% 60% at 50% 50%,rgba(243,106,22,.18),transparent 70%)"></div>
+    <div class="abs" id="s8-lock"><span class="mk">ASP</span><span class="tx">Athlete Sponsorship Portal</span></div>
+    <div class="abs d900" id="s8-head"><span class="line"><span>Your kit. Your sponsors.</span></span><span class="line"><span class="o">One portal.</span></span></div>
+    <div class="abs" id="s8-btn">Apply for a founding spot →</div>
+    <div class="abs" id="s8-offer">$0 setup · 10 founding athlete spots</div>
+    <div class="abs" id="s8-url">athletes.michaelheckert.com</div>
+  </section>
+
+</div>
+<div id="leak"></div>
+<div id="wipe"><div class="w3"></div><div class="w1"></div><div class="w2"></div></div>
+<div id="flash"></div>
+<canvas id="grain" width="1024" height="1184"></canvas>
+<div id="vignette"></div>
+<div id="fade"></div>
+</div>
+
+<script type="module">
+const FPS = 30;
+export const DURATION = 52;
+const $ = (s) => document.querySelector(s);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, k) => a + (b - a) * k;
+const eOut = (x) => 1 - Math.pow(1 - x, 3);
+const eExpo = (x) => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+const eInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const eBack = (x) => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const css = (el, s) => { for (const k in s) el.style[k] = s[k]; };
+const pad = (n) => String(n).padStart(4, '0');
+
+/* ------------------------------------------------------------- footage */
+const SHOTS = { 'heck-intro': 84, 'heck-spin': 150, 'heck-close': 170, 'heck-victory': 110, 'demo-upload': 250,
+  'demo-boxing-men': 130, 'demo-mma-women': 130, 'demo-bjj-gi-men': 130, 'demo-nogi-women': 130 };
+let pending = [];
+function foot(img, shot, f) {
+  const n = SHOTS[shot];
+  const src = `frames/${shot}/${pad(clamp(Math.floor(f), 0, n - 1))}.jpg`;
+  if (img.dataset.src !== src) { img.dataset.src = src; img.src = src; pending.push(img.decode().catch(() => {})); }
+}
+
+/* ------------------------------------------------------------- timeline */
+const SCENES = [['s0', 0, 3.3], ['s1', 3.3, 6.6], ['s2', 6.6, 12.6], ['s3a', 12.6, 17.4], ['s3b', 17.4, 21.6],
+  ['s4', 21.6, 25.8], ['s5', 25.8, 32.0], ['s6', 32.0, 40.5], ['s7', 40.5, 45.8], ['s8', 45.8, 52]];
+const WIPES = [1.62, 6.6, 12.6, 21.6, 25.8, 32.0, 40.5, 45.8];
+const IMPACTS = [[0.2, 26], [1.62, 14], [2.45, 30], [3.3, 10], [6.6, 12], [9.5, 16], [12.6, 12], [13.06, 10], [14.43, 10], [15.77, 10],
+  [17.4, 10], [21.6, 12], [23.85, 14], [25.8, 12], [32.0, 12], [33.95, 18], [37.3, 26], [40.5, 10], [40.8, 14], [43.7, 18], [43.93, 14], [44.17, 22], [45.8, 12]];
+const FLASHES = [[0.18, .6], [2.45, .8], [9.5, .9], [13.06, .45], [14.43, .45], [15.77, .45], [23.85, .35], [33.95, .3], [37.3, .4], [44.17, .45]];
+export const CUES = { impacts: IMPACTS.map(([t, a]) => [t, a]), wipes: WIPES };
+
+/* slam: scale-down + de-blur impact for one element */
+function slam(el, t, t0, { from = 2.2, dur = 0.32, blur = 18, base = '' } = {}) {
+  const k = prog(t, t0, t0 + dur);
+  if (t < t0) { el.style.opacity = 0; return; }
+  const e = eExpo(k);
+  css(el, { opacity: clamp(k * 3), transform: `${base} scale(${lerp(from, 1, e)})`, filter: k < 1 ? `blur(${(1 - e) * blur}px)` : 'none' });
+}
+/* line reveal: each .line > span slides up from its mask */
+function lines(root, t, t0, step = 0.12, dur = 0.42) {
+  root.querySelectorAll('.line>span').forEach((s, i) => {
+    const k = eOut(prog(t, t0 + i * step, t0 + i * step + dur));
+    s.style.transform = `translateY(${(1 - k) * 110}%) skewY(${(1 - k) * 6}deg)`;
+  });
+}
+function linesOut(root, t, t0, dur = 0.3) {
+  const k = eInOut(prog(t, t0, t0 + dur));
+  if (k > 0) root.querySelectorAll('.line>span').forEach((s) => { s.style.transform = `translateY(${-k * 110}%)`; });
+}
+function fadeUp(el, t, t0, dur = 0.5, dist = 30) {
+  const k = eOut(prog(t, t0, t0 + dur));
+  css(el, { opacity: k, transform: `translateY(${(1 - k) * dist}px)` });
+}
+
+/* ------------------------------------------------------------- static build */
+const grid = $('#grid');
+const photos = [...Array(12)].map((_, i) => {
+  const im = document.createElement('img');
+  im.src = `../../public/tenants/michael-heckert/processed/heckert-${String(i).padStart(2, '0')}.webp`;
+  const c = i % 4, r = Math.floor(i / 4);
+  im.dataset.x = c * 180; im.dataset.y = r * 314;
+  css(im, { left: `${c * 180}px`, top: `${r * 314}px` });
+  grid.append(im); return im;
+});
+const SPORTS = [['heck-victory', 'Bare knuckle', "Men's", 110], ['demo-boxing-men', 'Boxing', "Men's", 130], ['demo-mma-women', 'MMA', "Women's", 130],
+  ['demo-bjj-gi-men', 'Jiu-jitsu', "Gi · men's", 130], ['demo-nogi-women', 'No-gi', "Jiu-jitsu · women's", 130]];
+const strips = SPORTS.map(([shot, name, sub], i) => {
+  const d = document.createElement('div'); d.className = 'strip'; d.style.left = `${i * 386}px`;
+  d.innerHTML = `<img alt=""><div class="shade"></div><div class="lab"><b>${name}</b><span>${sub}</span></div><div class="bar"></div>`;
+  $('#strips').append(d); return d;
+});
+const LOGOS = ['askkling', 'babysnek', 'beastmode-white', 'bluefitmd', 'boxrope-white', 'ljc-construction', 'mekkalabs', 'nitro', 'pergram', 'sammy-sharks', 'suited-ape-society', 'tummo-studios', 'watchmen'];
+for (const pass of [0, 1]) for (const l of LOGOS) { const im = document.createElement('img'); im.src = `../../public/tenants/michael-heckert/sponsors/${l}.png`; $('#mrow').append(im); }
+
+const grainCanvas = $('#grain'), gctx = grainCanvas.getContext('2d');
+const noise = gctx.createImageData(1024, 1184);
+let seed = 7;
+const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+for (let i = 0; i < noise.data.length; i += 4) { const v = rnd() * 255; noise.data[i] = noise.data[i + 1] = noise.data[i + 2] = v; noise.data[i + 3] = 255; }
+gctx.putImageData(noise, 0, 0);
+
+/* ------------------------------------------------------------- per-frame draw */
+function draw(t) {
+  const frame = Math.round(t * FPS);
+  for (const [id, a, b] of SCENES) $('#' + id).style.display = t >= a && t < b ? 'block' : 'none';
+
+  /* S0 · hook */
+  if (t < 3.3) {
+    foot($('#s0-bg'), 'heck-intro', t < 2.45 ? 2 + t * 14 : 30 + (t - 2.45) * 9);
+    css($('#s0-bg'), { transform: `scale(${t < 2.45 ? lerp(1.25, 1.08, t / 2.45) : lerp(1.3, 1.12, eOut(prog(t, 2.45, 3.3)))})`, filter: 'contrast(1.12) saturate(1.1)' });
+    $('#s0-dark').style.opacity = t < 2.45 ? 0.55 : lerp(0.2, 0.45, prog(t, 2.45, 3.3));
+    const num = $('#s0-num');
+    slam(num, t, 0.12, { from: 2.8, dur: 0.34, blur: 26 });
+    $('#s0-digits').textContent = Math.round(60 * eOut(prog(t, 0.12, 0.62)));
+    const sub = $('#s0-sub'); const ks = eOut(prog(t, 0.55, 0.95));
+    css(sub, { opacity: ks, letterSpacing: `${lerp(0.6, 0.2, ks)}em` });
+    num.style.visibility = sub.style.visibility = t < 1.62 ? 'visible' : 'hidden';
+    const pitch = $('#s0-pitch'); pitch.style.display = t >= 1.62 && t < 2.45 ? 'block' : 'none';
+    lines(pitch, t, 1.66, 0.14, 0.32);
+    const pdf = $('#pdf'), kp = eBack(prog(t, 1.7, 2.05));
+    css(pdf, { transform: `translateX(${(1 - kp) * 700}px) rotate(${lerp(18, 4, kp)}deg)` });
+    $('#pdf .x').style.transform = `rotate(-14deg) scaleX(${eOut(prog(t, 2.08, 2.22))})`;
+    const th = $('#s0-this'); th.style.display = t >= 2.45 ? 'block' : 'none';
+    if (t >= 2.45) {
+      const kz = prog(t, 3.05, 3.3);
+      slam(th, t, 2.45, { from: 3, dur: 0.3, blur: 24 });
+      if (kz > 0) css(th, { transform: `scale(${1 + eExpo(kz) * 5})`, opacity: 1 - kz, filter: `blur(${kz * 10}px)` });
+    }
+  }
+
+  /* S1 · reveal */
+  if (t >= 3.3 && t < 6.6) {
+    foot($('#s1-bg'), 'heck-intro', 34 + (t - 3.3) * 15);
+    css($('#s1-bg'), { transform: `scale(${lerp(1.14, 1.0, eOut(prog(t, 3.3, 6.6)))})` });
+    const k360 = eExpo(prog(t, 3.35, 4.0));
+    css($('#s1-360'), { opacity: k360, transform: `translateX(${(1 - k360) * -260}px) scale(${lerp(1.3, 1, k360)})`, letterSpacing: `${lerp(0.3, -0.01, k360)}em` });
+    fadeUp($('#s1-intro'), t, 3.6, 0.4, 16);
+    lines($('#s1-title'), t, 3.7, 0.11);
+    lines($('#s1-tag'), t, 4.75, 0.32, 0.36);
+  }
+
+  /* S2 · likeness */
+  if (t >= 6.6 && t < 12.6) {
+    fadeUp($('#s2-num'), t, 6.7, 0.5, 40);
+    fadeUp($('#s2-kick'), t, 6.85, 0.4, 16);
+    lines($('#s2-title'), t, 6.95, 0.14);
+    fadeUp($('#s2-body'), t, 7.6, 0.5, 20);
+    const scanY = lerp(-20, 1020, eInOut(prog(t, 8.15, 9.05)));
+    const scanOn = t > 8.1 && t < 9.1;
+    css($('#scan'), { top: `${scanY}px`, opacity: scanOn ? 1 : 0 });
+    const kc = eInOut(prog(t, 9.05, 9.5));
+    photos.forEach((im, i) => {
+      const t0 = 6.75 + (i % 4) * 0.07 + Math.floor(i / 4) * 0.12;
+      const k = eOut(prog(t, t0, t0 + 0.45));
+      const x = +im.dataset.x, y = +im.dataset.y;
+      const scanned = clamp((scanY - 76 - y) / 300);
+      const cx = 352 - 83 - x, cy = 464 - 150 - y;
+      css(im, {
+        opacity: k * (1 - kc),
+        transform: `perspective(900px) translate(${cx * kc}px,${cy * kc}px) rotateY(${(1 - k) * 90}deg) scale(${lerp(1, 0.35, kc)})`,
+        filter: scanned > 0 ? `grayscale(${scanned}) sepia(${scanned * 0.6}) brightness(${1 + scanned * 0.15}) hue-rotate(${-scanned * 20}deg)` : 'none',
+        borderColor: scanned >= 1 ? 'rgba(243,106,22,.8)' : 'rgba(244,239,230,.12)'
+      });
+    });
+    const kf = prog(t, 9.4, 9.85);
+    const frame = $('#s2-frame');
+    css(frame, { opacity: kf > 0 ? 1 : 0, transform: `scale(${lerp(1.12, 1, eExpo(kf))})` });
+    const reveal = eInOut(prog(t, 9.45, 10.35));
+    $('#s2-frame .clip').style.clipPath = `inset(0 0 ${(1 - reveal) * 100}% 0)`;
+    css($('#s2-edge'), { top: `${reveal * 800 - 2}px`, opacity: reveal > 0 && reveal < 1 ? 1 : 0 });
+    $('#s2-wire').style.opacity = 1 - prog(t, 9.9, 10.8);
+    const spinF = (t - 9.45) * 30 * 1.45;
+    foot($('#s2-img'), 'heck-spin', Math.max(0, spinF));
+    fadeUp($('#s2-label'), t, 10.0, 0.4, 10);
+    fadeUp($('#s2-deg'), t, 10.0, 0.4, -10);
+    $('#s2-degv').textContent = String(Math.round(clamp(spinF / 149) * 360)).padStart(3, '0');
+  }
+
+  /* S3a · logo mockups */
+  if (t >= 12.6 && t < 17.4) {
+    const SPEED = 1.6, F0 = 20;
+    const f = F0 + (t - 12.6) * 30 * SPEED;
+    foot($('#s3a-bg'), 'demo-upload', f);
+    css($('#s3a-bg'), { transformOrigin: '52% 64%', transform: `scale(${lerp(1.4, 1.28, eOut(prog(t, 12.6, 13.4)))})` });
+    fadeUp($('#s3a-kick'), t, 12.7, 0.4, 14);
+    lines($('#s3a-title'), t, 12.75, 0.12);
+    fadeUp($('#s3a-body'), t, 13.3, 0.5, 18);
+    const UPS = [[42, 'Front waistband'], [108, 'Crop top · chest'], [172, 'Trunks · front left']].map(([fr, s]) => [12.6 + (fr + 1 - F0) / (30 * SPEED), s]);
+    let cardK = -1, burstK = -1, spot = null, spotT = 0;
+    for (const [tu, s] of UPS) {
+      if (t >= tu - 0.45 && t < tu) cardK = prog(t, tu - 0.45, tu);
+      if (t >= tu && t < tu + 0.45) burstK = prog(t, tu, tu + 0.45);
+      if (t >= tu) { spot = s; spotT = tu; }
+    }
+    const card = $('#card');
+    if (cardK >= 0) {
+      const e = eInOut(cardK);
+      css(card, { display: 'block', left: `${lerp(1560, 810, e)}px`, top: `${lerp(980, 445, e)}px`, transform: `rotate(${lerp(-10, 0, e)}deg) scale(${lerp(1, 0.25, e * e)})`, opacity: 1 - prog(cardK, 0.85, 1) });
+    } else card.style.display = 'none';
+    const b = $('#burst');
+    if (burstK >= 0) css(b, { display: 'block', transform: `translate(-50%,-50%) scale(${1 + eOut(burstK) * 14})`, opacity: 1 - burstK, borderWidth: `${lerp(8, 1, burstK)}px` });
+    else b.style.display = 'none';
+    const chip = $('#s3a-chip');
+    if (spot) { $('#s3a-spot').textContent = spot; const kk = eBack(prog(t, spotT, spotT + 0.3)); css(chip, { opacity: 1, transform: `scale(${lerp(0.7, 1, kk)})` }); }
+    else chip.style.opacity = 0;
+  }
+
+  /* S3b · every angle (Michael's sold-out kit) */
+  if (t >= 17.4 && t < 21.6) {
+    foot($('#s3b-bg'), 'heck-close', 6 + (t - 17.4) * 30 * 1.3);
+    css($('#s3b-bg'), { transform: `scale(${lerp(1.0, 1.06, prog(t, 17.4, 21.6))})` });
+    lines($('#s3b-title'), t, 17.55, 0.16);
+    $('#s3b-chips').querySelectorAll('.chip').forEach((c, i) => fadeUp(c, t, 18.2 + i * 0.15, 0.4, 16));
+  }
+
+  /* S4 · bidding */
+  if (t >= 21.6 && t < 25.8) {
+    fadeUp($('#s4-kick'), t, 21.7, 0.4, 14);
+    lines($('#s4-title'), t, 21.75, 0.13);
+    fadeUp($('#s4-body'), t, 22.3, 0.5, 18);
+    const away = eInOut(prog(t, 22.9, 23.3)); // headline steps aside as the camera pushes into the bid panel
+    for (const id of ['#s4-kick', '#s4-title', '#s4-body']) { const el = $(id); el.style.opacity = (id === '#s4-title' ? 1 : +el.style.opacity) * (1 - away); el.style.translate = `${-away * 120}px 0`; }
+    const ki = eExpo(prog(t, 21.65, 22.4));
+    const kz = eInOut(prog(t, 23.0, 24.4));
+    css($('#device'), { transform: `perspective(2200px) translateX(${(1 - ki) * 900}px) rotateY(${lerp(-34, -12, ki)}deg) rotateX(${lerp(10, 5, ki)}deg)` });
+    $('#device .scr').style.transform = `scale(${lerp(1, 1.75, kz)})`;
+    $('#toasts').querySelectorAll('.toast').forEach((el, i) => {
+      const at = +el.dataset.at; const k = eBack(prog(t, at, at + 0.35));
+      const later = $('#toasts').querySelectorAll('.toast').length;
+      let shift = 0; $('#toasts').querySelectorAll('.toast').forEach((o, j) => { if (j > i && t >= +o.dataset.at) shift += eOut(prog(t, +o.dataset.at, +o.dataset.at + 0.35)); });
+      css(el, { top: `${shift * 118}px`, opacity: t >= at ? 1 : 0, transform: `translateX(${(1 - k) * 160}px) scale(${lerp(0.85, 1, k)})` });
+      void later;
+    });
+  }
+
+  /* S5 · sports */
+  if (t >= 25.8 && t < 32.0) {
+    const focusStart = 28.4, focusStep = 0.48;
+    const active = t >= focusStart && t < focusStart + focusStep * 5 ? Math.floor((t - focusStart) / focusStep) : -1;
+    strips.forEach((s, i) => {
+      const [shot, , , n] = SPORTS[i];
+      const t0 = 25.8 + i * 0.07, k = eExpo(prog(t, t0, t0 + 0.6));
+      const speed = (n - 6) / ((32.0 - 25.8) * 30);
+      foot(s.querySelector('img'), shot, 4 + (t - 25.8) * 30 * speed);
+      const on = active === -1 || active === i;
+      css(s, { transform: `translateY(${(1 - k) * (i % 2 ? -1 : 1) * 1100}px)`, filter: `brightness(${on ? 1 : 0.38}) saturate(${on ? 1.05 : 0.6})` });
+      s.querySelector('.bar').style.transform = `scaleX(${active === i ? 1 : 0})`;
+      const lab = s.querySelector('.lab'); const kl = eOut(prog(t, t0 + 0.5, t0 + 0.9));
+      css(lab, { opacity: kl, transform: `translateY(${(1 - kl) * 30}px) scale(${active === i ? 1.08 : 1})`, transformOrigin: 'left bottom' });
+    });
+    fadeUp($('#s5-head'), t, 26.3, 0.5, -30);
+  }
+
+  /* S6 · case study */
+  if (t >= 32.0 && t < 40.5) {
+    css($('#s6-bg'), { transform: `scale(${lerp(1.15, 1.25, prog(t, 32, 40.5))})` });
+    fadeUp($('#s6-kick'), t, 32.15, 0.4, 14);
+    fadeUp($('#s6-name'), t, 32.3, 0.45, 20);
+    slam($('#s6-num'), t, 32.75, { from: 1.9, dur: 0.35, blur: 16 });
+    $('#s6-digits').textContent = Math.round(60 * eOut(prog(t, 32.75, 33.95)));
+    fadeUp($('#s6-numlab'), t, 33.0, 0.4, 14);
+    const kb1 = eOut(prog(t, 33.4, 33.9)), kb2 = eOut(prog(t, 33.75, 34.5));
+    $('#bar1').style.width = `${kb1 * 360}px`; $('#bar2').style.width = `${kb2 * 576}px`;
+    css($('#bartag'), { left: `${240 + kb2 * 576 + 20}px`, opacity: prog(t, 34.3, 34.5) });
+    $('#bars').style.opacity = prog(t, 33.35, 33.5);
+    $('#stats').querySelectorAll('.stat').forEach((s, i) => { const t0 = 35.3 + i * 0.22, k = eBack(prog(t, t0, t0 + 0.4)); css(s, { opacity: prog(t, t0, t0 + 0.15), transform: `translateY(${(1 - k) * 40}px)` }); });
+    const kf = eExpo(prog(t, 32.1, 32.8));
+    css($('#s6-frame'), { opacity: kf, transform: `translateX(${(1 - kf) * 200}px)` });
+    foot($('#s6-img'), 'heck-victory', 4 + (t - 32.1) * 30 * 0.42);
+    slam($('#stamp'), t, 37.3, { from: 2.6, dur: 0.22, blur: 6, base: 'rotate(-7deg)' });
+    const km = prog(t, 38.0, 38.4);
+    css($('#marquee'), { transform: `translateY(${(1 - eOut(km)) * 110}px)` });
+    $('#mrow').style.left = `${640 - (t - 38.0) * 260}px`;
+  }
+
+  /* S7 · origin */
+  if (t >= 40.5 && t < 45.8) {
+    css($('#s7-img'), { transform: `scale(${lerp(1.0, 1.1, prog(t, 40.5, 45.8))})` });
+    const out = 43.3;
+    const A = $('#s7-a');
+    if (t < out + 0.35) { A.style.display = 'block'; lines(A, t, 40.8, 0.22, 0.32); linesOut(A, t, out); } else A.style.display = 'none';
+    fadeUp($('#s7-kick'), t, 40.6, 0.3, 10);
+    $('#s7-kick').style.opacity *= 1 - prog(t, 43.2, 43.4);
+    fadeUp($('#s7-a2'), t, 41.55, 0.45, 20); $('#s7-a2').style.opacity *= 1 - prog(t, 43.2, 43.4);
+    fadeUp($('#s7-cred'), t, 42.1, 0.45, 14); $('#s7-cred').style.opacity *= 1 - prog(t, 43.2, 43.4);
+    const B = $('#s7-b'); B.style.display = t >= 43.6 ? 'block' : 'none';
+    B.querySelectorAll('.line>span').forEach((s, i) => slam(s, t, 43.7 + i * 0.235, { from: 2.4, dur: 0.24, blur: 14 }));
+    css($('#s7-photo'), { filter: `brightness(${1 - prog(t, 43.3, 43.6) * 0.45})` });
+  }
+
+  /* S8 · CTA */
+  if (t >= 45.8) {
+    foot($('#s8-bg'), 'heck-spin', (t - 45.8) * 30 * 0.6);
+    const kl = eOut(prog(t, 45.95, 46.4));
+    css($('#s8-lock'), { opacity: kl, transform: `translateY(${(1 - kl) * -20}px)` });
+    lines($('#s8-head'), t, 46.1, 0.2);
+    const kb = eBack(prog(t, 47.0, 47.4));
+    const pulse = t > 47.6 ? 0.5 + 0.5 * Math.sin((t - 47.6) * 5) : 0;
+    css($('#s8-btn'), { opacity: prog(t, 47.0, 47.15), transform: `translateX(-50%) scale(${lerp(0.6, 1, kb) + pulse * 0.025})`, boxShadow: `0 0 ${30 + pulse * 50}px rgba(243,106,22,${0.35 + pulse * 0.35})` });
+    fadeUp($('#s8-offer'), t, 47.5, 0.4, 14);
+    fadeUp($('#s8-url'), t, 47.75, 0.45, 18);
+  }
+
+  /* ---------------- global fx */
+  const wipe = $('#wipe'); let wipeOn = false;
+  for (const tb of WIPES) {
+    const k = prog(t, tb - 0.28, tb + 0.28);
+    if (k > 0 && k < 1) {
+      wipeOn = true; const e = eInOut(k);
+      wipe.children[0].style.left = `${lerp(-75, 120, eInOut(clamp(k * 1.08)))}%`;
+      wipe.children[1].style.left = `${lerp(-70, 125, e)}%`;
+      wipe.children[2].style.left = `${lerp(-66, 130, eInOut(clamp(k * 0.94 - 0.02)))}%`;
+    }
+  }
+  wipe.style.display = wipeOn ? 'block' : 'none';
+  let fl = 0; for (const [ft, a] of FLASHES) if (t >= ft && t < ft + 0.2) fl = Math.max(fl, a * (1 - (t - ft) / 0.2));
+  $('#flash').style.opacity = fl;
+  let sx = 0, sy = 0, rot = 0;
+  for (const [it, amp] of IMPACTS) if (t >= it && t < it + 0.5) {
+    const d = Math.exp(-(t - it) * 9) * amp;
+    sx += Math.sin((t - it) * 83 + it) * d; sy += Math.cos((t - it) * 71 + it * 2) * d * 0.8; rot += Math.sin((t - it) * 57) * d * 0.012;
+  }
+  $('#world').style.transform = `translate(${sx}px,${sy}px) rotate(${rot}deg)`;
+  const lx = 50 + 40 * Math.sin(t * 0.7), ly = 30 + 30 * Math.cos(t * 0.45);
+  $('#leak').style.background = `radial-gradient(40% 50% at ${lx}% ${ly}%,rgba(243,106,22,.22),transparent 70%),radial-gradient(30% 40% at ${100 - lx}% ${100 - ly}%,rgba(255,150,60,.10),transparent 70%)`;
+  const h = (frame * 2654435761) >>> 0;
+  $('#grain').style.transform = `translate(${-(h % 50)}px,${-((h >> 8) % 50)}px)`;
+  $('#fade').style.opacity = prog(t, 51.3, 52);
+}
+
+window.__duration = DURATION;
+window.__fps = FPS;
+window.__cues = CUES;
+window.__seek = async (t) => { pending = []; draw(t); await Promise.all(pending); await document.fonts.ready; };
+
+const qs = new URLSearchParams(location.search);
+await document.fonts.ready;
+if (qs.has('play')) {
+  const t0 = performance.now();
+  const tick = async () => { const t = ((performance.now() - t0) / 1000) % DURATION; draw(t); requestAnimationFrame(tick); };
+  tick();
+} else {
+  await window.__seek(Number(qs.get('t') || 0));
+}
+window.__ready = true;
+</script>
+</body>
+</html>
