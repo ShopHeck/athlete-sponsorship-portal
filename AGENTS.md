@@ -38,8 +38,10 @@ operating one. `reference/gotchas.md` first when debugging.
 - Production deploys happen from Git (`main`) via Netlify; do not `netlify deploy` a linked site.
 
 ## Architecture
-- **No framework, no frontend bundler.** Netlify Functions (`netlify/functions/*.mjs`, esbuild) each declare their
-  own route via `export const config = { path }`; `netlify.toml` has no redirects. The browser loads plain ES
+- **No framework, no frontend bundler.** HTTP Netlify Functions (`netlify/functions/*.mjs`, esbuild) declare their
+  own routes via `export const config = { path }`; `netlify.toml` has no redirects. Exceptions: `close-auction`
+  uses `config = { schedule: "@daily" }`, and `model-build-background` has no config and is reached only at
+  `/.netlify/functions/model-build-background`. The browser loads plain ES
   modules from `public/`; `three` and MediaPipe are copied into the ignored `public/vendor/` by the build.
 - **Static tenant registry.** `scripts/build.mjs` validates `tenants/*.json` with `netlify/lib/validate.mjs`,
   smoke-renders each, and writes the ignored `netlify/lib/platform.generated.json` (configs + `src/index.template.html`).
