@@ -23,7 +23,10 @@ export function footage(dir, counts) {
     const src = `${dir}/${shot}/${pad(clamp(Math.floor(f), 0, n - 1))}.jpg`;
     if (img.dataset.src !== src) {
       img.dataset.src = src; img.src = src;
-      pending.push(img.decode().catch(() => { if (!lenient) throw new Error(`missing footage ${src} (run capture.mjs ${shot})`); }));
+      // A decode superseded by a newer src rejects too; only a failure of the current source is missing footage.
+      pending.push(img.decode().catch(() => {
+        if (!lenient && img.dataset.src === src) throw new Error(`missing footage ${src} (run capture.mjs ${shot})`);
+      }));
     }
   };
 }
@@ -149,7 +152,12 @@ export async function boot({ duration, draw }) {
   await document.fonts.ready;
   if (qs.has('play')) {
     const t0 = performance.now();
-    const tick = () => { draw(((performance.now() - t0) / 1000) % duration); requestAnimationFrame(tick); };
+    const tick = () => {
+      pending = [];
+      draw(((performance.now() - t0) / 1000) % duration);
+      Promise.all(pending).catch((e) => console.warn(e.message)); // preview never blocks on decodes
+      requestAnimationFrame(tick);
+    };
     tick();
   } else {
     await window.__seek(Number(qs.get('t') || 0));
