@@ -1,6 +1,10 @@
 {
   "slug": "demo-boxing-men",
   "model": "models/demo-boxing-men-animated.glb",
+  "baseline": {
+    "commit": "c421044",
+    "sha256": "f23f46b042088f94971545c175ff46f9261cd752bdae03793fb7090f67965211"
+  },
   "placements": {
     "WB-F1": {
       "overhang": 0,

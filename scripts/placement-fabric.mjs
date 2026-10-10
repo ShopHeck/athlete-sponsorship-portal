@@ -3,6 +3,8 @@
 //   node scripts/placement-fabric.mjs record <slug>   → scripts/fixtures/placement-fabric/<slug>.json
 //   node scripts/placement-fabric.mjs check <slug>    → per-placement match against the recorded colours
 // Each placement is sampled on a 9 × 7 grid exactly as the portal projects it (rest stance, square torso).
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { NodeIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
@@ -18,7 +20,8 @@ const RAYS = {
   right: (x, y) => [new THREE.Vector3(-3, y, -x), new THREE.Vector3(1, 0, 0)]
 };
 export const MATCH_DISTANCE = 60; // RGB distance that still counts as the same fabric under different shading
-export const MATCH_SHARE = 0.9;   // share of a placement's samples that must match a colour it showed before
+export const MATCH_SHARE = 0.9;   // share of a placement's on-body samples that must match a colour it showed before
+export const OVERHANG_TOLERANCE = 2; // extra off-body samples (of 63) allowed beyond the approved layout's own overhang
 const PALETTE_STEP = 25;          // recorded colours closer than this collapse into one palette entry
 
 const fixturePath = (slug) => new URL(`./fixtures/placement-fabric/${slug}.json`, import.meta.url);
@@ -55,19 +58,24 @@ export async function samplePlacements(config, file) {
   return out;
 }
 
+// Scores one placement's samples against what it showed on the approved model.
+export function scorePlacement(samples, recorded) {
+  // A slot may legitimately span two materials (lapel and belt, waistband and trunks), so a sample passes when it
+  // matches any colour the slot showed on the approved model. Skin where there was none fails. Colour and overhang
+  // are judged separately, so extra empty space can never spend the colour budget.
+  const hits = samples.filter(Boolean);
+  const misses = hits.filter((rgb) => !recorded.palette.some((colour) => distance(rgb, colour) <= MATCH_DISTANCE));
+  const overhang = samples.length - hits.length;
+  const share = hits.length ? 1 - misses.length / hits.length : 0;
+  const allowedOverhang = recorded.overhang + OVERHANG_TOLERANCE;
+  return { share, misses, overhang, allowedOverhang, ok: share >= MATCH_SHARE && overhang <= allowedOverhang };
+}
+
 export async function checkPlacements(config, file, fixture) {
   const sampled = await samplePlacements(config, file);
   return Object.entries(sampled).map(([id, samples]) => {
     const recorded = fixture.placements[id];
-    if (!recorded) return { id, ok: false, reason: "no recorded fabric" };
-    // A slot may legitimately span two materials (lapel and belt, waistband and trunks), so a sample passes when it
-    // matches any colour the slot showed on the approved model. Skin where there was none fails, and so does
-    // overhang beyond what the approved layout already had (sleeve slots wrap a little past a hanging arm).
-    const hits = samples.filter(Boolean);
-    const misses = hits.filter((rgb) => !recorded.palette.some((colour) => distance(rgb, colour) <= MATCH_DISTANCE));
-    const overhang = samples.length - hits.length;
-    const share = 1 - (misses.length + Math.max(0, overhang - recorded.overhang)) / samples.length;
-    return { id, share, misses, overhang, ok: share >= MATCH_SHARE };
+    return recorded ? { id, ...scorePlacement(samples, recorded) } : { id, ok: false, reason: "no recorded fabric" };
   });
 }
 
@@ -84,7 +92,10 @@ async function main() {
       return [id, { overhang: samples.filter((rgb) => !rgb).length, palette }];
     }));
     await mkdir(new URL("./fixtures/placement-fabric/", import.meta.url), { recursive: true });
-    await writeFile(fixturePath(slug), `${JSON.stringify({ slug, model: config.model, placements }, null, 2)}\n`);
+    // Name the exact approved model, so the baseline stays traceable after the model is replaced.
+    const commit = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
+    const sha256 = createHash("sha256").update(await readFile(file)).digest("hex");
+    await writeFile(fixturePath(slug), `${JSON.stringify({ slug, model: config.model, baseline: { commit, sha256 }, placements }, null, 2)}\n`);
     console.log(`recorded ${Object.keys(placements).length} placements for ${slug}`);
     return;
   }
@@ -92,7 +103,7 @@ async function main() {
   const results = await checkPlacements(config, file, fixture);
   for (const r of results) {
     console.log(`${r.ok ? "ok  " : "FAIL"} ${r.id.padEnd(8)} ${r.reason || `${Math.round(r.share * 100)}% match` +
-      (r.ok ? "" : `; overhang ${r.overhang}; unmatched e.g. ${r.misses.slice(0, 3).map((rgb) => `rgb(${rgb})`).join(" ") || "none"}`)}`);
+      (r.ok ? "" : `; overhang ${r.overhang}/${r.allowedOverhang} allowed; unmatched e.g. ${r.misses.slice(0, 3).map((rgb) => `rgb(${rgb})`).join(" ") || "none"}`)}`);
   }
   if (results.some((r) => !r.ok)) process.exitCode = 1;
 }

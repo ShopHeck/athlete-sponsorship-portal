@@ -1,6 +1,10 @@
 {
   "slug": "demo-bjj-gi-women",
   "model": "models/demo-bjj-gi-women-animated.glb",
+  "baseline": {
+    "commit": "c421044",
+    "sha256": "8c0c7f73421e72828c1110d990e505b058bc3675b0afbcbe24cae7dc671e8089"
+  },
   "placements": {
     "GJ-FR1": {
       "overhang": 0,

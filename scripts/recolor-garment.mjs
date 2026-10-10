@@ -4,7 +4,8 @@
 // Only texels of triangles inside the body band are touched (heights in metres on a 1.86 m body measured in the
 // bind pose, half-width from the body's centre line), and only those within --distance of the --from colour, so skin,
 // socks and gloves that share the band keep their colours. Shading is kept by scaling --to with each texel's
-// brightness relative to --from. The rig, animations and geometry are copied unchanged.
+// brightness relative to --from. The rig, skin and animations are copied unchanged; the mesh is re-encoded with Draco
+// as optimize-glb does, which welds exact duplicate vertices (0.3% on Jada) but keeps every triangle and the bounds.
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { NodeIO } from "@gltf-transform/core";
