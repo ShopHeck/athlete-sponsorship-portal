@@ -1,0 +1,100 @@
+{
+  "slug": "demo-nogi-men",
+  "model": "models/demo-nogi-men-animated.glb",
+  "baseline": {
+    "commit": "c421044",
+    "sha256": "717df69664b90477d1b3fd7be1832d32e4de81bdac7d3ad0a470fc363b3bbbd3"
+  },
+  "placements": {
+    "RG-F1": {
+      "overhang": 0,
+      "palette": [
+        [
+          15,
+          20,
+          21
+        ]
+      ]
+    },
+    "RG-B1": {
+      "overhang": 0,
+      "palette": [
+        [
+          18,
+          20,
+          22
+        ]
+      ]
+    },
+    "RG-B2": {
+      "overhang": 0,
+      "palette": [
+        [
+          17,
+          19,
+          19
+        ]
+      ]
+    },
+    "RG-SL1": {
+      "overhang": 1,
+      "palette": [
+        [
+          18,
+          20,
+          22
+        ]
+      ]
+    },
+    "RG-SR1": {
+      "overhang": 0,
+      "palette": [
+        [
+          17,
+          21,
+          22
+        ]
+      ]
+    },
+    "GS-FL1": {
+      "overhang": 0,
+      "palette": [
+        [
+          17,
+          17,
+          17
+        ]
+      ]
+    },
+    "GS-FR1": {
+      "overhang": 0,
+      "palette": [
+        [
+          17,
+          18,
+          15
+        ]
+      ]
+    },
+    "GS-BL1": {
+      "overhang": 1,
+      "palette": [
+        [
+          16,
+          17,
+          14
+        ]
+      ]
+    },
+    "GS-BR1": {
+      "overhang": 2,
+      "palette": [
+        [
+          16,
+          17,
+          14
+        ]
+      ]
+    }
+  }
+}
