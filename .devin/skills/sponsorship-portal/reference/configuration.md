@@ -176,6 +176,16 @@ athlete's photos under the spec's `references` so the `views` stage redraws them
 with `scripts/animate-model.mjs`; arms resting against the body rig into stretched geometry. Placements are projected onto the rest stance (arms and legs posed, torso kept square to +Z), so author
 placement coordinates for that arms-down stance rather than the A-pose the rig was built from.
 
+`motion.rest: "Power_Stance"` needs no baked clip: `public/motion.js` builds a fighter's power stance from any Meshy
+rig's bind pose (feet wider than the shoulders and turned out, soft knees, chest up, chin tucked, arms hanging by the
+sides with palms to the thighs). Optional `motion.stance` tunes it per tenant with `stanceWidth`, `toeOutDegrees`,
+`kneeBend`, `chestDegrees`, `chinDegrees`, `handDrop`, `handOut`, `handForward` and `palmTurnDegrees` (defaults and
+ranges in `POWER_STANCE_DEFAULTS` and `netlify/lib/validate.mjs`). Hands hanging at hip height can sit inside a
+side-of-leg decal box; `scripts/power-stance.test.mjs` fails if any hand would be painted, so move the hands
+(`handForward: 0` on the boxing demo) rather than the placement. Fists and facial expression are baked into the
+mesh and cannot be posed. After changing a tenant's rest, run `node scripts/refit-placements.mjs <slug> --from <old
+rest> --write` to follow every placement's surface point onto the new stance, then check the flagged ones.
+
 ## Adding and previewing a tenant
 
 1. Create `tenants/<slug>.json` and `public/tenants/<slug>/`.
