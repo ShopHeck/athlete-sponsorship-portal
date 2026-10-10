@@ -64,8 +64,9 @@ test("every placement rectangle samples fight-kit fabric, not skin", async () =>
 });
 
 test("the chest slot sits at the centre of the sports bra, and both front top slots keep fabric around them", async () => {
-  // Moves deform the chest slightly under skinned decals, so a slot that only just fits its fabric spills onto
-  // skin at the neckline scoop or below the band; 1 cm of fabric must remain beyond every edge.
+  // Decals are bound to the body's own triangles (public/motion.js skinDecal), so in every move they keep their
+  // place on the texture apart from a small skinning-interpolation drift. A slot that only just fits its fabric
+  // still spills onto skin at the neckline scoop or below the band, so 1 cm of fabric must remain on all four sides.
   const MARGIN = 0.01;
   const { meshes, motion } = await loadPosed(file, config, config.motion.rest);
   const texture = (await io.read(file)).getRoot().listMaterials()[0].getBaseColorTexture().getImage();
@@ -84,9 +85,17 @@ test("the chest slot sits at the centre of the sports bra, and both front top sl
     assert.ok(Math.abs(chest.y - (top + bottom) / 2) <= 0.015,
       `TF-02 centre ${chest.y} should be within 1.5 cm of the bra centre ${((top + bottom) / 2).toFixed(3)}`);
     for (const slot of placements.filter(({ id }) => id.startsWith("TF-"))) {
-      for (let x = 0; x <= 8; x++) for (const y of [slot.y + slot.h / 2 + MARGIN, slot.y - slot.h / 2 - MARGIN]) {
-        const sx = slot.x + (x / 8 - 0.5) * slot.w;
-        assert.ok(isFabric(sx, y), `${slot.id} needs ${MARGIN * 100} cm of fabric beyond its edge at x=${sx.toFixed(3)}, y=${y.toFixed(3)}`);
+      const ring = [];
+      for (let i = 0; i <= 8; i++) {
+        const sx = slot.x + (i / 8 - 0.5) * slot.w;
+        ring.push([sx, slot.y + slot.h / 2 + MARGIN], [sx, slot.y - slot.h / 2 - MARGIN]);
+      }
+      for (let i = 0; i <= 4; i++) {
+        const sy = slot.y + (i / 4 - 0.5) * slot.h;
+        ring.push([slot.x - slot.w / 2 - MARGIN, sy], [slot.x + slot.w / 2 + MARGIN, sy]);
+      }
+      for (const [x, y] of ring) {
+        assert.ok(isFabric(x, y), `${slot.id} needs ${MARGIN * 100} cm of fabric beyond its edge at x=${x.toFixed(3)}, y=${y.toFixed(3)}`);
       }
     }
   });
