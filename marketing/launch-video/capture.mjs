@@ -1,8 +1,9 @@
 // Captures real portal footage for the launch video, frame-exact, from a running `netlify dev`.
 //   npm run build && npx netlify dev --offline --port 8890
-//   node marketing/launch-video/capture.mjs [shot ...]        (no args = every shot)
+//   node marketing/launch-video/capture.mjs [shot ...]                  (no args = every shot)
+//   node marketing/launch-video/capture.mjs --format reels [shot ...]   (1080×1920 footage for reels.html)
 // The page's clock and requestAnimationFrame are virtualized, so each screenshot is exactly 1/30 s after the last
-// regardless of how slowly the (software) GPU renders. Output: marketing/launch-video/frames/<shot>/NNNN.jpg.
+// regardless of how slowly the (software) GPU renders. Output: marketing/launch-video/frames/[reels/]<shot>/NNNN.jpg.
 import { mkdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -10,7 +11,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const FRAMES = join(HERE, 'frames');
+const argv = process.argv.slice(2);
+const fi = argv.indexOf('--format');
+const FORMAT = fi >= 0 ? argv.splice(fi, 2)[1] : 'wide';
+if (!['wide', 'reels'].includes(FORMAT)) throw new Error(`unknown --format ${FORMAT}; use wide or reels`);
+const REELS = FORMAT === 'reels';
+const FRAMES = join(HERE, 'frames', REELS ? 'reels' : '');
+// Landscape and portrait capture sizes; reels footage is native 9:16 throughout.
+const LAND = REELS ? { w: 1080, h: 1920 } : { w: 1920, h: 1080 };
+const PORT = REELS ? { w: 1080, h: 1920 } : { w: 1080, h: 1350 };
 const BASE = process.env.PORTAL_URL || 'http://localhost:8890';
 const STEP = 1000 / 30;
 const require = createRequire(import.meta.url);
@@ -36,8 +45,8 @@ const STAGE_CSS = `
   #rotatePrev,#rotateNext,.orientation,.viewer-hint,.stage-hint,.viewer-foot{display:none!important}`;
 
 const pages = [];
-async function open(browser, slug, { w, h, stage = true }) {
-  const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
+async function open(browser, slug, { w, h, stage = true, scale = 1 }) {
+  const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: scale, isMobile: scale > 1, hasTouch: scale > 1 });
   await page.addInitScript(INIT);
   page.on('pageerror', (e) => console.error(slug, 'pageerror:', e.message));
   await page.goto(`${BASE}/${slug}`, { waitUntil: 'networkidle' });
@@ -70,9 +79,9 @@ async function record(page, shot, frames, onFrame) {
   }
 }
 // Constant horizontal drag along the floor (below the kit, so no placement hover); 360° = canvas height in px.
-function dragger(page, w, h, pxPerFrame) {
+function dragger(page, { w, h }, degPerFrame) {
   let x = 0, down = false;
-  const y = Math.round(h * 0.975);
+  const y = Math.round(h * 0.975), pxPerFrame = (h * degPerFrame) / 360;
   return async () => {
     if (!down || x > w * 0.85) { if (down) await page.mouse.up(); x = w * 0.15; await page.mouse.move(x, y); await page.mouse.down(); down = true; }
     x += pxPerFrame; await page.mouse.move(x, y);
@@ -84,23 +93,23 @@ const garment = (page, g) => click(page, `.garment-tab[data-garment="${g}"]`);
 const upload = (page, variant) => page.setInputFiles('#logoInput', join(HERE, 'assets', `your-brand-${variant}.png`));
 
 const SHOTS = {
-  'heck-intro': async (b) => { const p = await open(b, 'michael-heckert', { w: 1920, h: 1080 }); await record(p, 'heck-intro', 84); },
+  'heck-intro': async (b) => { const p = await open(b, 'michael-heckert', LAND); await record(p, 'heck-intro', 84); },
   'heck-spin': async (b) => {
-    const p = await open(b, 'michael-heckert', { w: 1080, h: 1350 }); await skip(p, 85);
-    await record(p, 'heck-spin', 150, dragger(p, 1080, 1350, 10));
+    const p = await open(b, 'michael-heckert', PORT); await skip(p, 85);
+    await record(p, 'heck-spin', 150, dragger(p, PORT, 2.67));
   },
   'heck-close': async (b) => {
-    const p = await open(b, 'michael-heckert', { w: 1920, h: 1080 }); await skip(p, 85);
+    const p = await open(b, 'michael-heckert', LAND); await skip(p, 85);
     // The inventory lists only the side facing the camera, so every target here is a front placement.
     const plan = { 0: () => selectSpot(p, 'SF-L1'), 40: () => selectSpot(p, 'SF-R2'), 80: async () => { await garment(p, 'shirt'); await selectSpot(p, 'TF-05'); } };
     await record(p, 'heck-close', 170, (i) => plan[i]?.());
   },
   'heck-victory': async (b) => {
-    const p = await open(b, 'michael-heckert', { w: 1080, h: 1350 }); await skip(p, 85);
+    const p = await open(b, 'michael-heckert', PORT); await skip(p, 85);
     await record(p, 'heck-victory', 110, (i) => (i === 0 ? click(p, '[data-move="Victory_Chest_Beat"]') : null));
   },
   'demo-upload': async (b) => {
-    const p = await open(b, 'demo-boxing-women', { w: 1920, h: 1080 }); await skip(p, 150);
+    const p = await open(b, 'demo-boxing-women', LAND); await skip(p, 150);
     const plan = {
       0: () => selectSpot(p, 'WB-F1'), 42: () => upload(p, 'dark'),
       70: async () => { await garment(p, 'crop-top'); await selectSpot(p, 'CT-F1'); }, 108: () => upload(p, 'light'),
@@ -110,19 +119,24 @@ const SHOTS = {
     const uploads = new Set([42, 108, 172]);
     await record(p, 'demo-upload', 250, async (i) => { await plan[i]?.(); if (uploads.has(i)) await p.waitForTimeout(400); });
   },
+  // Desktop portal still (wide) or the full mobile page at phone size (reels), with a logo previewed on WB-F1.
   ui: async (b) => {
-    const p = await open(b, 'demo-boxing-women', { w: 1920, h: 1080, stage: false }); await skip(p, 150);
+    const p = REELS
+      ? await open(b, 'demo-boxing-women', { w: 430, h: 932, stage: false, scale: 2.5 })
+      : await open(b, 'demo-boxing-women', { w: 1920, h: 1080, stage: false });
+    await skip(p, 150);
     await selectSpot(p, 'WB-F1'); await skip(p, 40); await upload(p, 'dark'); await p.waitForTimeout(500); await skip(p, 5);
     mkdirSync(FRAMES, { recursive: true });
-    await p.screenshot({ path: join(FRAMES, 'ui-demo-boxing-women.png'), timeout: 300000 });
+    await p.screenshot({ path: join(FRAMES, REELS ? 'ui-mobile.png' : 'ui-demo-boxing-women.png'), fullPage: REELS, timeout: 300000 });
   },
 };
 // Each demo's built-in intro: face close-up, pull back, signature move.
 for (const slug of ['demo-boxing-men', 'demo-mma-women', 'demo-bjj-gi-men', 'demo-nogi-women']) {
-  SHOTS[slug] = async (b) => { const p = await open(b, slug, { w: 1080, h: 1350 }); await record(p, slug, 130); };
+  // Reels shows each demo for two beats (~45 frames), so it needs far fewer.
+  SHOTS[slug] = async (b) => { const p = await open(b, slug, PORT); await record(p, slug, REELS ? 50 : 130); };
 }
 
-const names = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SHOTS);
+const names = argv.length ? argv : Object.keys(SHOTS);
 const browser = await pw.chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 for (const name of names) {
   if (!SHOTS[name]) throw new Error(`unknown shot ${name}; known: ${Object.keys(SHOTS).join(', ')}`);

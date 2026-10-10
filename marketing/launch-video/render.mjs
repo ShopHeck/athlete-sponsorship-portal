@@ -1,7 +1,9 @@
 // Renders index.html frame by frame into an MP4 (and muxes soundtrack.wav when present).
 //   node marketing/launch-video/render.mjs                      → dist/launch-video/asp-launch.mp4
+//   node marketing/launch-video/render.mjs --format reels       → dist/launch-video/asp-launch-reels.mp4 (1080×1920)
 //   node marketing/launch-video/render.mjs --stills 0.5,2.6,9   → PNG stills for review
 //   node marketing/launch-video/render.mjs --from 12 --to 18    → partial render
+//   --lenient previews layouts while footage is still missing (never for a final render)
 // Needs Playwright (local or global install) and ffmpeg on PATH. Footage frames come from capture.mjs.
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, mkdirSync, statSync } from 'node:fs';
@@ -19,7 +21,7 @@ const require = createRequire(import.meta.url);
 let pw;
 try { pw = require('playwright'); } catch { pw = require(join(execSync('npm root -g').toString().trim(), 'playwright')); }
 
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.ttf': 'font/ttf', '.svg': 'image/svg+xml' };
+const TYPES = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.ttf': 'font/ttf', '.svg': 'image/svg+xml' };
 const server = createServer((req, res) => {
   const path = join(ROOT, decodeURIComponent(new URL(req.url, 'http://x').pathname));
   if (!(path === ROOT || path.startsWith(ROOT + sep)) || !existsSync(path) || statSync(path).isDirectory()) { res.writeHead(404); res.end(); return; }
@@ -27,10 +29,14 @@ const server = createServer((req, res) => {
   createReadStream(path).pipe(res);
 }).listen(0, '127.0.0.1');
 await new Promise((r) => server.once('listening', r));
-const url = `http://127.0.0.1:${server.address().port}/marketing/launch-video/index.html`;
+const REELS = args.format === 'reels';
+if (args.format && !['wide', 'reels'].includes(args.format)) throw new Error(`unknown --format ${args.format}; use wide or reels`);
+const [W, H] = REELS ? [1080, 1920] : [1920, 1080];
+const NAME = REELS ? 'asp-launch-reels' : 'asp-launch';
+const url = `http://127.0.0.1:${server.address().port}/marketing/launch-video/${REELS ? 'reels' : 'index'}.html${args.lenient ? '?lenient' : ''}`;
 
 const browser = await pw.chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.error('pageerror:', e.message));
 await page.goto(url);
 await page.waitForFunction(() => window.__ready === true);
@@ -40,16 +46,17 @@ mkdirSync(OUT_DIR, { recursive: true });
 if (args.stills) {
   for (const t of String(args.stills).split(',').map(Number)) {
     await page.evaluate((t) => window.__seek(t), t);
-    await page.screenshot({ path: join(OUT_DIR, `still-${t.toFixed(2)}.png`) });
+    await page.screenshot({ path: join(OUT_DIR, `${REELS ? 'reels-' : ''}still-${t.toFixed(2)}.png`) });
   }
   console.log('stills written to', OUT_DIR);
 } else {
   const from = Number(args.from ?? 0), to = Number(args.to ?? duration);
-  const out = args.out ? resolve(args.out) : join(OUT_DIR, from === 0 && to === duration ? 'asp-launch.mp4' : `asp-launch-${from}-${to}.mp4`);
-  const wav = join(HERE, 'soundtrack.wav');
+  const out = args.out ? resolve(args.out) : join(OUT_DIR, from === 0 && to === duration ? `${NAME}.mp4` : `${NAME}-${from}-${to}.mp4`);
+  const wav = join(HERE, REELS ? 'soundtrack-reels.wav' : 'soundtrack.wav');
   const withAudio = existsSync(wav) && !args['no-audio'];
   const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-c:v', 'mjpeg', '-framerate', String(fps), '-i', '-',
-    ...(withAudio ? ['-ss', String(from), '-t', String(to - from), '-i', wav] : []),
+    // Sound lands one frame after its picture (light beats sound), so the audio input is delayed by 1/fps.
+    ...(withAudio ? ['-itsoffset', (1 / fps).toFixed(4), '-ss', String(from), '-t', String(to - from), '-i', wav] : []),
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '17', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
     ...(withAudio ? ['-c:a', 'aac', '-b:a', '256k', '-shortest'] : []), out], { stdio: ['pipe', 'inherit', 'inherit'] });
   const ffDone = new Promise((res, rej) => {

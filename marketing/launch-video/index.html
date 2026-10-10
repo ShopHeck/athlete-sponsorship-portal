@@ -8,56 +8,10 @@
   (seconds), so render.mjs can screenshot it frame by frame. Open with ?t=12.5 to inspect one moment, or ?play to
   preview in real time (footage frames must exist in ./frames, see capture.mjs).
 -->
+<link rel="stylesheet" href="base.css">
 <style>
-@font-face{font-family:BC;font-weight:600;src:url(fonts/bc600.ttf)}
-@font-face{font-family:BC;font-weight:700;src:url(fonts/bc700.ttf)}
-@font-face{font-family:BC;font-weight:800;src:url(fonts/bc800.ttf)}
-@font-face{font-family:BC;font-weight:900;src:url(fonts/bc900.ttf)}
-@font-face{font-family:BC;font-weight:900;font-style:italic;src:url(fonts/bc900i.ttf)}
-@font-face{font-family:IN;font-weight:400;src:url(fonts/in400.ttf)}
-@font-face{font-family:IN;font-weight:500;src:url(fonts/in500.ttf)}
-@font-face{font-family:IN;font-weight:600;src:url(fonts/in600.ttf)}
-:root{--bg:#0b0a09;--ink:#f4efe6;--muted:#a59d92;--accent:#f36a16;--accent2:#ff8a3d;--deep:#9d3008}
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{background:#000;width:1920px;height:1080px;overflow:hidden}
-#stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--bg);color:var(--ink);font-family:BC,sans-serif;text-transform:uppercase}
-#world{position:absolute;inset:0;will-change:transform}
-.scene{position:absolute;inset:0;display:none;overflow:hidden}
-.abs{position:absolute}
-.cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.d900{font-weight:900;font-style:italic;line-height:.86;letter-spacing:-.01em}
-.d800{font-weight:800;line-height:.9}
-.kicker{font:700 26px/1 BC;letter-spacing:.28em;color:var(--accent)}
-.body{font:500 30px/1.38 IN;text-transform:none;color:#d8d1c6;letter-spacing:-.005em}
-.o{color:var(--accent)}
-.outline{color:transparent;-webkit-text-stroke:3px var(--accent)}
-.line{display:block;overflow:hidden;padding:.04em .08em .06em 0;margin:-.04em 0 -.06em}
-.line>span{display:inline-block}
-.grad-l{position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,7,6,.94) 0%,rgba(8,7,6,.78) 34%,rgba(8,7,6,0) 62%)}
-.grad-b{position:absolute;inset:0;background:linear-gradient(0deg,rgba(8,7,6,.95) 0%,rgba(8,7,6,.6) 30%,rgba(8,7,6,0) 55%)}
-.glow{position:absolute;inset:0;background:radial-gradient(60% 70% at 72% 55%,rgba(243,106,22,.22),transparent 70%),radial-gradient(40% 50% at 10% 10%,rgba(243,106,22,.08),transparent 70%)}
-.chip{position:absolute;display:flex;align-items:center;gap:14px;padding:16px 22px;background:rgba(14,12,10,.86);border:1px solid rgba(243,106,22,.55);font:700 24px/1 BC;letter-spacing:.16em;white-space:nowrap}
-.chip b{color:var(--accent);font-weight:800}
-.tick{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#111;font:900 20px/1 BC}
-.hud{position:absolute;border:0}
-.hud i{position:absolute;width:46px;height:46px;border-color:var(--accent);border-style:solid}
-.hud i:nth-child(1){left:-14px;top:-14px;border-width:4px 0 0 4px}
-.hud i:nth-child(2){right:-14px;top:-14px;border-width:4px 4px 0 0}
-.hud i:nth-child(3){left:-14px;bottom:-14px;border-width:0 0 4px 4px}
-.hud i:nth-child(4){right:-14px;bottom:-14px;border-width:0 4px 4px 0}
-
-/* overlays */
-#wipe{position:absolute;inset:-20% -60%;pointer-events:none;display:none}
-#wipe div{position:absolute;top:0;bottom:0;width:62%;transform:skewX(-18deg)}
-#wipe .w1{background:var(--accent)}
-#wipe .w2{background:#151210}
-#wipe .w3{background:var(--ink)}
-#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;mix-blend-mode:screen}
-#leak{position:absolute;inset:0;pointer-events:none;mix-blend-mode:screen;opacity:.55}
-#grain{position:absolute;inset:-50px;pointer-events:none;opacity:.11;mix-blend-mode:overlay}
-#vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 95% at 50% 50%,transparent 58%,rgba(0,0,0,.62) 100%)}
-#fade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none}
-
+html,body,#stage{width:1920px;height:1080px}
+#bug{right:56px;top:48px}
 /* s0 */
 #s0-num{left:0;right:0;top:250px;text-align:center;font-size:420px;color:var(--accent);text-shadow:0 0 80px rgba(243,106,22,.45)}
 #s0-sub{left:0;right:0;top:690px;text-align:center;font:800 64px/1 BC;letter-spacing:.2em}
@@ -304,69 +258,28 @@ html,body{background:#000;width:1920px;height:1080px;overflow:hidden}
   </section>
 
 </div>
-<div id="leak"></div>
-<div id="wipe"><div class="w3"></div><div class="w1"></div><div class="w2"></div></div>
-<div id="flash"></div>
-<canvas id="grain" width="1024" height="1184"></canvas>
-<div id="vignette"></div>
-<div id="fade"></div>
+<div id="bug"><b>ASP</b>Athlete Sponsorship Portal</div>
 </div>
 
 <script type="module">
-const FPS = 30;
-export const DURATION = 52;
-const $ = (s) => document.querySelector(s);
-const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
-const prog = (t, a, b) => clamp((t - a) / (b - a));
-const lerp = (a, b, k) => a + (b - a) * k;
-const eOut = (x) => 1 - Math.pow(1 - x, 3);
-const eExpo = (x) => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
-const eInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
-const eBack = (x) => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
-const css = (el, s) => { for (const k in s) el.style[k] = s[k]; };
-const pad = (n) => String(n).padStart(4, '0');
+import { $, clamp, prog, lerp, eOut, eExpo, eInOut, eBack, css, footage, slam, lines, linesOut, fadeUp, mountFx, boot } from './engine.js';
+const DURATION = 52;
+const PITCH = 1.35; // "He didn't send a pitch deck." holds 1.1 s before the 2.45 s drop
+const foot = footage('frames', { 'heck-intro': 84, 'heck-spin': 150, 'heck-close': 170, 'heck-victory': 110, 'demo-upload': 250,
+  'demo-boxing-men': 130, 'demo-mma-women': 130, 'demo-bjj-gi-men': 130, 'demo-nogi-women': 130 });
 
-/* ------------------------------------------------------------- footage */
-const SHOTS = { 'heck-intro': 84, 'heck-spin': 150, 'heck-close': 170, 'heck-victory': 110, 'demo-upload': 250,
-  'demo-boxing-men': 130, 'demo-mma-women': 130, 'demo-bjj-gi-men': 130, 'demo-nogi-women': 130 };
-let pending = [];
-function foot(img, shot, f) {
-  const n = SHOTS[shot];
-  const src = `frames/${shot}/${pad(clamp(Math.floor(f), 0, n - 1))}.jpg`;
-  if (img.dataset.src !== src) { img.dataset.src = src; img.src = src; pending.push(img.decode().catch(() => { throw new Error(`missing footage ${src} (run capture.mjs ${shot})`); })); }
-}
-
-/* ------------------------------------------------------------- timeline */
+/* ------------------------------------------------------------- timeline (mirrored in soundtrack.py WIDE) */
 const SCENES = [['s0', 0, 3.3], ['s1', 3.3, 6.6], ['s2', 6.6, 12.6], ['s3a', 12.6, 17.4], ['s3b', 17.4, 21.6],
   ['s4', 21.6, 25.8], ['s5', 25.8, 32.0], ['s6', 32.0, 40.5], ['s7', 40.5, 45.8], ['s8', 45.8, 52]];
-const WIPES = [1.62, 6.6, 12.6, 21.6, 25.8, 32.0, 40.5, 45.8];
-const IMPACTS = [[0.2, 26], [1.62, 14], [2.45, 30], [3.3, 10], [6.6, 12], [9.5, 16], [12.6, 12], [13.06, 10], [14.43, 10], [15.77, 10],
-  [17.4, 10], [21.6, 12], [23.85, 14], [25.8, 12], [32.0, 12], [33.95, 18], [37.3, 26], [40.5, 10], [40.8, 14], [43.7, 18], [43.93, 14], [44.17, 22], [45.8, 12]];
-const FLASHES = [[0.18, .6], [2.45, .8], [9.5, .9], [13.06, .45], [14.43, .45], [15.77, .45], [23.85, .35], [33.95, .3], [37.3, .4], [44.17, .45]];
-export const CUES = { impacts: IMPACTS.map(([t, a]) => [t, a]), wipes: WIPES };
-
-/* slam: scale-down + de-blur impact for one element */
-function slam(el, t, t0, { from = 2.2, dur = 0.32, blur = 18, base = '' } = {}) {
-  const k = prog(t, t0, t0 + dur);
-  if (t < t0) { el.style.opacity = 0; return; }
-  const e = eExpo(k);
-  css(el, { opacity: clamp(k * 3), transform: `${base} scale(${lerp(from, 1, e)})`, filter: k < 1 ? `blur(${(1 - e) * blur}px)` : 'none' });
-}
-/* line reveal: each .line > span slides up from its mask */
-function lines(root, t, t0, step = 0.12, dur = 0.42) {
-  root.querySelectorAll('.line>span').forEach((s, i) => {
-    const k = eOut(prog(t, t0 + i * step, t0 + i * step + dur));
-    s.style.transform = `translateY(${(1 - k) * 110}%) skewY(${(1 - k) * 6}deg)`;
-  });
-}
-function linesOut(root, t, t0, dur = 0.3) {
-  const k = eInOut(prog(t, t0, t0 + dur));
-  if (k > 0) root.querySelectorAll('.line>span').forEach((s) => { s.style.transform = `translateY(${-k * 110}%)`; });
-}
-function fadeUp(el, t, t0, dur = 0.5, dist = 30) {
-  const k = eOut(prog(t, t0, t0 + dur));
-  css(el, { opacity: k, transform: `translateY(${(1 - k) * dist}px)` });
-}
+const drawFx = mountFx({
+  width: 1920, height: 1080,
+  wipes: [6.6, 12.6, 21.6, 25.8],                 // into each numbered feature
+  glitches: [PITCH, 32.0, 40.5],                   // pitch-deck turn, case study, origin
+  impacts: [[0.12, 26], [PITCH, 14], [2.45, 30], [3.3, 10], [6.6, 12], [9.5, 16], [12.6, 12], [13.06, 10], [14.43, 10], [15.77, 10],
+    [17.4, 10], [21.6, 12], [23.85, 14], [25.8, 12], [32.0, 16], [33.95, 18], [37.3, 26], [40.5, 12], [40.8, 14], [43.7, 18], [43.93, 14], [44.17, 22], [45.8, 16]],
+  flashes: [[0.1, .6], [2.45, .8], [9.5, .9], [13.06, .45], [14.43, .45], [15.77, .45], [17.4, .3], [23.85, .35], [33.95, .3], [37.3, .4], [44.17, .45], [45.8, .7]],
+  fadeOut: [51.3, 52],
+});
 
 /* ------------------------------------------------------------- static build */
 const grid = $('#grid');
@@ -388,16 +301,8 @@ const strips = SPORTS.map(([shot, name, sub], i) => {
 const LOGOS = ['askkling', 'babysnek', 'beastmode-white', 'bluefitmd', 'boxrope-white', 'ljc-construction', 'mekkalabs', 'nitro', 'pergram', 'sammy-sharks', 'suited-ape-society', 'tummo-studios', 'watchmen'];
 for (const pass of [0, 1]) for (const l of LOGOS) { const im = document.createElement('img'); im.src = `../../public/tenants/michael-heckert/sponsors/${l}.png`; $('#mrow').append(im); }
 
-const grainCanvas = $('#grain'), gctx = grainCanvas.getContext('2d');
-const noise = gctx.createImageData(1024, 1184);
-let seed = 7;
-const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-for (let i = 0; i < noise.data.length; i += 4) { const v = rnd() * 255; noise.data[i] = noise.data[i + 1] = noise.data[i + 2] = v; noise.data[i + 3] = 255; }
-gctx.putImageData(noise, 0, 0);
-
 /* ------------------------------------------------------------- per-frame draw */
 function draw(t) {
-  const frame = Math.round(t * FPS);
   for (const [id, a, b] of SCENES) $('#' + id).style.display = t >= a && t < b ? 'block' : 'none';
 
   /* S0 · hook */
@@ -406,16 +311,16 @@ function draw(t) {
     css($('#s0-bg'), { transform: `scale(${t < 2.45 ? lerp(1.25, 1.08, t / 2.45) : lerp(1.3, 1.12, eOut(prog(t, 2.45, 3.3)))})`, filter: 'contrast(1.12) saturate(1.1)' });
     $('#s0-dark').style.opacity = t < 2.45 ? 0.55 : lerp(0.2, 0.45, prog(t, 2.45, 3.3));
     const num = $('#s0-num');
-    slam(num, t, 0.12, { from: 2.8, dur: 0.34, blur: 26 });
-    $('#s0-digits').textContent = Math.round(60 * eOut(prog(t, 0.12, 0.62)));
-    const sub = $('#s0-sub'); const ks = eOut(prog(t, 0.55, 0.95));
+    slam(num, t, 0, { from: 2.4, dur: 0.3, blur: 22 }); // legible by ~0.1 s: the hook has to read on the first swipe
+    $('#s0-digits').textContent = Math.round(60 * eOut(prog(t, 0, 0.5)));
+    const sub = $('#s0-sub'); const ks = eOut(prog(t, 0.35, 0.75));
     css(sub, { opacity: ks, letterSpacing: `${lerp(0.6, 0.2, ks)}em` });
-    num.style.visibility = sub.style.visibility = t < 1.62 ? 'visible' : 'hidden';
-    const pitch = $('#s0-pitch'); pitch.style.display = t >= 1.62 && t < 2.45 ? 'block' : 'none';
-    lines(pitch, t, 1.66, 0.14, 0.32);
-    const pdf = $('#pdf'), kp = eBack(prog(t, 1.7, 2.05));
+    num.style.visibility = sub.style.visibility = t < PITCH ? 'visible' : 'hidden';
+    const pitch = $('#s0-pitch'); pitch.style.display = t >= PITCH && t < 2.45 ? 'block' : 'none';
+    lines(pitch, t, PITCH + 0.04, 0.16, 0.32);
+    const pdf = $('#pdf'), kp = eBack(prog(t, PITCH + 0.15, PITCH + 0.5));
     css(pdf, { transform: `translateX(${(1 - kp) * 700}px) rotate(${lerp(18, 4, kp)}deg)` });
-    $('#pdf .x').style.transform = `rotate(-14deg) scaleX(${eOut(prog(t, 2.08, 2.22))})`;
+    $('#pdf .x').style.transform = `rotate(-14deg) scaleX(${eOut(prog(t, PITCH + 0.63, PITCH + 0.79))})`;
     const th = $('#s0-this'); th.style.display = t >= 2.45 ? 'block' : 'none';
     if (t >= 2.45) {
       const kz = prog(t, 3.05, 3.3);
@@ -597,48 +502,12 @@ function draw(t) {
     fadeUp($('#s8-url'), t, 47.75, 0.45, 18);
   }
 
-  /* ---------------- global fx */
-  const wipe = $('#wipe'); let wipeOn = false;
-  for (const tb of WIPES) {
-    const k = prog(t, tb - 0.28, tb + 0.28);
-    if (k > 0 && k < 1) {
-      wipeOn = true; const e = eInOut(k);
-      wipe.children[0].style.left = `${lerp(-75, 120, eInOut(clamp(k * 1.08)))}%`;
-      wipe.children[1].style.left = `${lerp(-70, 125, e)}%`;
-      wipe.children[2].style.left = `${lerp(-66, 130, eInOut(clamp(k * 0.94 - 0.02)))}%`;
-    }
-  }
-  wipe.style.display = wipeOn ? 'block' : 'none';
-  let fl = 0; for (const [ft, a] of FLASHES) if (t >= ft && t < ft + 0.2) fl = Math.max(fl, a * (1 - (t - ft) / 0.2));
-  $('#flash').style.opacity = fl;
-  let sx = 0, sy = 0, rot = 0;
-  for (const [it, amp] of IMPACTS) if (t >= it && t < it + 0.5) {
-    const d = Math.exp(-(t - it) * 9) * amp;
-    sx += Math.sin((t - it) * 83 + it) * d; sy += Math.cos((t - it) * 71 + it * 2) * d * 0.8; rot += Math.sin((t - it) * 57) * d * 0.012;
-  }
-  $('#world').style.transform = `translate(${sx}px,${sy}px) rotate(${rot}deg)`;
-  const lx = 50 + 40 * Math.sin(t * 0.7), ly = 30 + 30 * Math.cos(t * 0.45);
-  $('#leak').style.background = `radial-gradient(40% 50% at ${lx}% ${ly}%,rgba(243,106,22,.22),transparent 70%),radial-gradient(30% 40% at ${100 - lx}% ${100 - ly}%,rgba(255,150,60,.10),transparent 70%)`;
-  const h = (frame * 2654435761) >>> 0;
-  $('#grain').style.transform = `translate(${-(h % 50)}px,${-((h >> 8) % 50)}px)`;
-  $('#fade').style.opacity = prog(t, 51.3, 52);
+  // Brand bug from the reveal until the origin story.
+  $('#bug').style.opacity = Math.min(prog(t, 4.2, 4.6), 1 - prog(t, 40.3, 40.5)) * (t >= 45.8 ? 0 : 1);
+  drawFx(t);
 }
 
-window.__duration = DURATION;
-window.__fps = FPS;
-window.__cues = CUES;
-window.__seek = async (t) => { pending = []; draw(t); await Promise.all(pending); await document.fonts.ready; };
-
-const qs = new URLSearchParams(location.search);
-await document.fonts.ready;
-if (qs.has('play')) {
-  const t0 = performance.now();
-  const tick = async () => { const t = ((performance.now() - t0) / 1000) % DURATION; draw(t); requestAnimationFrame(tick); };
-  tick();
-} else {
-  await window.__seek(Number(qs.get('t') || 0));
-}
-window.__ready = true;
+await boot({ duration: DURATION, draw });
 </script>
 </body>
 </html>
