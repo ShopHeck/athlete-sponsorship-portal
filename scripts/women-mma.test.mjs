@@ -63,6 +63,35 @@ test("every placement rectangle samples fight-kit fabric, not skin", async () =>
   });
 });
 
+test("the chest slot sits at the centre of the sports bra, and both front top slots keep fabric around them", async () => {
+  // Moves deform the chest slightly under skinned decals, so a slot that only just fits its fabric spills onto
+  // skin at the neckline scoop or below the band; 1 cm of fabric must remain beyond every edge.
+  const MARGIN = 0.01;
+  const { meshes, motion } = await loadPosed(file, config, config.motion.rest);
+  const texture = (await io.read(file)).getRoot().listMaterials()[0].getBaseColorTexture().getImage();
+  const { data, info } = await sharp(texture).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const isFabric = (x, y) => {
+    const hit = new THREE.Raycaster(new THREE.Vector3(x, y, 3), new THREE.Vector3(0, 0, -1)).intersectObjects(meshes)[0];
+    if (!hit?.uv) return false;
+    const px = Math.round(hit.uv.x * (info.width - 1)), py = Math.round(hit.uv.y * (info.height - 1));
+    const [r, g, b] = data.subarray((py * info.width + px) * 4, (py * info.width + px) * 4 + 3);
+    return Math.max(r, g, b) < 100;
+  };
+  motion.withProjectionPose(() => {
+    let top = -Infinity, bottom = Infinity;
+    for (let y = 1.2; y <= 1.5; y += 0.0025) if (isFabric(0, y)) { top = Math.max(top, y); bottom = Math.min(bottom, y); }
+    const chest = placements.find(({ id }) => id === "TF-02");
+    assert.ok(Math.abs(chest.y - (top + bottom) / 2) <= 0.015,
+      `TF-02 centre ${chest.y} should be within 1.5 cm of the bra centre ${((top + bottom) / 2).toFixed(3)}`);
+    for (const slot of placements.filter(({ id }) => id.startsWith("TF-"))) {
+      for (let x = 0; x <= 8; x++) for (const y of [slot.y + slot.h / 2 + MARGIN, slot.y - slot.h / 2 - MARGIN]) {
+        const sx = slot.x + (x / 8 - 0.5) * slot.w;
+        assert.ok(isFabric(sx, y), `${slot.id} needs ${MARGIN * 100} cm of fabric beyond its edge at x=${sx.toFixed(3)}, y=${y.toFixed(3)}`);
+      }
+    }
+  });
+});
+
 test("the offline stance tool's surface warp stays small, local, seam-safe and normalized", () => {
   const warp = [{ center: [0.025, 1.516, 0.082], radius: [0.014, 0.014, 0.03], displacement: [0, 0.004, 0] }];
   const doc = new Document(), buffer = doc.createBuffer();

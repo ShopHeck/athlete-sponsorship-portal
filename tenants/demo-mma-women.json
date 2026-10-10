@@ -349,24 +349,24 @@
         {
           "id": "TF-01",
           "name": "Front lower panel · Center",
-          "detail": "Centered logo on sports-bra fabric below the front underband placement.",
+          "detail": "Centered logo on sports-bra fabric below the front chest placement.",
           "side": "front",
           "x": 0,
-          "y": 1.305,
+          "y": 1.3,
           "w": 0.15,
-          "h": 0.045,
+          "h": 0.035,
           "label": "Sports top · Front lower panel · Center"
         },
         {
           "id": "TF-02",
-          "name": "Front underband · Center",
-          "detail": "Centered logo placement along the front underband of the sports top.",
+          "name": "Front chest · Center",
+          "detail": "Centered logo placement on the chest of the sports top.",
           "side": "front",
           "x": 0,
-          "y": 1.375,
+          "y": 1.355,
           "w": 0.19,
           "h": 0.04,
-          "label": "Sports top · Front underband · Center"
+          "label": "Sports top · Front chest · Center"
         },
         {
           "id": "TB-01",
