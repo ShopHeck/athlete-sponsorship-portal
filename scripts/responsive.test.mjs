@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 
 const marketing = readFileSync(new URL("../public/marketing.js", import.meta.url), "utf8");
 const viewer = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
@@ -65,6 +66,46 @@ test("missing homepage elements are safe", () => {
   vm.runInNewContext(marketing, {
     document: { querySelector: () => null, getElementById: () => null },
   });
+});
+
+test("homepage hero showcases the product with explicitly illustrative data and real CTAs", () => {
+  const homepage = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+  const hero = homepage.match(/<section class="hero">([\s\S]*?)<\/section>/)[1];
+  for (const feature of ["360° logo preview", "Opening bid", "Lock It Now", "Your athlete dashboard", "CSV export", "Your Stripe. Your payments."]) {
+    assert.ok(hero.includes(feature), `Missing feature: ${feature}`);
+  }
+  assert.match(hero, /Illustrative campaign/);
+  assert.match(hero, /Product illustration · Example kit, prices and campaign data/);
+  assert.match(hero, /<figure class="hero-showcase" aria-labelledby="showcase-caption">/);
+  assert.match(hero, /<figcaption id="showcase-caption">/);
+  assert.match(hero, /<svg[^>]*aria-hidden="true" focusable="false"/);
+  assert.match(hero, /href="#apply">Apply for a founding spot/);
+  assert.match(hero, /href="\/michael-heckert">Explore Michael's portal/);
+  assert.match(hero, /href="\/michael-heckert">Explore a real athlete portal/);
+  assert.match(hero, /Michael Heckert’s original campaign/);
+  assert.doesNotMatch(hero, /portal-hero(?:-mobile)?\.webp/);
+  assert.doesNotMatch(hero, /<(?:button|input|select)\b/);
+});
+
+test("homepage stylesheet URL changes with its contents to avoid stale cached hero styles", () => {
+  const homepage = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../public/marketing.css", import.meta.url));
+  const href = homepage.match(/<link rel="stylesheet" href="([^"]+)">/)[1];
+  const url = new URL(href, "https://example.test");
+  assert.equal(url.pathname, "/marketing.css");
+  assert.equal(url.searchParams.get("v"), createHash("sha256").update(css).digest("hex").slice(0, 12));
+});
+
+test("homepage social preview exists and agrees with its declared dimensions", async () => {
+  const homepage = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
+  const meta = (property) => homepage.match(new RegExp(`<meta property="${property}" content="([^"]+)">`))[1];
+  const path = new URL(meta("og:image")).pathname;
+  assert.equal(path, "/assets/marketing/feature-overview.jpg");
+  assert.match(meta("og:image:alt"), /Product illustration with example data/);
+  const { default: sharp } = await import("sharp");
+  const image = await sharp(readFileSync(new URL(`../public${path}`, import.meta.url))).metadata();
+  assert.equal(image.width, Number(meta("og:image:width")));
+  assert.equal(image.height, Number(meta("og:image:height")));
 });
 
 test("homepage sponsor board includes 18 distinct brands without adding HKA to apparel", () => {
