@@ -134,3 +134,10 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
   T-shirt hem covers the waistband, so a decal up there projects onto the shirt.
   The hem hangs lower at the back: back-of-shorts decals must stay below y≈0.84 (front rows can reach ≈0.90).
   Side rays map placement `x` to world z (left) and -z (right), so +x is always toward the front on both sides.
+- **Fists and expression come from the Meshy views, not the rig.** Meshy's 24-joint rig has no finger or face
+  bones and no blendshapes, so closed hands and a smirk must be in the generated reference views. Do not build those
+  views with `model a-pose`: Meshy's `pose_mode` re-synthesizes the hands as open, bare palms (gloves vanish) and
+  flattens the face. Instead prompt the views themselves into an A-pose (arms straight, ~45° out, a clear gap to the
+  torso) and run `model` with no pose. The image model drifts on side views; `modelViews` may skip a bad angle.
+  `scripts/demo-models/demo-mma-women-v2.json` is the working example (references are renders of the prior model).
+- **Node's `fetch` ignores `HTTPS_PROXY`.** Behind a proxy, run the Meshy scripts with `NODE_USE_ENV_PROXY=1`.
