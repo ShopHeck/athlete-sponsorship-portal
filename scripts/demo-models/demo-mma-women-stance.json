@@ -1,0 +1,13 @@
+{
+  "sourceRest": "Idle",
+  "rest": "Fight_Stance",
+  "chinDegrees": 4,
+  "palmTurnDegrees": 75,
+  "surfaceDeformations": [
+    {
+      "center": [0.025, 1.516, 0.082],
+      "radius": [0.014, 0.014, 0.03],
+      "displacement": [0, 0.004, 0]
+    }
+  ]
+}

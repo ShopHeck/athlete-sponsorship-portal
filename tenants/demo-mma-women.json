@@ -42,11 +42,10 @@
     "accentPanel": "#142829",
     "accentGradient": "#102627"
   },
-  "model": "models/demo-mma-women-animated.glb",
+  "model": "models/demo-mma-women-fight-stance.glb",
   "motion": {
     "label": "Moves",
-    "rest": "Idle",
-    "intro": "Chest_Pound_Taunt",
+    "rest": "Fight_Stance",
     "clips": [
       {
         "clip": "Boxing_Warmup",
@@ -349,14 +348,14 @@
       "placements": [
         {
           "id": "TF-01",
-          "name": "Front chest · Center",
-          "detail": "Centered logo placement on the front chest of the sports top.",
+          "name": "Front lower panel · Center",
+          "detail": "Centered logo on sports-bra fabric below the front underband placement.",
           "side": "front",
           "x": 0,
-          "y": 1.405,
+          "y": 1.24,
           "w": 0.15,
-          "h": 0.06,
-          "label": "Sports top · Front chest · Center"
+          "h": 0.045,
+          "label": "Sports top · Front lower panel · Center"
         },
         {
           "id": "TF-02",
