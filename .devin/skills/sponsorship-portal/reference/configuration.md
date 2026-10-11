@@ -192,7 +192,10 @@ fitted to each body so the fist lands on the chest. `scripts/fight-moves.test.mj
 tenant. Meshy's library moves (crouching `Boxing_Practice`, hunched `Chest_Pound_Taunt`, head-down
 `Victory_Fist_Pump`) are no longer offered. New demo models still need a Meshy rig, and the animation pipeline bakes at
 least one library move: `scripts/animate-model.mjs <slug> --task <id> --height <m> --actions 403` (5 credits for the
-rig + 3). The power stance replaces Meshy's `Idle`.
+rig + 3). Then drop the unused clip with `node scripts/strip-animations.mjs <model.glb>`, which rewrites only the
+animation data and copies the Draco mesh, skin and texture byte for byte. Strip last: `refit-placements.mjs --from
+<old rest>` needs that rest baked in the model, so run any refit from a baked clip first. The power stance replaces
+Meshy's `Idle`.
 
 ## Adding and previewing a tenant
 
