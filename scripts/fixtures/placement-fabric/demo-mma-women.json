@@ -2,7 +2,7 @@
   "slug": "demo-mma-women",
   "model": "models/demo-mma-women-animated.glb",
   "baseline": {
-    "commit": null,
+    "commit": "a63532e",
     "sha256": "1254ba7a5beb1356f333f7d69d582f7d6fa0dfa8b1fb4076ea81982e927e84b0"
   },
   "placements": {

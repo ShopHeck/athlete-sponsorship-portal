@@ -2,7 +2,7 @@
   "slug": "demo-nogi-women",
   "model": "models/demo-nogi-women-animated.glb",
   "baseline": {
-    "commit": null,
+    "commit": "a63532e",
     "sha256": "1a94b8e1a6fd556ffe4c5f27ce578b7d3cd0065a8dda9d2423b925d31af13c43"
   },
   "placements": {

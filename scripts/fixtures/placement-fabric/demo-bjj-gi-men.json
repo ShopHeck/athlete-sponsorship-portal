@@ -2,7 +2,7 @@
   "slug": "demo-bjj-gi-men",
   "model": "models/demo-bjj-gi-men-animated.glb",
   "baseline": {
-    "commit": null,
+    "commit": "a63532e",
     "sha256": "8521fe46ea9e6364ce217c64984cd798636d998145c5ba45760b4cef48b776d8"
   },
   "placements": {

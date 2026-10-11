@@ -2,7 +2,7 @@
   "slug": "demo-boxing-women",
   "model": "models/demo-boxing-women-animated.glb",
   "baseline": {
-    "commit": null,
+    "commit": "a63532e",
     "sha256": "d04c05c50092bed2a60d2cb2efd8bc6fd46f54088808b17e126c8e908b393d17"
   },
   "placements": {

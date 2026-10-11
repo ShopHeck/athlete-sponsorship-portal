@@ -2,7 +2,7 @@
   "slug": "demo-bjj-gi-women",
   "model": "models/demo-bjj-gi-women-animated.glb",
   "baseline": {
-    "commit": null,
+    "commit": "a63532e",
     "sha256": "02f61ccef165801aa72a94e4c91700be6a8e47b19a1210bb56cfd2ccf7b216dd"
   },
   "placements": {

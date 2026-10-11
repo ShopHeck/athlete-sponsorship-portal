@@ -2,7 +2,7 @@
   "slug": "demo-nogi-men",
   "model": "models/demo-nogi-men-animated.glb",
   "baseline": {
-    "commit": null,
+    "commit": "a63532e",
     "sha256": "59a39625b1db753f0d2d21353b58da93f7373f623925e83057cfc4b1d8681239"
   },
   "placements": {
