@@ -28,14 +28,10 @@ test("Rosa rests in the power stance and keeps two distinct front sports-top slo
   assert.match(lower.label, /lower panel/);
 });
 
-test("Rosa's model is rigged with all seven moves and her open-finger gloves", async () => {
-  const doc = await io.read(file);
-  assert.deepEqual(doc.getRoot().listAnimations().map((clip) => clip.getName()).sort(), [
-    "Boxing_Practice", "Boxing_Warmup", "Chest_Pound_Taunt", "Dodge_and_Counter", "Idle", "Show_Both_Arm_Muscles", "Victory_Fist_Pump"
-  ]);
-  for (const { clip } of config.motion.clips) {
-    assert.ok(doc.getRoot().listAnimations().some((animation) => animation.getName() === clip), `${clip} must be baked`);
-  }
+test("Rosa's model bakes every offered move", async () => {
+  const names = (await io.read(file)).getRoot().listAnimations().map((clip) => clip.getName());
+  assert.deepEqual(config.motion.clips.map(({ label }) => label), ["Victory", "Shadowbox", "Taunt"]);
+  for (const { clip } of config.motion.clips) assert.ok(names.includes(clip), `${clip} must be baked`);
 });
 
 test("every placement rectangle samples fight-kit fabric, not skin", async () => {

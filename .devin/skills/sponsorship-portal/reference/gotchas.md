@@ -141,3 +141,13 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
   torso) and run `model` with no pose. The image model drifts on side views; `modelViews` may skip a bad angle.
   `scripts/demo-models/demo-mma-women-v2.json` is the working example (references are renders of the prior model).
 - **Node's `fetch` ignores `HTTPS_PROXY`.** Behind a proxy, run the Meshy scripts with `NODE_USE_ENV_PROXY=1`.
+- **Meshy view prompts that work** (`scripts/demo-models/*-v2.json`): in side views an A-pose arm must be described
+  as hanging straight down alongside the body ("NOT raised, NOT stretched forward") or the image model raises it in
+  front of the chest; back views need "elbows locked, not raised above the waist"; boxers need "the gloves must NOT
+  touch the hips" or they get hands-on-hips; a smirk needs "lips firmly closed, no teeth, NOT smiling" or it becomes
+  a grin. Review the front before generating the rest — every later view copies it.
+- **Meshy desaturates pale satin.** Champagne-gold trunks came back cream; `scripts/recolor-garment.mjs` recolours
+  one garment's texels inside a body band (skin, socks and gloves keep their colours) without another build.
+- **Placement fixtures guard regenerations.** `scripts/placement-fabric.mjs record <slug>` stores the fabric under
+  every placement on an approved model; `placement-fabric.test.mjs` fails if a new model puts a slot on skin, a
+  glove or empty space. Record before replacing a model, and re-record only after approving a new layout.

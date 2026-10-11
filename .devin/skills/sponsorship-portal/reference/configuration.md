@@ -185,6 +185,9 @@ side-of-leg decal box; `scripts/power-stance.test.mjs` fails if any hand would b
 (`handForward: 0` on the boxing demo) rather than the placement. Fists and facial expression are baked into the
 mesh and cannot be posed. After changing a tenant's rest, run `node scripts/refit-placements.mjs <slug> --from <old
 rest> --write` to follow every placement's surface point onto the new stance, then check the flagged ones.
+Demo moves are limited to `Victory_Fist_Pump` (Victory), `Boxing_Practice` (Shadowbox) and `Chest_Pound_Taunt` (Taunt):
+rig new demo models with `scripts/animate-model.mjs <slug> --task <id> --height <m> --actions 87,88,403` (5 credits
+for the rig + 3 per move); the power stance replaces Meshy's `Idle`.
 
 ## Adding and previewing a tenant
 

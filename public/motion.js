@@ -450,7 +450,7 @@ export function powerStance(root, options = {}) {
     if (o.palmTurnDegrees) spinBone(forearm, at(`${side}Hand`).sub(at(`${side}ForeArm`)).normalize(), sign * o.palmTurnDegrees);
   }
 
-  const tracks = bones.map((node) => new THREE.QuaternionKeyframeTrack(`${node.name}.quaternion`, [0], node.quaternion.toArray()));
+  const tracks = bones.map((node) => new THREE.QuaternionKeyframeTrack(`${node.name}.quaternion`, [0], node.quaternion.normalize().toArray()));
   tracks.push(new THREE.VectorKeyframeTrack(`${hipsBone.name}.position`, [0], hipsBone.position.toArray()));
   for (const [node, quaternion, position] of saved) { node.quaternion.copy(quaternion); node.position.copy(position); }
   root.updateMatrixWorld(true);
