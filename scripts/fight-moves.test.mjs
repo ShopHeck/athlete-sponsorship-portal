@@ -113,3 +113,50 @@ for (const config of configs) {
     }
   });
 }
+
+test("moves and their blends are smooth: no bone's angular speed jumps between frames", async () => {
+  // Peak angular acceleration of the arms, head and chest at 120 Hz, from the stance through each move and back. Old
+  // linear fades and full-speed punch starts reached 1100-6000 rad/s²; eased blends and curves stay well below 1500.
+  for (const slug of ["demo-nogi-men", "demo-boxing-women"]) {
+    const config = configs.find((c) => c.slug === slug);
+    const { root, motion } = await loadPosed(new URL(`../public/tenants/${slug}/${config.model}`, import.meta.url).pathname, config, config.motion.rest);
+    const bones = ["LeftForeArm", "RightForeArm", "LeftHand", "RightHand", "Head", "Spine"].map((n) => root.getObjectByName(n));
+    const dt = 1 / 120;
+    for (const { name } of motion.moves) {
+      motion.play(name);
+      let previous = bones.map((b) => b.getWorldQuaternion(new THREE.Quaternion())), speeds = bones.map(() => 0), peak = 0;
+      for (let frame = 0; frame < 6 / dt; frame++) {
+        motion.update(dt);
+        root.updateMatrixWorld(true);
+        bones.forEach((bone, i) => {
+          const q = bone.getWorldQuaternion(new THREE.Quaternion());
+          const speed = q.angleTo(previous[i]) / dt;
+          if (frame > 1) peak = Math.max(peak, Math.abs(speed - speeds[i]) / dt);
+          previous[i] = q; speeds[i] = speed;
+        });
+      }
+      assert.ok(peak < 1500, `${slug} ${name}: angular acceleration peaks at ${peak.toFixed(0)} rad/s²`);
+    }
+  }
+});
+
+test("the breathing idle loops seamlessly, stays subtle and keeps the feet planted", async () => {
+  const config = configs.find((c) => c.slug === "demo-mma-women");
+  const file = new URL(`../public/tenants/${config.slug}/${config.model}`, import.meta.url).pathname;
+  const { root } = await loadPosed(file, { ...config, motion: { ...config.motion, rest: "none" } }, "none");
+  const { createMotion } = await import("../public/motion.js");
+  const motion = createMotion(root, [], config.motion.clips, { rest: config.motion.rest, idle: true });
+  const point = (name) => root.getObjectByName(name).getWorldPosition(new THREE.Vector3());
+  const pose = () => { const out = new Map(); root.traverse((b) => { if (b.isBone) out.set(b.name, b.quaternion.clone()); }); return out; };
+  const start = pose(), feet = ["LeftFoot", "RightFoot"].map((n) => point(n));
+  let widest = 0;
+  for (let frame = 1; frame <= 8 * 30; frame++) {
+    assert.ok(motion.update(1 / 30), "breathing keeps the body moving");
+    root.updateMatrixWorld(true);
+    ["LeftFoot", "RightFoot"].forEach((n, i) => assert.ok(point(n).distanceTo(feet[i]) < 0.005, `${n} must stay planted`));
+    for (const [name, q] of pose()) widest = Math.max(widest, THREE.MathUtils.radToDeg(q.angleTo(start.get(name))));
+  }
+  assert.ok(widest > 0.5 && widest < 4, `breathing moves bones by up to ${widest.toFixed(2)}°`);
+  assert.equal(motion.active, false, "breathing alone is not a move");
+  for (const [name, q] of pose()) assert.ok(q.angleTo(start.get(name)) < 0.002, `${name} must return to its first frame after one loop`);
+});

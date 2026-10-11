@@ -352,11 +352,31 @@ const FIGHT_BONES = ["Hips", "Spine02", "Spine01", "Spine", "neck", "Head",
   ...["Left", "Right"].flatMap((side) => ["Shoulder", "Arm", "ForeArm", "Hand", "UpLeg", "Leg", "Foot"].map((j) => side + j))];
 const SIDES = [["Left", 1], ["Right", -1]];
 
-// 0 → 1 → 0: snaps out (ease-out) over `out` seconds, holds, then eases back over `back`.
+// 0 → 1 → 0: snaps out over `out` seconds, holds, then eases back over `back`. Both legs start and stop at rest
+// (smootherstep), so a punch accelerates out of the guard instead of jumping to full speed in one frame.
+const smoother = (t, start, end) => {
+  const x = THREE.MathUtils.clamp((t - start) / (end - start), 0, 1);
+  return x * x * x * (x * (6 * x - 15) + 10);
+};
 function strike(t, start, out, hold, back) {
   if (t <= start || t >= start + out + hold + back) return 0;
-  if (t < start + out) return 1 - (1 - (t - start) / out) ** 3;
+  if (t < start + out) return smoother(t, start, start + out);
   return 1 - ease(t, start + out + hold, start + out + hold + back);
+}
+
+// Smooth curve through [time, value] keys (Catmull-Rom, flat at both ends): unlike `between`, it does not stop at
+// every key, so a head turning from one side to the other sweeps instead of ticking.
+function curve(t, keys) {
+  if (t <= keys[0][0]) return keys[0][1];
+  if (t >= keys.at(-1)[0]) return keys.at(-1)[1];
+  let i = 1;
+  while (t > keys[i][0]) i++;
+  const [t0, v0] = keys[i - 1], [t1, v1] = keys[i];
+  const slope = (a, b) => (keys[b][1] - keys[a][1]) / (keys[b][0] - keys[a][0]);
+  const m0 = i - 1 > 0 ? slope(i - 2, i) * (t1 - t0) : 0;
+  const m1 = i + 1 < keys.length ? slope(i - 1, i + 1) * (t1 - t0) : 0;
+  const x = (t - t0) / (t1 - t0), x2 = x * x, x3 = x2 * x;
+  return (2 * x3 - 3 * x2 + 1) * v0 + (x3 - 2 * x2 + x) * m0 + (-2 * x3 + 3 * x2) * v1 + (x3 - x2) * m1;
 }
 
 function fightClip(root, name, duration, pose, fit) {
@@ -486,7 +506,7 @@ function victoryFistsUp(root) {
     rig.turn("Spine02", "pitch", 5 * load - 3 * raised);
     rig.turn("Spine", "pitch", 4 * load - 9 * raised);
     rig.turn("Head", "pitch", 10 * load - 16 * raised);
-    rig.turn("Head", "yaw", raised * between(t, [[0.9, 0], [1.5, 14], [2.2, -12], [2.65, 0]]));
+    rig.turn("Head", "yaw", raised * curve(t, [[0.9, 0], [1.5, 14], [2.2, -12], [2.65, 0]]));
     for (const [side, sign] of SIDES) {
       rig.shrug(side, sign, 8 * raised);
       const pump = strike(t, 1.15, 0.12, 0.05, 0.2) + strike(t, 1.7, 0.12, 0.05, 0.2);
@@ -495,13 +515,14 @@ function victoryFistsUp(root) {
       const u = raised, from = new THREE.Vector3(...rig.rest(side, sign)), via = new THREE.Vector3(0.3, 0.2, 0.55);
       const fist = from.multiplyScalar((1 - u) ** 2).addScaledVector(via, 2 * u * (1 - u)).addScaledVector(top, u * u);
       const pole = new THREE.Vector3(0.5, 0, -1).lerp(new THREE.Vector3(1, -0.2, -0.4), u);
-      rig.fist(side, sign, fist.toArray(), pole.toArray(), 5 * raised);
+      rig.fist(side, sign, fist.toArray(), pole.toArray(), 1 - (1 - raised) ** 4); // full IK early, without a kink
     }
   });
 }
 
 // Hands up into a high guard with a light bounce, then jab, jab, cross, lead hook, cross, turning the torso
 // into every punch, and back to the stance.
+const GUARD_POLE = [0.25, -1, 0.1]; // elbows down and in
 function shadowboxCombo(root) {
   const punches = [
     { side: "Left", start: 0.6, out: 0.11, hold: 0.03, back: 0.17, to: [-0.15, 0.12, 0.93], yaw: -14 },
@@ -515,7 +536,7 @@ function shadowboxCombo(root) {
     const up = ease(t, 0, 0.4) * (1 - ease(t, 3.2, 3.75));
     const bounce = up * (0.5 - 0.5 * Math.cos(2 * Math.PI * 2 * Math.max(0, t - 0.4)));
     let yaw = -8 * up, hipYaw = 0;
-    const fists = { Left: { to: guard.Left, pole: [0.25, -1, 0.1] }, Right: { to: guard.Right, pole: [0.25, -1, 0.1] } };
+    const fists = { Left: { to: guard.Left, pole: GUARD_POLE }, Right: { to: guard.Right, pole: GUARD_POLE } };
     for (const p of punches) {
       const s = strike(t, p.start, p.out, p.hold, p.back);
       if (!s) continue;
@@ -525,7 +546,9 @@ function shadowboxCombo(root) {
       const fist = from.lerp(to, s);
       // A hook swings the fist out and round on a bent arm with the elbow up; straight punches extend the arm.
       if (p.hook) fist.x += 0.35 * Math.sin(Math.PI * s);
-      fists[p.side] = { to: fist.toArray(), pole: p.hook ? [1, THREE.MathUtils.lerp(-1, 0.05, s), -0.3] : [0.3, -1, 0] };
+      // The elbow turns from its guard position into the punch with the fist, so it never snaps round.
+      const pole = new THREE.Vector3(...GUARD_POLE).lerp(new THREE.Vector3(...(p.hook ? [1, 0.05, -0.3] : [0.3, -1, 0])), s);
+      fists[p.side] = { to: fist.toArray(), pole: pole.toArray() };
     }
     rig.hips(0.07 * up + 0.03 * bounce, hipYaw);
     rig.turn("Spine02", "pitch", 4 * up);
@@ -571,6 +594,20 @@ function tauntComeOn(root) {
       if (!Number.isFinite(gap)) return;
       press -= (gap + 0.01 * rig.L) / rig.L;
     }
+  });
+}
+
+// The rest stance, breathing: two slow breaths lift the chest and shoulders while the weight sways a little from side
+// to side, over an 8-second loop whose first and last frames match, so it repeats without a seam.
+function breathingClip(root) {
+  return fightClip(root, "__breathing", 8, (t, rig) => {
+    const breath = 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / 4);
+    const sway = Math.sin((2 * Math.PI * t) / 8);
+    rig.hips(0, 0.8 * sway);
+    rig.turn("Spine", "pitch", -1.2 * breath);
+    rig.turn("Head", "pitch", 0.9 * breath); // eyes stay level as the chest lifts
+    rig.turn("Head", "yaw", -1.5 * sway);
+    for (const [side, sign] of SIDES) rig.shrug(side, sign, 1.4 * breath);
   });
 }
 
@@ -709,7 +746,7 @@ function poseFromFrame(root, clip) {
 }
 
 // Plays the tenant's curated moves on demand; the athlete otherwise holds the rest stance.
-export function createMotion(root, gltfClips, entries, { onChange, onSettled, rest: restName, stance: stanceOptions } = {}) {
+export function createMotion(root, gltfClips, entries, { onChange, onSettled, rest: restName, stance: stanceOptions, idle = false } = {}) {
   const byName = new Map(gltfClips.map((clip) => [clip.name, clip]));
   if (restName === POWER_STANCE && !byName.has(POWER_STANCE)) {
     const clip = powerStance(root, stanceOptions);
@@ -725,29 +762,61 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
   const moves = new Map(entries.filter((e) => byName.has(e.clip)).map((e) => [e.clip, { ...e, clip: anchor(byName.get(e.clip)) }]));
   if (!moves.size) return null;
   const mixer = new THREE.AnimationMixer(root);
-  const rest = mixer.clipAction(restClip(root, [...moves.values()].map((m) => m.clip), stance));
+  let restSource = restClip(root, [...moves.values()].map((m) => m.clip), stance);
+  // Between moves the athlete breathes (opt-in: off for reduced motion, card captures and tests that compare poses).
+  const breathing = idle ? breathingClip(root) : null;
+  if (breathing) {
+    const names = new Set(breathing.tracks.map((track) => track.name));
+    restSource = new THREE.AnimationClip("__rest", breathing.duration,
+      [...restSource.tracks.filter((track) => !names.has(track.name)), ...breathing.tracks]);
+  }
+  const rest = mixer.clipAction(restSource);
   const jab = moves.get("Left_Jab_from_Guard");
   const guard = jab && mixer.clipAction(restClip(root, [jab.clip], jab.clip));
   rest.play();
   mixer.update(0);
   root.updateMatrixWorld(true);
-  let current = null, settling = 0;
+  let current = null, settling = false, quiet = 0;
+
+  // Eased crossfades. three's own fades ramp weights linearly, so a move starts (and the body settles) with a jolt;
+  // here every contributing action eases from its current weight to its target together, so blends stay continuous
+  // even when a move is interrupted mid-fade.
+  const weights = new Map([[rest, 1]]);
+  let fade = null;
+  function blendTo(target, duration) {
+    if (!(weights.get(target) > 0.01)) target.reset();
+    target.play();
+    if (!weights.has(target)) weights.set(target, 0);
+    fade = { elapsed: 0, duration, from: new Map(weights), target };
+    for (const [action, weight] of weights) action.setEffectiveWeight(weight);
+  }
+  function stepFade(dt) {
+    if (!fade) return;
+    fade.elapsed += dt;
+    const k = ease(fade.elapsed, 0, fade.duration);
+    for (const [action, from] of fade.from) {
+      const weight = from + ((action === fade.target ? 1 : 0) - from) * k;
+      action.setEffectiveWeight(weight);
+      weights.set(action, weight);
+    }
+    if (fade.elapsed < fade.duration) return;
+    for (const action of fade.from.keys()) {
+      if (action !== fade.target) { action.stop(); weights.delete(action); }
+    }
+    fade = null;
+  }
 
   function settle() {
     if (!current) return;
-    const from = current.action;
     current = null;
-    rest.reset().play();
-    rest.crossFadeFrom(from, SETTLE, false);
-    settling = SETTLE;
+    blendTo(rest, SETTLE);
+    settling = true;
     onChange?.(null);
   }
   mixer.addEventListener("finished", (e) => {
     if (e.action !== current?.action) return;
     if (current.phase === "strike") {
-      const from = current.action;
-      guard.reset().play();
-      guard.crossFadeFrom(from, GUARD_EXIT, false);
+      blendTo(guard, GUARD_EXIT);
       current.action = guard;
       current.phase = "recover";
       current.elapsed = 0;
@@ -757,28 +826,34 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
   function play(name) {
     const move = moves.get(name);
     if (!move) return;
-    const prev = current ? current.action : rest;
     if (current?.name === name) return;
+    const interrupting = Boolean(current);
     if (move === jab) {
-      guard.reset().play();
-      guard.crossFadeFrom(prev, GUARD_ENTER, false);
+      blendTo(guard, GUARD_ENTER);
       current = { name, action: guard, phase: "enter", elapsed: 0 };
-      settling = 0;
+      settling = false;
       onChange?.(name);
       return;
     }
     const action = mixer.clipAction(move.clip);
     const reps = Math.max(1, Math.round(MIN_PLAY_SECONDS / move.clip.duration));
-    action.reset().setLoop(THREE.LoopRepeat, reps).play();
+    action.reset().setLoop(THREE.LoopRepeat, reps);
     action.clampWhenFinished = true;
-    action.crossFadeFrom(prev, AUTHORED_MOVES[name] ? 0.3 : CROSSFADE, false);
+    // Switching straight from one move to another needs a longer blend than starting from the stance.
+    blendTo(action, interrupting ? CROSSFADE : AUTHORED_MOVES[name] ? 0.3 : CROSSFADE);
     current = { name, action };
-    settling = 0;
+    settling = false;
     onChange?.(name);
   }
 
   return {
-    moves: [...moves.values()].map(({ clip, label }) => ({ name: clip.name, label })),
+    // Each move with how long it plays before it starts settling back to the stance (seconds), for progress feedback.
+    moves: [...moves.values()].map(({ clip, label }) => ({
+      name: clip.name,
+      label,
+      duration: clip === jab?.clip ? GUARD_ENTER + clip.duration + GUARD_EXIT + GUARD_HOLD
+        : clip.duration * Math.max(1, Math.round(MIN_PLAY_SECONDS / clip.duration))
+    })),
     play,
     settle,
     // Runs fn with the stance's arms and legs but the bind pose's square-on torso, so placements authored as
@@ -791,27 +866,30 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
       try { return fn(); } finally { torso.forEach(([bone], i) => bone.quaternion.copy(posed[i])); root.updateMatrixWorld(true); }
     },
     get playing() { return current?.name || null; },
+    // True while a move plays or the body is blending (the breathing idle alone does not count).
+    get active() { return Boolean(current || fade); },
     // Advances the pose; returns true while the body is moving and the frame must be redrawn.
     update(dt) {
-      if (!current && settling <= -0.1) return false; // one extra step lands exactly on the rest pose
+      if (current || fade || breathing) quiet = 0;
+      else if (quiet++ > 0) return false; // one extra step lands exactly on the rest pose
+      stepFade(dt);
       mixer.update(dt);
       if (current?.phase === "enter" || current?.phase === "recover") {
         current.elapsed += dt;
         if (current.phase === "enter" && current.elapsed >= GUARD_ENTER) {
           const action = mixer.clipAction(jab.clip);
-          action.reset().setLoop(THREE.LoopOnce, 1).play();
+          action.reset().setLoop(THREE.LoopOnce, 1);
           action.clampWhenFinished = true;
-          action.crossFadeFrom(guard, 0.1, false);
+          blendTo(action, 0.1);
           current.action = action;
           current.phase = "strike";
         } else if (current.phase === "recover" && current.elapsed >= GUARD_EXIT + GUARD_HOLD) {
           settle();
         }
       }
-      if (!current) {
-        const wasSettling = settling > 0;
-        settling -= dt;
-        if (wasSettling && settling <= 0) onSettled?.();
+      if (settling && !fade) {
+        settling = false;
+        onSettled?.();
       }
       return true;
     }

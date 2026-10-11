@@ -197,6 +197,15 @@ animation data and copies the Draco mesh, skin and texture byte for byte. Strip 
 <old rest>` needs that rest baked in the model, so run any refit from a baked clip first. The power stance replaces
 Meshy's `Idle`.
 
+Demo athletes carry Meshy 7 PBR maps (normal, roughness) so skin and cloth respond to light instead of rendering as one
+flat matte. `node scripts/retexture-model.mjs <slug> --task <model task id> --views <dir>` retextures the model's own
+UV layout from its approved views (~10 credits), and `node scripts/apply-pbr.mjs <model.glb> <work>/<slug>/retexture`
+adds the maps to the committed rigged model without re-encoding its mesh. Check `placement-fabric.mjs check <slug>`
+afterwards (Meshy may desaturate pale satin again; recolour the new base colour first) and re-record the fixture once
+the new textures are approved. Models without maps still get skin-aware shading from `public/materials.js`.
+Between moves the portal plays a subtle breathing idle (off for reduced motion and card capture); moves blend in and
+out with eased crossfades.
+
 ## Adding and previewing a tenant
 
 1. Create `tenants/<slug>.json` and `public/tenants/<slug>/`.
