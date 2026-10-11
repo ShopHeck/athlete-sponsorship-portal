@@ -185,9 +185,14 @@ side-of-leg decal box; `scripts/power-stance.test.mjs` fails if any hand would b
 (`handForward: 0` on the boxing demo) rather than the placement. Fists and facial expression are baked into the
 mesh and cannot be posed. After changing a tenant's rest, run `node scripts/refit-placements.mjs <slug> --from <old
 rest> --write` to follow every placement's surface point onto the new stance, then check the flagged ones.
-Demo moves are limited to `Victory_Fist_Pump` (Victory), `Boxing_Practice` (Shadowbox) and `Chest_Pound_Taunt` (Taunt):
-rig new demo models with `scripts/animate-model.mjs <slug> --task <id> --height <m> --actions 87,88,403` (5 credits
-for the rig + 3 per move); the power stance replaces Meshy's `Idle`.
+Demo moves are `Victory_Fists_Up` (Victory), `Shadowbox_Combo` (Shadowbox) and `Taunt_Come_On` (Taunt). They are
+authored in `public/motion.js` (no baked clip needed) on the power stance from any Meshy rig: feet stay planted, the
+athlete stays upright and facing the sponsor, every move ends exactly in the stance, and the Taunt's chest thumps are
+fitted to each body so the fist lands on the chest. `scripts/fight-moves.test.mjs` checks all of that for every demo
+tenant. Meshy's library moves (crouching `Boxing_Practice`, hunched `Chest_Pound_Taunt`, head-down
+`Victory_Fist_Pump`) are no longer offered. New demo models still need a Meshy rig, and the animation pipeline bakes at
+least one library move: `scripts/animate-model.mjs <slug> --task <id> --height <m> --actions 403` (5 credits for the
+rig + 3). The power stance replaces Meshy's `Idle`.
 
 ## Adding and previewing a tenant
 

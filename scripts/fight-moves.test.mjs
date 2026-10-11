@@ -1,0 +1,115 @@
+import assert from "node:assert/strict";
+import { readFile, readdir } from "node:fs/promises";
+import test from "node:test";
+import * as THREE from "three";
+import { loadPosed } from "./refit-placements.mjs";
+
+const tenantsDir = new URL("../tenants/", import.meta.url);
+const configs = [];
+for (const file of (await readdir(tenantsDir)).filter((name) => name.endsWith(".json"))) {
+  const config = JSON.parse(await readFile(new URL(file, tenantsDir), "utf8"));
+  if (config.demo && config.motion) configs.push(config);
+}
+const MOVES = [["Victory_Fists_Up", "Victory"], ["Shadowbox_Combo", "Shadowbox"], ["Taunt_Come_On", "Taunt"]];
+const STEP = 1 / 60;
+
+test("every demo fighter offers the authored Victory, Shadowbox and Taunt, and opens with the Taunt", () => {
+  assert.equal(configs.length, 7);
+  for (const config of configs) {
+    assert.deepEqual(config.motion.clips.map(({ clip, label }) => [clip, label]), MOVES, config.slug);
+    assert.ok([undefined, "Taunt_Come_On"].includes(config.motion.intro), config.slug);
+  }
+});
+
+// Faces whose vertices are mostly skinned to the spine, posed as they are now, so a fist can be measured against
+// the chest without hitting the arm it belongs to.
+function torsoSurface(meshes) {
+  return meshes.filter((mesh) => mesh.isSkinnedMesh).map((mesh) => {
+    mesh.skeleton.update();
+    const { skinIndex, skinWeight, position } = mesh.geometry.attributes;
+    const spines = mesh.skeleton.bones.map((b, i) => /^Spine\d*$/.test(b.name) ? i : -1).filter((i) => i >= 0);
+    const onSpine = (v) => {
+      let w = 0;
+      for (let k = 0; k < 4; k++) if (spines.includes(skinIndex.getComponent(v, k))) w += skinWeight.getComponent(v, k);
+      return w > 0.5;
+    };
+    const posed = new Float32Array(position.count * 3), p = new THREE.Vector3();
+    for (let i = 0; i < position.count; i++) mesh.getVertexPosition(i, p).applyMatrix4(mesh.matrixWorld).toArray(posed, i * 3);
+    const indices = [], index = mesh.geometry.index;
+    for (let i = 0; i < (index?.count ?? position.count); i += 3) {
+      const face = [0, 1, 2].map((k) => index ? index.getX(i + k) : i + k);
+      if (face.every(onSpine)) indices.push(...face);
+    }
+    const geometry = new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(posed, 3)).setIndex(indices);
+    return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  });
+}
+
+function handVertices(meshes, name) {
+  return meshes.filter((mesh) => mesh.isSkinnedMesh).flatMap((mesh) => {
+    const { skinIndex, skinWeight, position } = mesh.geometry.attributes;
+    const joint = mesh.skeleton.bones.findIndex((b) => b.name === name), out = [];
+    for (let i = 0; i < position.count; i++) {
+      let w = 0;
+      for (let k = 0; k < 4; k++) if (skinIndex.getComponent(i, k) === joint) w += skinWeight.getComponent(i, k);
+      if (w > 0.5) out.push(mesh.getVertexPosition(i, new THREE.Vector3()).applyMatrix4(mesh.matrixWorld));
+    }
+    return out;
+  });
+}
+
+for (const config of configs) {
+  test(`${config.slug}: each move stays planted, upright and facing the sponsor, then returns to the stance`, async () => {
+    const file = new URL(`../public/tenants/${config.slug}/${config.model}`, import.meta.url).pathname;
+    const { root, meshes, motion } = await loadPosed(file, config, config.motion.rest);
+    assert.deepEqual(motion.moves.map(({ name, label }) => [name, label]), MOVES);
+    const point = (name) => root.getObjectByName(name).getWorldPosition(new THREE.Vector3());
+    const rest = new Map();
+    root.traverse((bone) => { if (bone.isBone) rest.set(bone.name, bone.quaternion.clone()); });
+    const feet = ["LeftFoot", "RightFoot"].map((name) => [name, point(name)]);
+    const hips = point("Hips"), head = point("Head");
+    const armLength = point("LeftArm").distanceTo(point("LeftForeArm")) + point("LeftForeArm").distanceTo(point("LeftHand"));
+    const facing = (name) => new THREE.Vector3(0, 0, 1).applyQuaternion(root.getObjectByName(name).getWorldQuaternion(new THREE.Quaternion()));
+    const restFacing = { Hips: facing("Hips"), Head: facing("Head") };
+
+    for (const [name] of MOVES) {
+      motion.play(name);
+      let frames = 0, highest = -Infinity, longestJab = 0, thump = Infinity;
+      while (motion.playing === name) {
+        motion.update(STEP);
+        frames++;
+        assert.ok(frames < 6 * 60, `${name} must end on its own`);
+        for (const [foot, at] of feet) {
+          assert.ok(point(foot).distanceTo(at) < 0.01, `${name}: ${foot} must stay planted (frame ${frames})`);
+        }
+        const h = point("Hips");
+        assert.ok(Math.hypot(h.x - hips.x, h.z - hips.z) < 0.01, `${name}: the hips must not travel`);
+        assert.ok(h.y > hips.y - 0.06, `${name}: no deep crouch (hips ${(hips.y - h.y).toFixed(3)} m down)`);
+        assert.ok(point("Head").y > head.y - 0.08, `${name}: the head must not duck`);
+        for (const bone of ["Hips", "Head"]) {
+          const angle = THREE.MathUtils.radToDeg(facing(bone).angleTo(restFacing[bone]));
+          assert.ok(angle < 35, `${name}: ${bone} turned ${angle.toFixed(0)}° away from the sponsor`);
+        }
+        highest = Math.max(highest, Math.min(point("LeftHand").y, point("RightHand").y));
+        longestJab = Math.max(longestJab, point("LeftHand").z - point("LeftArm").z);
+        if (name === "Taunt_Come_On" && [2.33, 2.68].some((peak) => Math.abs(frames * STEP - peak) < 0.04)) {
+          // The right fist must reach the chest, and never sink into it.
+          const torso = torsoSurface(meshes);
+          for (const p of handVertices(meshes, "RightHand")) {
+            const hit = new THREE.Raycaster(new THREE.Vector3(p.x, p.y, 3), new THREE.Vector3(0, 0, -1)).intersectObjects(torso)[0];
+            if (hit) thump = Math.min(thump, p.z - hit.point.z);
+          }
+        }
+      }
+      if (name === "Victory_Fists_Up") assert.ok(highest > head.y + 0.15, `both fists must go up overhead (${highest.toFixed(2)})`);
+      if (name === "Shadowbox_Combo") assert.ok(longestJab > 0.75 * armLength, `the jab must extend (${(longestJab / armLength).toFixed(2)} arm)`);
+      if (name === "Taunt_Come_On") {
+      assert.ok(thump > -0.015 && thump < 0.03, `the fist must land on the chest, not in it (${thump.toFixed(3)} m)`);
+      }
+      for (let i = 0; i < 60; i++) motion.update(STEP);
+      for (const [bone, quaternion] of rest) {
+        assert.ok(root.getObjectByName(bone).quaternion.angleTo(quaternion) < 0.001, `${name} must end in the stance (${bone})`);
+      }
+    }
+  });
+}
