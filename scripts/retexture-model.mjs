@@ -4,7 +4,8 @@
 //     [--work <dir>]   → <work>/<slug>/{base_color,normal,roughness,metallic}.png
 // The task is the multi-image-to-3D task the committed model was built from; the views are the approved reference views
 // it was generated from (front first). Run with NODE_USE_ENV_PROXY=1 behind an HTTPS proxy.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -20,16 +21,20 @@ if (!slug || !values.task || !values.views) {
 }
 const out = path.join(values.work || process.env.DEMO_WORK_DIR || path.join(homedir(), "demo-models-work"), slug, "retexture");
 mkdirSync(out, { recursive: true });
-const taskFile = path.join(out, "retexture.task");
-let id = existsSync(taskFile) ? readFileSync(taskFile, "utf8").trim() : null;
+// A started retexture is resumed only for the same source task and views; anything else starts a new one.
+const views = ["front", "left", "back", "right"].map((v) => path.join(values.views, `${v}.png`)).filter(existsSync);
+if (!views[0]?.endsWith("front.png")) throw new Error("the views must include front.png");
+const images = views.map((f) => readFileSync(f));
+const inputs = { task: values.task, views: images.map((bytes) => createHash("sha256").update(bytes).digest("hex")) };
+const taskFile = path.join(out, "retexture.json");
+const saved = existsSync(taskFile) ? JSON.parse(readFileSync(taskFile, "utf8")) : null;
+let id = saved && JSON.stringify(saved.inputs) === JSON.stringify(inputs) ? saved.id : null;
 if (!id) {
-  const views = ["front", "left", "back", "right"].map((v) => path.join(values.views, `${v}.png`)).filter(existsSync);
-  if (!views[0]?.endsWith("front.png")) throw new Error("the views must include front.png");
   id = await createRetexture({
     inputTaskId: values.task,
-    viewImageUrls: views.map((f) => `data:image/png;base64,${readFileSync(f).toString("base64")}`)
+    viewImageUrls: images.map((bytes) => `data:image/png;base64,${bytes.toString("base64")}`)
   });
-  writeFileSync(taskFile, id);
+  writeFileSync(taskFile, `${JSON.stringify({ id, inputs }, null, 2)}\n`);
   console.log(`retexture ${id} from ${views.map((f) => path.basename(f)).join(", ")}`);
 }
 for (;;) {
@@ -41,7 +46,10 @@ for (;;) {
     console.log(JSON.stringify({ out, credits: task.consumed_credits, maps: Object.keys(task.texture_urls?.[0] || {}) }));
     break;
   }
-  if (["FAILED", "CANCELED", "EXPIRED"].includes(task.status)) throw new Error(`retexture ${task.status}: ${task.task_error?.message || ""}`);
+  if (["FAILED", "CANCELED", "EXPIRED"].includes(task.status)) {
+    rmSync(taskFile, { force: true }); // the next run starts a fresh retexture
+    throw new Error(`retexture ${task.status}: ${task.task_error?.message || ""}`);
+  }
   console.log(`${task.status} ${task.progress ?? 0}%`);
   await new Promise((resolve) => setTimeout(resolve, 15_000));
 }

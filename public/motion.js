@@ -847,7 +847,7 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
   }
 
   return {
-    // Each move with how long it plays from start to settle (seconds), for progress feedback.
+    // Each move with how long it plays before it starts settling back to the stance (seconds), for progress feedback.
     moves: [...moves.values()].map(({ clip, label }) => ({
       name: clip.name,
       label,

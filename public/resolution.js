@@ -21,9 +21,10 @@ export function nextRatio(state, median, now) {
   const { ratio } = state;
   if (median > SLOW_MS) {
     const lowest = median > VERY_SLOW_MS ? 1 : state.floor;
-    if (ratio - STEP < lowest - 1e-9) return null;
+    if (ratio <= lowest + 1e-9) return null;
     state.failed = { ratio, at: now };
-    return change(state, ratio - STEP, now);
+    // Fractional screens (1.6x, 1.8x) clamp to the floor rather than skipping a step that would overshoot it.
+    return change(state, Math.max(lowest, ratio - STEP), now);
   }
   if (median <= FAST_MS && ratio < state.max && now - state.changedAt >= UP_COOLDOWN_MS) {
     const up = Math.min(state.max, ratio + STEP);

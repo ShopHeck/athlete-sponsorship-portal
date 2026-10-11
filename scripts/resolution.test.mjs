@@ -37,3 +37,12 @@ test("hitches right after load, resize or a tab switch are ignored", () => {
   const plain = resolutionPolicy(1);
   assert.equal(nextRatio(plain, 200, 50_000), null, "a 1x screen has nowhere lower to go");
 });
+
+test("fractional screens step down to the crisp floor instead of stalling above it", () => {
+  const state = resolutionPolicy(1.6);
+  assert.equal(nextRatio(state, SLOW_MS + 5, 10_000), 1.5);
+  assert.equal(nextRatio(state, SLOW_MS + 5, 10_000 + GRACE_MS), null);
+  const wide = resolutionPolicy(1.8);
+  assert.equal(nextRatio(wide, SLOW_MS + 5, 10_000), 1.55);
+  assert.equal(nextRatio(wide, SLOW_MS + 5, 10_000 + GRACE_MS), 1.5);
+});
