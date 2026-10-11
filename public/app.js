@@ -6,6 +6,8 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { DecalGeometry } from "three/addons/geometries/DecalGeometry.js";
 import { createMotion, posedGeometry, readAnchor, skinDecal, surfaceAnchor } from "./motion.js";
+import { athleteMaterial } from "./materials.js";
+import { nextRatio, resolutionPolicy, settle } from "./resolution.js";
 
 /* ---------------------------------------------------------------------------
    Placements are defined in the tenant config as rectangles in metres on a
@@ -98,9 +100,8 @@ const orientationNeedle = document.getElementById("orientationNeedle");
 
 /* ------------------------------------------------------------ renderer */
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
-const MAX_PIXEL_RATIO = Math.min(window.devicePixelRatio || 1, 2);
-let pixelRatio = MAX_PIXEL_RATIO;
-renderer.setPixelRatio(pixelRatio);
+const resolution = resolutionPolicy(window.devicePixelRatio || 1);
+renderer.setPixelRatio(resolution.ratio);
 // Neutral tone mapping keeps sponsor brand colours true to their artwork.
 renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.toneMappingExposure = 1.0;
@@ -401,10 +402,8 @@ loader.load(
     root.traverse((o) => {
       if (!o.isMesh) return;
       o.castShadow = o.receiveShadow = true;
-      // Baked kits (scripts/polish-kit.mjs) bring their own roughness/normal maps; plain Meshy output gets a flat matte.
-      if (!o.material.roughnessMap) { o.material.metalness = 0; o.material.roughness = 0.9; }
-      o.material.side = THREE.FrontSide;
-      for (const map of [o.material.map, o.material.normalMap, o.material.roughnessMap]) {
+      o.material = athleteMaterial(o.material, { anisotropy: renderer.capabilities.getMaxAnisotropy() });
+      for (const map of [o.material.normalMap, o.material.roughnessMap]) {
         if (map) { map.anisotropy = renderer.capabilities.getMaxAnisotropy(); map.needsUpdate = true; }
       }
       if (o.isSkinnedMesh) o.frustumCulled = false; // limbs leave the rest-pose bounds mid-move
@@ -423,7 +422,8 @@ loader.load(
     if (motion) motion.withProjectionPose(project);
     else project();
     renderer.shadowMap.needsUpdate = true;
-    firstRender().then(() => { stage.classList.add("is-ready"); playIntro(); });
+    // The first frames upload the 4K atlas and compile shaders: give them a grace window before judging speed.
+    firstRender().then(() => { settle(resolution, performance.now()); stage.classList.add("is-ready"); playIntro(); });
   },
   (xhr) => {
     if (!xhr.total) return;
@@ -446,17 +446,21 @@ const motionBar = document.getElementById("motionBar");
 function setupMotion(root, clips) {
   // No GLB clips is fine: the power stance and authored moves are built from the rig itself.
   if (!config.motion) return;
-  motion = createMotion(root, clips || [], config.motion.clips, { rest: config.motion.rest, stance: config.motion.stance, onChange: renderMotionBar, onSettled: startPendingTurntable });
+  motion = createMotion(root, clips || [], config.motion.clips, {
+    rest: config.motion.rest, stance: config.motion.stance, onChange: renderMotionBar, onSettled: startPendingTurntable,
+    idle: !prefersReducedMotion && !isCardCapture
+  });
   if (!motion || isCardCapture || !motionBar) return;
   motionBar.setAttribute("aria-label", config.motion.label || "Moves");
   const title = document.createElement("span");
   title.className = "motion-title";
   title.textContent = config.motion.label || "Moves";
-  motionBar.append(title, ...motion.moves.map(({ name, label }) => {
+  motionBar.append(title, ...motion.moves.map(({ name, label, duration }) => {
     const b = document.createElement("button");
     b.type = "button";
     b.dataset.move = name;
     b.textContent = label;
+    b.style.setProperty("--move-duration", `${duration.toFixed(2)}s`);
     b.setAttribute("aria-pressed", "false");
     b.addEventListener("click", () => {
       userInteracted = true; // the intro move must not override a move the visitor picked
@@ -1004,6 +1008,7 @@ if (isEmbedded) {
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   if (!w || !h) return;
+  settle(resolution, performance.now());
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -1014,21 +1019,22 @@ resize();
 let stageVisible = true;
 new IntersectionObserver(([entry]) => { stageVisible = entry.isIntersecting; if (stageVisible) invalidate(); }).observe(stage);
 
-// Adaptive resolution: if sustained frame time is too slow, step the pixel ratio down (never below 1).
+// Adaptive resolution (public/resolution.js): steps down while frames are slow and back up once they are fast again.
 const frameTimes = [];
 let lastFrameAt = 0;
+document.addEventListener("visibilitychange", () => { if (!document.hidden) settle(resolution, performance.now()); });
 function sampleFrame(now) {
+  if (now < resolution.settleUntil) { frameTimes.length = 0; lastFrameAt = now; return; }
   if (lastFrameAt && now - lastFrameAt < 1000) frameTimes.push(now - lastFrameAt);
   lastFrameAt = now;
   if (frameTimes.length < 45) return;
   frameTimes.sort((a, b) => a - b);
   const median = frameTimes[Math.floor(frameTimes.length / 2)];
   frameTimes.length = 0;
-  if (median > 24 && pixelRatio > 1) {
-    pixelRatio = Math.max(1, pixelRatio - 0.25);
-    renderer.setPixelRatio(pixelRatio);
-    resize();
-  }
+  const ratio = nextRatio(resolution, median, now);
+  if (ratio === null) return;
+  renderer.setPixelRatio(ratio);
+  resize();
 }
 
 /* ---------------------------------------------- selected-placement callout */
@@ -1089,7 +1095,11 @@ function animate(now) {
   stepTween(dt);
   controls.update(dt);
   bodyMoving = Boolean(motion?.update(dt));
-  if (bodyMoving) { renderer.shadowMap.needsUpdate = true; invalidate(); }
+  if (bodyMoving) {
+    // Breathing barely moves the shadow: redraw it for moves and blends only.
+    if (motion.active) renderer.shadowMap.needsUpdate = true;
+    invalidate();
+  }
   if (!needsRender) { lastFrameAt = 0; return; }
   needsRender = false;
   state.azimuth = controls.getAzimuthalAngle();

@@ -1,6 +1,7 @@
 const DEFAULT_API_BASE = "https://api.meshy.ai";
 const MAX_ASSET_BYTES = 10 * 1024 * 1024;
 const MAX_MODEL_BYTES = 150 * 1024 * 1024;
+const MAX_TEXTURE_BYTES = 64 * 1024 * 1024;
 
 export class MeshyConfigurationError extends Error {
   constructor() {
@@ -229,6 +230,44 @@ async function readLimited(response, limit, limitMessage) {
     reader.releaseLock();
   }
   return Buffer.concat(chunks, total);
+}
+
+// Re-texture a Meshy model on its own UV layout with Meshy 7 PBR maps (base colour, metallic, roughness, normal;
+// ~10 credits). The views (front first) keep the athlete's identity; enable_original_uv keeps the textures aligned with
+// a model already rigged from that task.
+export async function createRetexture({ inputTaskId, viewImageUrls, textureResolution = "4k" }) {
+  const response = await apiRequest("/openapi/v1/retexture", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    timeoutMs: 60_000,
+    body: JSON.stringify({
+      input_task_id: inputTaskId,
+      multiview_image_urls: viewImageUrls,
+      ai_model: "meshy-7",
+      enable_original_uv: true,
+      enable_pbr: true,
+      texture_resolution: textureResolution,
+      target_formats: ["glb"]
+    })
+  });
+  const body = await response.json();
+  if (typeof body?.result !== "string" || !body.result) throw new Error("Meshy retexture response did not include a task ID.");
+  return body.result;
+}
+
+export async function getRetexture(id) {
+  return (await apiRequest(`/openapi/v1/retexture/${encodeURIComponent(id)}`)).json();
+}
+
+// A PNG texture map from a Meshy task (4K maps exceed the 10 MB asset limit).
+export async function downloadTexture(assetUrl) {
+  const url = new URL(assetUrl);
+  if (!allowedAssetUrl(url)) throw new Error("Meshy texture URL is not allowed.");
+  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(120_000) });
+  if (!response.ok) throw new MeshyRequestError(response.status, await responseMessage(response));
+  const bytes = await readLimited(response, MAX_TEXTURE_BYTES, "Meshy texture exceeds the 64 MB limit.");
+  if (bytes.subarray(1, 4).toString("ascii") !== "PNG") throw new Error("Meshy texture is not a PNG.");
+  return bytes;
 }
 
 export async function downloadAsset(assetUrl) {

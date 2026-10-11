@@ -2,17 +2,17 @@
   "slug": "demo-mma-women",
   "model": "models/demo-mma-women-animated.glb",
   "baseline": {
-    "commit": "c421044",
-    "sha256": "857e848141330c1d404b12ed165c8138fd3b233c959e6421fc882e6165c9a244"
+    "commit": null,
+    "sha256": "1254ba7a5beb1356f333f7d69d582f7d6fa0dfa8b1fb4076ea81982e927e84b0"
   },
   "placements": {
     "SF-L1": {
       "overhang": 0,
       "palette": [
         [
-          7,
-          106,
-          109
+          4,
+          113,
+          115
         ]
       ]
     },
@@ -20,9 +20,9 @@
       "overhang": 0,
       "palette": [
         [
-          5,
-          102,
-          106
+          4,
+          113,
+          115
         ]
       ]
     },
@@ -30,9 +30,9 @@
       "overhang": 0,
       "palette": [
         [
-          4,
-          104,
-          107
+          5,
+          112,
+          115
         ]
       ]
     },
@@ -40,9 +40,9 @@
       "overhang": 0,
       "palette": [
         [
-          5,
-          102,
-          108
+          4,
+          111,
+          113
         ]
       ]
     },
@@ -50,9 +50,9 @@
       "overhang": 0,
       "palette": [
         [
-          3,
-          108,
-          109
+          5,
+          112,
+          117
         ]
       ]
     },
@@ -60,9 +60,9 @@
       "overhang": 0,
       "palette": [
         [
-          5,
-          107,
-          111
+          4,
+          111,
+          113
         ]
       ]
     },
@@ -70,9 +70,9 @@
       "overhang": 0,
       "palette": [
         [
-          5,
-          4,
-          9
+          7,
+          8,
+          14
         ]
       ]
     },
@@ -81,8 +81,8 @@
       "palette": [
         [
           5,
-          7,
-          13
+          8,
+          16
         ]
       ]
     },
@@ -90,9 +90,9 @@
       "overhang": 0,
       "palette": [
         [
-          5,
-          4,
-          7
+          8,
+          9,
+          13
         ]
       ]
     }

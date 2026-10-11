@@ -146,6 +146,12 @@ Check here before debugging. Each entry: symptom → cause → fix (already in t
   front of the chest; back views need "elbows locked, not raised above the waist"; boxers need "the gloves must NOT
   touch the hips" or they get hands-on-hips; a smirk needs "lips firmly closed, no teeth, NOT smiling" or it becomes
   a grin. Review the front before generating the rest — every later view copies it.
+- **"Pixelated" athletes were a resolution policy, not textures.** The old adaptive resolution dropped the pixel ratio
+  after any slow stretch and never recovered, so retina screens ended at 1x. `public/resolution.js` keeps hi-DPI screens
+  at 1.5x or better unless frames are very slow, ignores load/resize hitches and climbs back up; keep it that way.
+- **Retexture keeps placements only with `enable_original_uv`.** Without it Meshy unwraps new UVs and the maps no longer
+  fit the rigged model. Jada's retexture came back with cream trunks again: recolour `base_color.png` (via
+  `recolor-garment.mjs` on a copy, then extract the texture) before `apply-pbr.mjs`.
 - **Meshy desaturates pale satin.** Champagne-gold trunks came back cream; `scripts/recolor-garment.mjs` recolours
   one garment's texels inside a body band (skin, socks and gloves keep their colours) without another build.
 - **Placement fixtures guard regenerations.** `scripts/placement-fabric.mjs record <slug>` stores the fabric under
