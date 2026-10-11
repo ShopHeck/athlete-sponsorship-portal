@@ -122,7 +122,7 @@ scene.environmentIntensity = 0.55;
 const HOME_FOV = 38;
 const camera = new THREE.PerspectiveCamera(HOME_FOV, 1, 0.1, 40);
 const HOME = isCardCapture
-  ? { dist: 2.4, polar: 1.5, targetY: 1.6, az: -0.75 }
+  ? { dist: 2.65, polar: 1.5, targetY: 1.38, az: -0.75 }
   : { dist: 3.05, polar: 1.57, targetY: 0.95, az: 0 };
 const TARGET = new THREE.Vector3(0, HOME.targetY, 0);
 camera.position.setFromSpherical(new THREE.Spherical(HOME.dist, HOME.polar, HOME.az)).add(TARGET);

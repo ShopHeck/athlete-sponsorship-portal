@@ -341,8 +341,249 @@ function victoryChestBeat(root) {
     bones.map((b, i) => new THREE.QuaternionKeyframeTrack(`${b.name}.quaternion`, times, values[i])));
 }
 
-function authoredClips(root) {
-  return [victoryChestBeat(root)].filter(Boolean);
+/* ------------------------------------------------ demo fight moves */
+// Victory, Shadowbox and Taunt for the demo fighters, keyframed on the power stance so every fighter performs the
+// same clean move upright, in place and facing the sponsor, and ends exactly where it began. Hand targets are in the
+// rig's own arm lengths, measured from the shoulder joint as (outward, up, forward), and directions come from the
+// body, so the moves fit any Meshy rig at any scale. The feet stay planted: the legs are re-solved whenever the hips
+// dip or turn.
+const FIGHT_FPS = 60;
+const FIGHT_BONES = ["Hips", "Spine02", "Spine01", "Spine", "neck", "Head",
+  ...["Left", "Right"].flatMap((side) => ["Shoulder", "Arm", "ForeArm", "Hand", "UpLeg", "Leg", "Foot"].map((j) => side + j))];
+const SIDES = [["Left", 1], ["Right", -1]];
+
+// 0 → 1 → 0: snaps out (ease-out) over `out` seconds, holds, then eases back over `back`.
+function strike(t, start, out, hold, back) {
+  if (t <= start || t >= start + out + hold + back) return 0;
+  if (t < start + out) return 1 - (1 - (t - start) / out) ** 3;
+  return 1 - ease(t, start + out + hold, start + out + hold + back);
+}
+
+function fightClip(root, name, duration, pose, fit) {
+  const bone = (n) => root.getObjectByName(n);
+  const bones = FIGHT_BONES.map(bone);
+  if (!bones.every((b) => b?.isBone)) return null;
+  root.updateMatrixWorld(true);
+  const at = (n) => bone(n).getWorldPosition(new THREE.Vector3());
+  const up = new THREE.Vector3(0, 1, 0);
+  const left = at("LeftUpLeg").sub(at("RightUpLeg")).projectOnPlane(up).normalize();
+  const forward = new THREE.Vector3().crossVectors(left, up).normalize();
+  const axes = { pitch: left, yaw: up, roll: forward }; // +pitch tips forward, +yaw turns to the athlete's left
+  const L = at("LeftArm").distanceTo(at("LeftForeArm")) + at("LeftForeArm").distanceTo(at("LeftHand"));
+  const hips = bone("Hips");
+  const base = bones.map((b) => b.quaternion.clone()), hipsBase = hips.position.clone();
+  const legs = Object.fromEntries(SIDES.map(([side]) => {
+    const hip = at(`${side}UpLeg`), knee = at(`${side}Leg`), ankle = at(`${side}Foot`);
+    return [side, { ankle, knee: knee.sub(hip.add(ankle).multiplyScalar(0.5)), foot: bone(`${side}Foot`).getWorldQuaternion(new THREE.Quaternion()) }];
+  }));
+  const vec = (sign, [x, y, z]) => new THREE.Vector3()
+    .addScaledVector(left, sign * x * L).addScaledVector(up, y * L).addScaledVector(forward, z * L);
+  const handRest = Object.fromEntries(SIDES.map(([side]) => [side, at(`${side}Hand`).sub(at(`${side}Arm`))]));
+  let moved = false;
+  const rig = {
+    turn(n, axis, degrees) { if (degrees) spinBone(bone(n), axes[axis], degrees); },
+    // Hips lowered (negative raises) in arm lengths and turned about the vertical, with the feet kept planted.
+    hips(drop, yaw = 0) {
+      if (!drop && !yaw) return;
+      const p = hips.getWorldPosition(new THREE.Vector3()).addScaledVector(up, -drop * L);
+      hips.position.copy(hips.parent.worldToLocal(p));
+      hips.updateMatrixWorld(true);
+      if (yaw) spinBone(hips, up, yaw);
+      moved = true;
+    },
+    // The hand's offset from the shoulder in the stance, in the same (outward, up, forward) arm-length terms.
+    rest(side, sign) {
+      const d = handRest[side];
+      return [sign * d.dot(left) / L, d.dot(up) / L, d.dot(forward) / L];
+    },
+    shrug(side, sign, degrees) { if (degrees) spinBone(bone(`${side}Shoulder`), forward, sign * degrees); },
+    // Puts the fist at shoulder + offset (blended in by `amount`), the elbow bent towards `pole`.
+    fist(side, sign, offset, pole, amount, from = at(`${side}Arm`)) {
+      if (amount <= 0) return;
+      bendArm(bone(`${side}Arm`), bone(`${side}ForeArm`), bone(`${side}Hand`),
+        from.add(vec(sign, offset)), vec(sign, pole), Math.min(1, amount));
+    },
+    // How far the side's fist is in front of the torso surface (negative: sunk into it), or Infinity if it is not
+    // over the torso. The torso's front is binned on a grid across the body, so the check stays cheap.
+    gap(side) {
+      const cell = 0.04 * L;
+      const key = (v) => `${Math.round(v.dot(left) / cell)},${Math.round(v.y / cell)}`;
+      const front = new Map();
+      for (const v of skinned(/^Spine\d*$/)) front.set(key(v), Math.max(front.get(key(v)) ?? -Infinity, v.dot(forward)));
+      let gap = Infinity;
+      for (const v of skinned(new RegExp(`^${side}Hand$`))) {
+        const surface = front.get(key(v));
+        if (surface !== undefined) gap = Math.min(gap, v.dot(forward) - surface);
+      }
+      return gap;
+    },
+    L,
+    at
+  };
+  // Posed world positions of the skinned vertices bound mainly to bones matching `pattern` (indices cached).
+  const meshes = [], bound = new Map();
+  root.traverse((o) => { if (o.isSkinnedMesh) meshes.push(o); });
+  function skinned(pattern) {
+    if (!bound.has(pattern.source)) {
+      bound.set(pattern.source, meshes.map((mesh) => {
+        const { skinIndex, skinWeight, position } = mesh.geometry.attributes;
+        const joints = new Set(mesh.skeleton.bones.flatMap((b, i) => pattern.test(b.name) ? [i] : []));
+        const ids = [];
+        for (let i = 0; i < position.count; i++) {
+          let w = 0;
+          for (let k = 0; k < 4; k++) if (joints.has(skinIndex.getComponent(i, k))) w += skinWeight.getComponent(i, k);
+          if (w > 0.5) ids.push(i);
+        }
+        return [mesh, ids];
+      }));
+    }
+    return bound.get(pattern.source).flatMap(([mesh, ids]) =>
+      ids.map((i) => mesh.getVertexPosition(i, new THREE.Vector3()).applyMatrix4(mesh.matrixWorld)));
+  }
+  function sample(t) {
+    bones.forEach((b, i) => b.quaternion.copy(base[i]));
+    hips.position.copy(hipsBase);
+    root.updateMatrixWorld(true);
+    moved = false;
+    pose(t, rig);
+    if (moved) {
+      for (const [side] of SIDES) {
+        const { ankle, knee, foot } = legs[side];
+        reach(bone(`${side}UpLeg`), bone(`${side}Leg`), bone(`${side}Foot`), ankle, knee);
+        const f = bone(`${side}Foot`);
+        f.quaternion.copy(f.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(foot));
+        f.updateMatrixWorld(true);
+      }
+    }
+  }
+  // Lets a move fit itself to this body (e.g. where the chest is) before it is sampled.
+  fit?.(rig, sample);
+  const times = [], values = bones.map(() => []), lift = [];
+  const frames = Math.round(duration * FIGHT_FPS);
+  for (let frame = 0; frame <= frames; frame++) {
+    const t = frame / FIGHT_FPS;
+    sample(t);
+    times.push(t);
+    bones.forEach((b, i) => b.quaternion.normalize().toArray(values[i], values[i].length));
+    hips.position.toArray(lift, lift.length);
+  }
+  bones.forEach((b, i) => b.quaternion.copy(base[i]));
+  hips.position.copy(hipsBase);
+  root.updateMatrixWorld(true);
+  return new THREE.AnimationClip(name, duration, [
+    ...bones.map((b, i) => new THREE.QuaternionKeyframeTrack(`${b.name}.quaternion`, times, values[i])),
+    new THREE.VectorKeyframeTrack(`${hips.name}.position`, times, lift)
+  ]);
+}
+
+// Dips to load up, then both fists explode overhead into a V with the chest and chin up; two "yeah" pumps while the
+// head scans the crowd, then the arms come down.
+function victoryFistsUp(root) {
+  return fightClip(root, "Victory_Fists_Up", 3.4, (t, rig) => {
+    const load = ease(t, 0, 0.3) * (1 - ease(t, 0.3, 0.6));
+    const raised = ease(t, 0.3, 0.75) * (1 - ease(t, 2.65, 3.35));
+    rig.hips(0.07 * load - 0.02 * raised);
+    rig.turn("Spine02", "pitch", 5 * load - 3 * raised);
+    rig.turn("Spine", "pitch", 4 * load - 9 * raised);
+    rig.turn("Head", "pitch", 10 * load - 16 * raised);
+    rig.turn("Head", "yaw", raised * between(t, [[0.9, 0], [1.5, 14], [2.2, -12], [2.65, 0]]));
+    for (const [side, sign] of SIDES) {
+      rig.shrug(side, sign, 8 * raised);
+      const pump = strike(t, 1.15, 0.12, 0.05, 0.2) + strike(t, 1.7, 0.12, 0.05, 0.2);
+      const top = new THREE.Vector3(0.42, 0.86, 0.12).setLength(0.95 - 0.16 * pump);
+      // The fists travel up and down in front of the shoulders on bent arms, not round the side on straight ones.
+      const u = raised, from = new THREE.Vector3(...rig.rest(side, sign)), via = new THREE.Vector3(0.3, 0.2, 0.55);
+      const fist = from.multiplyScalar((1 - u) ** 2).addScaledVector(via, 2 * u * (1 - u)).addScaledVector(top, u * u);
+      const pole = new THREE.Vector3(0.5, 0, -1).lerp(new THREE.Vector3(1, -0.2, -0.4), u);
+      rig.fist(side, sign, fist.toArray(), pole.toArray(), 5 * raised);
+    }
+  });
+}
+
+// Hands up into a high guard with a light bounce, then jab, jab, cross, lead hook, cross, turning the torso
+// into every punch, and back to the stance.
+function shadowboxCombo(root) {
+  const punches = [
+    { side: "Left", start: 0.6, out: 0.11, hold: 0.03, back: 0.17, to: [-0.15, 0.12, 0.93], yaw: -14 },
+    { side: "Left", start: 0.98, out: 0.11, hold: 0.03, back: 0.17, to: [-0.15, 0.12, 0.93], yaw: -14 },
+    { side: "Right", start: 1.38, out: 0.13, hold: 0.05, back: 0.22, to: [-0.24, 0.1, 0.91], yaw: 26, hipYaw: 10 },
+    { side: "Left", start: 2.0, out: 0.18, hold: 0.05, back: 0.26, to: [-0.4, 0.08, 0.5], yaw: -30, hipYaw: -12, hook: true },
+    { side: "Right", start: 2.62, out: 0.13, hold: 0.06, back: 0.25, to: [-0.24, 0.1, 0.91], yaw: 26, hipYaw: 10 }
+  ];
+  const guard = { Left: [-0.16, 0.0, 0.62], Right: [-0.2, 0.03, 0.46] };
+  return fightClip(root, "Shadowbox_Combo", 3.75, (t, rig) => {
+    const up = ease(t, 0, 0.4) * (1 - ease(t, 3.2, 3.75));
+    const bounce = up * (0.5 - 0.5 * Math.cos(2 * Math.PI * 2 * Math.max(0, t - 0.4)));
+    let yaw = -8 * up, hipYaw = 0;
+    const fists = { Left: { to: guard.Left, pole: [0.25, -1, 0.1] }, Right: { to: guard.Right, pole: [0.25, -1, 0.1] } };
+    for (const p of punches) {
+      const s = strike(t, p.start, p.out, p.hold, p.back);
+      if (!s) continue;
+      yaw += p.yaw * s;
+      hipYaw += (p.hipYaw || 0) * s;
+      const from = new THREE.Vector3(...guard[p.side]), to = new THREE.Vector3(...p.to);
+      const fist = from.lerp(to, s);
+      // A hook swings the fist out and round on a bent arm with the elbow up; straight punches extend the arm.
+      if (p.hook) fist.x += 0.35 * Math.sin(Math.PI * s);
+      fists[p.side] = { to: fist.toArray(), pole: p.hook ? [1, THREE.MathUtils.lerp(-1, 0.05, s), -0.3] : [0.3, -1, 0] };
+    }
+    rig.hips(0.07 * up + 0.03 * bounce, hipYaw);
+    rig.turn("Spine02", "pitch", 4 * up);
+    rig.turn("Spine02", "yaw", (yaw - hipYaw) * 0.35);
+    rig.turn("Spine01", "yaw", (yaw - hipYaw) * 0.35);
+    rig.turn("Spine", "yaw", (yaw - hipYaw) * 0.3);
+    rig.turn("Head", "yaw", -yaw * 0.6); // eyes stay on the sponsor
+    rig.turn("Head", "pitch", 8 * up);
+    for (const [side, sign] of SIDES) rig.fist(side, sign, fists[side].to, fists[side].pole, up);
+  });
+}
+
+// Chest out and chin up with the arms spread wide, two "come on" curls of the fists, then two thumps of the right
+// fist on the chest with a cocky tilt of the head.
+function tauntComeOn(root) {
+  const THUMPS = [2.25, 2.6], OUT = 0.08;
+  let press = 0.42; // the fist's forward offset from the chest bone as it lands, in arm lengths; fitted below
+  return fightClip(root, "Taunt_Come_On", 3.6, (t, rig) => {
+    const spread = ease(t, 0.05, 0.5) * (1 - ease(t, 1.6, 2.0));
+    const tap = ease(t, 1.75, 2.1) * (1 - ease(t, 2.95, 3.5));
+    const curl = strike(t, 0.62, 0.16, 0.06, 0.2) + strike(t, 1.08, 0.16, 0.06, 0.2);
+    rig.hips(-0.015 * spread, 9 * tap);
+    rig.turn("Spine02", "pitch", -4 * spread);
+    rig.turn("Spine", "pitch", -9 * spread - 3 * tap);
+    rig.turn("Head", "pitch", -12 * spread - 7 * tap);
+    rig.turn("Head", "yaw", -9 * tap);
+    rig.turn("Head", "roll", -7 * tap);
+    for (const [side, sign] of SIDES) {
+      rig.shrug(side, sign, 12 * spread * curl);
+      const wide = new THREE.Vector3(0.62, -0.5, 0.32).lerp(new THREE.Vector3(0.42, -0.02, 0.42), curl);
+      rig.fist(side, sign, wide.toArray(), [0.3, -0.6, -1], spread);
+    }
+    if (tap > 0) {
+      const thump = THUMPS.reduce((sum, start) => sum + strike(t, start, OUT, 0.03, 0.16), 0);
+      rig.fist("Right", -1, [0.1, -0.12, press + 0.24 * (1 - thump)], [1, -1, -0.3], tap, rig.at("Spine"));
+    }
+  }, (rig, sample) => {
+    // Chests and fists differ in depth (a gi, boxing gloves), so the thump is moved until the fist lands on the
+    // chest with ~5 mm of contact on this body.
+    for (let i = 0; i < 3; i++) {
+      sample(THUMPS[0] + OUT);
+      const gap = rig.gap("Right");
+      if (!Number.isFinite(gap)) return;
+      press -= (gap + 0.01 * rig.L) / rig.L;
+    }
+  });
+}
+
+const AUTHORED_MOVES = {
+  Victory_Chest_Beat: victoryChestBeat,
+  Victory_Fists_Up: victoryFistsUp,
+  Shadowbox_Combo: shadowboxCombo,
+  Taunt_Come_On: tauntComeOn
+};
+
+// Builds the authored moves a tenant lists (each is sampled from the rig's current pose: the stance).
+function authoredClips(root, names) {
+  return names.filter((name) => AUTHORED_MOVES[name]).map((name) => AUTHORED_MOVES[name](root)).filter(Boolean);
 }
 
 /* ---------------------------------------------------- power stance */
@@ -477,8 +718,11 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
   const torso = torsoChain(root).map((bone) => [bone, bone.quaternion.clone()]);
   const stance = byName.has(restName) ? anchoredClip(root, byName.get(restName)) : null;
   if (stance) poseFromFrame(root, stance);
-  for (const clip of authoredClips(root)) byName.set(clip.name, clip);
-  const moves = new Map(entries.filter((e) => byName.has(e.clip)).map((e) => [e.clip, { ...e, clip: anchoredClip(root, byName.get(e.clip)) }]));
+  const authored = authoredClips(root, entries.map((e) => e.clip));
+  for (const clip of authored) byName.set(clip.name, clip);
+  // Authored moves are already in place and facing the sponsor; only library clips need anchoring.
+  const anchor = (clip) => authored.includes(clip) ? clip : anchoredClip(root, clip);
+  const moves = new Map(entries.filter((e) => byName.has(e.clip)).map((e) => [e.clip, { ...e, clip: anchor(byName.get(e.clip)) }]));
   if (!moves.size) return null;
   const mixer = new THREE.AnimationMixer(root);
   const rest = mixer.clipAction(restClip(root, [...moves.values()].map((m) => m.clip), stance));
@@ -527,7 +771,7 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
     const reps = Math.max(1, Math.round(MIN_PLAY_SECONDS / move.clip.duration));
     action.reset().setLoop(THREE.LoopRepeat, reps).play();
     action.clampWhenFinished = true;
-    action.crossFadeFrom(prev, name === "Victory_Chest_Beat" ? 0.3 : CROSSFADE, false);
+    action.crossFadeFrom(prev, AUTHORED_MOVES[name] ? 0.3 : CROSSFADE, false);
     current = { name, action };
     settling = 0;
     onChange?.(name);

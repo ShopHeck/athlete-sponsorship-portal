@@ -28,12 +28,6 @@ test("Rosa rests in the power stance and keeps two distinct front sports-top slo
   assert.match(lower.label, /lower panel/);
 });
 
-test("Rosa's model bakes every offered move", async () => {
-  const names = (await io.read(file)).getRoot().listAnimations().map((clip) => clip.getName());
-  assert.deepEqual(config.motion.clips.map(({ label }) => label), ["Victory", "Shadowbox", "Taunt"]);
-  for (const { clip } of config.motion.clips) assert.ok(names.includes(clip), `${clip} must be baked`);
-});
-
 test("every placement rectangle samples fight-kit fabric, not skin", async () => {
   const { meshes, motion } = await loadPosed(file, config, config.motion.rest);
   const texture = (await io.read(file)).getRoot().listMaterials()[0].getBaseColorTexture().getImage();
