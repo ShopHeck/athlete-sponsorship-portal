@@ -102,7 +102,7 @@ async function main() {
   if (!input) throw new Error("usage: strip-animations.mjs <in.glb> [out.glb]");
   const before = await readFile(input);
   const { glb, removed } = stripAnimations(before);
-  if (removed.length) await writeFile(output, glb);
+  if (removed.length || output !== input) await writeFile(output, glb);
   console.log(JSON.stringify({ output, removed, bytes: [before.length, glb.length] }));
 }
 
