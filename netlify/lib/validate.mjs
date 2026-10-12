@@ -131,6 +131,14 @@ export function validateConfig(config, filename) {
     if (!Array.isArray(garment.placements)) {
       throw new Error(`garment ${garment.id} needs placements`);
     }
+    // A garment with its own model (a walkout robe) swaps the athlete to that rigged model while its tab is selected.
+    if (garment.model !== undefined) {
+      if (typeof garment.model !== "string" || !/^[\w./-]+\.glb$/.test(garment.model) || garment.model.includes("..")) {
+        throw new Error(`garment ${garment.id} model must be a .glb path`);
+      }
+      if (!config.motion) throw new Error(`garment ${garment.id} model needs a rigged tenant model with motion`);
+      if (garment === config.garments[0]) throw new Error(`garment ${garment.id} with its own model cannot be the first garment`);
+    }
     for (const placement of garment.placements) {
       if (typeof placement.id !== "string" || !placement.id) {
         throw new Error(`tenant ${config.slug} has a placement without an id`);

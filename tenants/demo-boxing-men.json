@@ -29,7 +29,7 @@
   "hero": {
     "eyebrow": "MEN'S BOXING · DEMO PORTAL",
     "titleHtml": "Choose your<br><em>position.</em>",
-    "intro": "Rotate Marcus Hale to explore every placement on his boxing trunks. Select a position and preview your logo."
+    "intro": "Rotate Marcus Hale to explore every placement on his boxing trunks and walkout robe. Switch garments, select a position and preview your logo."
   },
   "poster": null,
   "brand": {
@@ -47,11 +47,11 @@
     "label": "Moves",
     "rest": "Power_Stance",
     "stance": { "handForward": 0 },
-    "intro": "Taunt_Come_On",
+    "intro": "Taunt_Hands_Down",
     "clips": [
-      { "clip": "Victory_Fists_Up", "label": "Victory" },
+      { "clip": "Victory_Chest_Beat", "label": "Victory" },
       { "clip": "Shadowbox_Combo", "label": "Shadowbox" },
-      { "clip": "Taunt_Come_On", "label": "Taunt" }
+      { "clip": "Taunt_Hands_Down", "label": "Taunt" }
     ]
   },
   "ring": {
@@ -88,7 +88,7 @@
   },
   "packageName": "Fight Night sponsorship package",
   "benefits": [
-    "Your logo on Marcus Hale's boxing trunks at Demo Fight Night",
+    "Your logo on Marcus Hale's boxing trunks or walkout robe at Demo Fight Night",
     "Social media promotion and a post-fight interview shout-out",
     "A post-event branded media kit",
     "Two VIP ringside tickets"
@@ -127,7 +127,7 @@
     "inventoryEyebrow": "PLACEMENT INVENTORY",
     "dragInstruction": "Drag the athlete to rotate 360°",
     "modelCredit": "Real-time 3D · drag to rotate · scroll to zoom",
-    "canvasLabel": "Interactive 3D model of Marcus Hale in boxing trunks. Use the arrow keys to rotate.",
+    "canvasLabel": "Interactive 3D model of Marcus Hale in boxing trunks or his walkout robe. Use the arrow keys to rotate.",
     "loading": "Loading 3D model…",
     "modelLoadError": "The 3D model could not be loaded. Please refresh the page.",
     "modelLoadingProgress": "Loading 3D model… {percent}%",
@@ -209,7 +209,7 @@
     "emailViewPlacement": "View placement",
     "emailBidAgain": "Bid again",
     "emailOutro": "Once payment clears, Marcus Hale will reach out for your final artwork and the Fight Night package details.",
-    "invoiceFooter": "Includes the full Fight Night package: boxing trunks logo placement, social media promotion, a post-fight interview shout-out, a branded media kit, and two VIP ringside tickets.",
+    "invoiceFooter": "Includes the full Fight Night package: boxing trunks or walkout robe logo placement, social media promotion, a post-fight interview shout-out, a branded media kit, and two VIP ringside tickets.",
     "invoiceSource": "the Marcus Hale sponsorship portal",
     "dashboardSiteName": "marcus-hale-demo",
     "emailInvoiceButton": "Pay {amount} invoice",
@@ -361,6 +361,93 @@
           "w": 0.12,
           "h": 0.08,
           "label": "Boxing trunks · Right side leg"
+        }
+      ]
+    },
+    {
+      "id": "robe",
+      "tab": "Walkout robe",
+      "label": "Walkout robe",
+      "lateralLabel": "Sleeves",
+      "model": "models/demo-boxing-men-robe-animated.glb",
+      "placements": [
+        {
+          "id": "RB-B1",
+          "name": "Back · Name panel",
+          "detail": "The classic walkout spot: a large logo across the upper back of the robe, seen on every ring entrance.",
+          "side": "back",
+          "x": 0,
+          "y": 1.33,
+          "w": 0.32,
+          "h": 0.15,
+          "label": "Walkout robe · Back · Name panel"
+        },
+        {
+          "id": "RB-B2",
+          "name": "Back · Lower skirt",
+          "detail": "Wide placement across the back of the robe below the belt.",
+          "side": "back",
+          "x": 0,
+          "y": 0.85,
+          "w": 0.28,
+          "h": 0.1,
+          "label": "Walkout robe · Back · Lower skirt"
+        },
+        {
+          "id": "RB-F1",
+          "name": "Chest · Wearer's left",
+          "detail": "Chest logo on the robe's black front panel, outside the red lapel.",
+          "side": "front",
+          "x": 0.13,
+          "y": 1.32,
+          "w": 0.09,
+          "h": 0.065,
+          "label": "Walkout robe · Chest · Wearer's left"
+        },
+        {
+          "id": "RB-F2",
+          "name": "Chest · Wearer's right",
+          "detail": "Chest logo on the robe's black front panel, outside the red lapel.",
+          "side": "front",
+          "x": -0.13,
+          "y": 1.32,
+          "w": 0.09,
+          "h": 0.065,
+          "label": "Walkout robe · Chest · Wearer's right"
+        },
+        {
+          "id": "RB-F3",
+          "name": "Front skirt · Upper",
+          "detail": "Logo on the robe's front wrap panel, just below the belt.",
+          "side": "front",
+          "x": 0.14,
+          "y": 0.93,
+          "w": 0.1,
+          "h": 0.08,
+          "label": "Walkout robe · Front skirt · Upper"
+        },
+        {
+          "id": "RB-F4",
+          "name": "Front skirt · Lower",
+          "detail": "Logo on the robe's front wrap panel, above the red hem.",
+          "side": "front",
+          "x": 0.155,
+          "y": 0.7,
+          "w": 0.1,
+          "h": 0.08,
+          "label": "Walkout robe · Front skirt · Lower"
+        },
+        {
+          "id": "RB-S1",
+          "name": "Sleeve pair",
+          "detail": "Matching logos on the outside of both robe sleeves.",
+          "side": "left",
+          "x": -0.05,
+          "y": 1.28,
+          "w": 0.09,
+          "h": 0.06,
+          "mirror": "right",
+          "label": "Walkout robe · Sleeve pair"
         }
       ]
     }

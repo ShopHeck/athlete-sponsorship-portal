@@ -96,7 +96,8 @@ export async function refit(config, file, fromRest) {
   }
   const after = await loadPosed(file, config, config.motion.rest);
   const results = [];
-  for (const garment of config.garments) for (const spot of garment.placements) {
+  // A garment with its own model (a walkout robe) is refitted against that model, not the tenant's.
+  for (const garment of config.garments.filter((g) => !g.model)) for (const spot of garment.placements) {
     const traced = before.motion.withProjectionPose(() => corners(spot).map(([x, y]) => surfaceAt(before.meshes, ...SIDE_RAY[spot.side](x, y))));
     if (!traced[0]) { results.push({ id: spot.id, error: "no surface under the old placement" }); continue; }
     const moved = after.motion.withProjectionPose(() => {

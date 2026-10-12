@@ -298,6 +298,50 @@ function between(t, stops) {
   return stops.at(-1)[1];
 }
 
+// Contact checks between the fists and the body, for moves fitted to each athlete's build (a gi, boxing gloves):
+// gap(side, surface) is how far the side's fist is in front of the surface's front (negative: sunk into it), or
+// Infinity if it is not over it. The surface front is binned on a grid across the body (`cell` wide), so the check
+// stays cheap. apart() is the clearance between the two fists across the body (negative: overlapping).
+function contactGauge(root, left, forward, cell) {
+  // Posed world positions of the skinned vertices bound mainly to bones matching `pattern` (indices cached).
+  const meshes = [], bound = new Map();
+  root.traverse((o) => { if (o.isSkinnedMesh) meshes.push(o); });
+  function skinned(pattern) {
+    if (!bound.has(pattern.source)) {
+      bound.set(pattern.source, meshes.map((mesh) => {
+        const { skinIndex, skinWeight, position } = mesh.geometry.attributes;
+        const joints = new Set(mesh.skeleton.bones.flatMap((b, i) => pattern.test(b.name) ? [i] : []));
+        const ids = [];
+        for (let i = 0; i < position.count; i++) {
+          let w = 0;
+          for (let k = 0; k < 4; k++) if (joints.has(skinIndex.getComponent(i, k))) w += skinWeight.getComponent(i, k);
+          if (w > 0.5) ids.push(i);
+        }
+        return [mesh, ids];
+      }));
+    }
+    return bound.get(pattern.source).flatMap(([mesh, ids]) =>
+      ids.map((i) => mesh.getVertexPosition(i, new THREE.Vector3()).applyMatrix4(mesh.matrixWorld)));
+  }
+  return {
+    gap(side, surface = /^Spine\d*$/) {
+      const key = (v) => `${Math.round(v.dot(left) / cell)},${Math.round(v.y / cell)}`;
+      const front = new Map();
+      for (const v of skinned(surface)) front.set(key(v), Math.max(front.get(key(v)) ?? -Infinity, v.dot(forward)));
+      let gap = Infinity;
+      for (const v of skinned(new RegExp(`^${side}Hand$`))) {
+        const at = front.get(key(v));
+        if (at !== undefined) gap = Math.min(gap, v.dot(forward) - at);
+      }
+      return gap;
+    },
+    apart() {
+      const inner = (side, sign) => Math.min(...skinned(new RegExp(`^${side}Hand$`)).map((v) => sign * v.dot(left)));
+      return inner("Left", 1) + inner("Right", -1);
+    }
+  };
+}
+
 function victoryChestBeat(root) {
   const bone = (name) => root.getObjectByName(name);
   const head = bone("Head"), spine = bone("Spine");
@@ -309,8 +353,32 @@ function victoryChestBeat(root) {
   const values = bones.map(() => []);
   const times = [];
   const beats = [[0, 0], [1.4, 0], [1.6, 1], [1.82, 0], [2.05, 1], [2.27, 0], [2.5, 1], [2.9, 1], [3.2, 0]];
+  // Chests and fists differ in depth (a gi, boxing gloves), so the beat is moved forward or back until the fist lands
+  // on the chest with ~5 mm of contact on this body.
+  root.updateMatrixWorld(true);
+  const at = (name) => bone(name).getWorldPosition(new THREE.Vector3());
+  const up = new THREE.Vector3(0, 1, 0);
+  const across = at("LeftUpLeg").sub(at("RightUpLeg")).projectOnPlane(up).normalize();
+  const contact = contactGauge(root, across, new THREE.Vector3().crossVectors(across, up).normalize(), 0.025);
+  let press = 0;
+  for (let i = 0; i < 3; i++) {
+    pose(1.6);
+    const g = contact.gap("Left");
+    if (!Number.isFinite(g)) break;
+    press -= g + 0.005;
+  }
   for (let frame = 0; frame <= 120; frame++) {
     const t = frame / 30;
+    pose(t);
+    times.push(t);
+    bones.forEach((b, i) => b.quaternion.toArray(values[i], values[i].length));
+  }
+  bones.forEach((b, i) => b.quaternion.copy(initial[i]));
+  root.updateMatrixWorld(true);
+  return new THREE.AnimationClip("Victory_Chest_Beat", 4,
+    bones.map((b, i) => new THREE.QuaternionKeyframeTrack(`${b.name}.quaternion`, times, values[i])));
+
+  function pose(t) {
     bones.forEach((b, i) => b.quaternion.copy(initial[i]));
     root.updateMatrixWorld(true);
     const bow = ease(t, 0, 0.5) * (1 - ease(t, 1, 1.55));
@@ -329,20 +397,15 @@ function victoryChestBeat(root) {
     if (left > 0) {
       const shoulder = lArm.getWorldPosition(new THREE.Vector3());
       const beat = between(t, beats);
-      const target = shoulder.clone().add(new THREE.Vector3(-0.14, -0.18 + 0.045 * (1 - beat), 0.11 + 0.10 * (1 - beat)));
+      const target = shoulder.clone().add(new THREE.Vector3(-0.14, -0.18 + 0.045 * (1 - beat), 0.11 + press + 0.10 * (1 - beat)));
       bendArm(lArm, lFore, lHand, target, new THREE.Vector3(0.09, -0.3, 0.1), left);
     }
-    times.push(t);
-    bones.forEach((b, i) => b.quaternion.toArray(values[i], values[i].length));
+    root.updateMatrixWorld(true);
   }
-  bones.forEach((b, i) => b.quaternion.copy(initial[i]));
-  root.updateMatrixWorld(true);
-  return new THREE.AnimationClip("Victory_Chest_Beat", 4,
-    bones.map((b, i) => new THREE.QuaternionKeyframeTrack(`${b.name}.quaternion`, times, values[i])));
 }
 
 /* ------------------------------------------------ demo fight moves */
-// Victory, Shadowbox and Taunt for the demo fighters, keyframed on the power stance so every fighter performs the
+// Shadowbox and Taunt for the demo fighters, keyframed on the power stance so every fighter performs the
 // same clean move upright, in place and facing the sponsor, and ends exactly where it began. Hand targets are in the
 // rig's own arm lengths, measured from the shoulder joint as (outward, up, forward), and directions come from the
 // body, so the moves fit any Meshy rig at any scale. The feet stay planted: the legs are re-solved whenever the hips
@@ -398,7 +461,6 @@ function fightClip(root, name, duration, pose, fit) {
   }));
   const vec = (sign, [x, y, z]) => new THREE.Vector3()
     .addScaledVector(left, sign * x * L).addScaledVector(up, y * L).addScaledVector(forward, z * L);
-  const handRest = Object.fromEntries(SIDES.map(([side]) => [side, at(`${side}Hand`).sub(at(`${side}Arm`))]));
   let moved = false;
   const rig = {
     turn(n, axis, degrees) { if (degrees) spinBone(bone(n), axes[axis], degrees); },
@@ -412,10 +474,9 @@ function fightClip(root, name, duration, pose, fit) {
       moved = true;
     },
     // The hand's offset from the shoulder in the stance, in the same (outward, up, forward) arm-length terms.
-    rest(side, sign) {
-      const d = handRest[side];
-      return [sign * d.dot(left) / L, d.dot(up) / L, d.dot(forward) / L];
-    },
+    // A world-space offset in (outward, up, forward) arm-length terms, and back.
+    offset(sign, d) { return [sign * d.dot(left) / L, d.dot(up) / L, d.dot(forward) / L]; },
+    vec,
     shrug(side, sign, degrees) { if (degrees) spinBone(bone(`${side}Shoulder`), forward, sign * degrees); },
     // Puts the fist at shoulder + offset (blended in by `amount`), the elbow bent towards `pole`.
     fist(side, sign, offset, pole, amount, from = at(`${side}Arm`)) {
@@ -423,43 +484,10 @@ function fightClip(root, name, duration, pose, fit) {
       bendArm(bone(`${side}Arm`), bone(`${side}ForeArm`), bone(`${side}Hand`),
         from.add(vec(sign, offset)), vec(sign, pole), Math.min(1, amount));
     },
-    // How far the side's fist is in front of the torso surface (negative: sunk into it), or Infinity if it is not
-    // over the torso. The torso's front is binned on a grid across the body, so the check stays cheap.
-    gap(side) {
-      const cell = 0.04 * L;
-      const key = (v) => `${Math.round(v.dot(left) / cell)},${Math.round(v.y / cell)}`;
-      const front = new Map();
-      for (const v of skinned(/^Spine\d*$/)) front.set(key(v), Math.max(front.get(key(v)) ?? -Infinity, v.dot(forward)));
-      let gap = Infinity;
-      for (const v of skinned(new RegExp(`^${side}Hand$`))) {
-        const surface = front.get(key(v));
-        if (surface !== undefined) gap = Math.min(gap, v.dot(forward) - surface);
-      }
-      return gap;
-    },
+    contact: contactGauge(root, left, forward, 0.04 * L),
     L,
     at
   };
-  // Posed world positions of the skinned vertices bound mainly to bones matching `pattern` (indices cached).
-  const meshes = [], bound = new Map();
-  root.traverse((o) => { if (o.isSkinnedMesh) meshes.push(o); });
-  function skinned(pattern) {
-    if (!bound.has(pattern.source)) {
-      bound.set(pattern.source, meshes.map((mesh) => {
-        const { skinIndex, skinWeight, position } = mesh.geometry.attributes;
-        const joints = new Set(mesh.skeleton.bones.flatMap((b, i) => pattern.test(b.name) ? [i] : []));
-        const ids = [];
-        for (let i = 0; i < position.count; i++) {
-          let w = 0;
-          for (let k = 0; k < 4; k++) if (joints.has(skinIndex.getComponent(i, k))) w += skinWeight.getComponent(i, k);
-          if (w > 0.5) ids.push(i);
-        }
-        return [mesh, ids];
-      }));
-    }
-    return bound.get(pattern.source).flatMap(([mesh, ids]) =>
-      ids.map((i) => mesh.getVertexPosition(i, new THREE.Vector3()).applyMatrix4(mesh.matrixWorld)));
-  }
   function sample(t) {
     bones.forEach((b, i) => b.quaternion.copy(base[i]));
     hips.position.copy(hipsBase);
@@ -494,30 +522,6 @@ function fightClip(root, name, duration, pose, fit) {
     ...bones.map((b, i) => new THREE.QuaternionKeyframeTrack(`${b.name}.quaternion`, times, values[i])),
     new THREE.VectorKeyframeTrack(`${hips.name}.position`, times, lift)
   ]);
-}
-
-// Dips to load up, then both fists explode overhead into a V with the chest and chin up; two "yeah" pumps while the
-// head scans the crowd, then the arms come down.
-function victoryFistsUp(root) {
-  return fightClip(root, "Victory_Fists_Up", 3.4, (t, rig) => {
-    const load = ease(t, 0, 0.3) * (1 - ease(t, 0.3, 0.6));
-    const raised = ease(t, 0.3, 0.75) * (1 - ease(t, 2.65, 3.35));
-    rig.hips(0.07 * load - 0.02 * raised);
-    rig.turn("Spine02", "pitch", 5 * load - 3 * raised);
-    rig.turn("Spine", "pitch", 4 * load - 9 * raised);
-    rig.turn("Head", "pitch", 10 * load - 16 * raised);
-    rig.turn("Head", "yaw", raised * curve(t, [[0.9, 0], [1.5, 14], [2.2, -12], [2.65, 0]]));
-    for (const [side, sign] of SIDES) {
-      rig.shrug(side, sign, 8 * raised);
-      const pump = strike(t, 1.15, 0.12, 0.05, 0.2) + strike(t, 1.7, 0.12, 0.05, 0.2);
-      const top = new THREE.Vector3(0.42, 0.86, 0.12).setLength(0.95 - 0.16 * pump);
-      // The fists travel up and down in front of the shoulders on bent arms, not round the side on straight ones.
-      const u = raised, from = new THREE.Vector3(...rig.rest(side, sign)), via = new THREE.Vector3(0.3, 0.2, 0.55);
-      const fist = from.multiplyScalar((1 - u) ** 2).addScaledVector(via, 2 * u * (1 - u)).addScaledVector(top, u * u);
-      const pole = new THREE.Vector3(0.5, 0, -1).lerp(new THREE.Vector3(1, -0.2, -0.4), u);
-      rig.fist(side, sign, fist.toArray(), pole.toArray(), 1 - (1 - raised) ** 4); // full IK early, without a kink
-    }
-  });
 }
 
 // Hands up into a high guard with a light bounce, then jab, jab, cross, lead hook, cross, turning the torso
@@ -561,38 +565,58 @@ function shadowboxCombo(root) {
   });
 }
 
-// Chest out and chin up with the arms spread wide, two "come on" curls of the fists, then two thumps of the right
-// fist on the chest with a cocky tilt of the head.
-function tauntComeOn(root) {
-  const THUMPS = [2.25, 2.6], OUT = 0.08;
-  let press = 0.42; // the fist's forward offset from the chest bone as it lands, in arm lengths; fitted below
-  return fightClip(root, "Taunt_Come_On", 3.6, (t, rig) => {
-    const spread = ease(t, 0.05, 0.5) * (1 - ease(t, 1.6, 2.0));
-    const tap = ease(t, 1.75, 2.1) * (1 - ease(t, 2.95, 3.5));
-    const curl = strike(t, 0.62, 0.16, 0.06, 0.2) + strike(t, 1.08, 0.16, 0.06, 0.2);
-    rig.hips(-0.015 * spread, 9 * tap);
-    rig.turn("Spine02", "pitch", -4 * spread);
-    rig.turn("Spine", "pitch", -9 * spread - 3 * tap);
-    rig.turn("Head", "pitch", -12 * spread - 7 * tap);
-    rig.turn("Head", "yaw", -9 * tap);
-    rig.turn("Head", "roll", -7 * tap);
+// A cocky boxer's taunt: the gloves come up and bump together twice, drop to the hips (hands down, chin out) for a
+// shoulder shimmy and a shake of the head, then the right glove taps the chin twice: "hit me, right here".
+export const TAUNT_BUMPS = [0.5, 0.86];   // glove bumps start; the gloves meet BUMP_OUT later
+export const TAUNT_TAPS = [2.66, 3.0];    // chin taps start; the glove lands TAP_OUT later
+export const BUMP_OUT = 0.1, TAP_OUT = 0.09;
+function tauntHandsDown(root) {
+  let meet = -0.25;  // the fists' outward offset from the shoulders as they bump, in arm lengths; fitted below
+  let chin = 0.3;    // the right fist's forward offset from the head bone as it taps the chin; fitted below
+  const CHIN = /^(Head|neck)$/;
+  return fightClip(root, "Taunt_Hands_Down", 4.1, (t, rig) => {
+    const on = ease(t, 0, 0.32) * (1 - ease(t, 3.55, 4.1));
+    const low = ease(t, 1.12, 1.5);                       // gloves dropped to the hips
+    const toChin = ease(t, 2.3, 2.62);                    // right glove up to the chin
+    const shimmy = ease(t, 1.35, 1.6) * (1 - ease(t, 2.25, 2.5));
+    const phase = 2 * Math.PI * 2.2 * Math.max(0, t - 1.35);
+    const bump = TAUNT_BUMPS.reduce((sum, start) => sum + strike(t, start, BUMP_OUT, 0.04, 0.16), 0);
+    const tap = TAUNT_TAPS.reduce((sum, start) => sum + strike(t, start, TAP_OUT, 0.04, 0.15), 0);
+    const cocky = on * Math.max(low, toChin);
+
+    rig.hips(0.03 * on * (1 - low) - 0.01 * cocky, 6 * shimmy * Math.sin(phase / 2));
+    rig.turn("Spine02", "roll", 5 * shimmy * Math.sin(phase));
+    rig.turn("Spine", "pitch", 3 * on * (1 - low) - 6 * cocky);
+    rig.turn("Spine", "yaw", -4 * shimmy * Math.sin(phase / 2));
+    rig.turn("Head", "pitch", 6 * on * (1 - low) - 12 * cocky);           // eyes on the gloves, then chin out
+    rig.turn("Head", "yaw", 12 * shimmy * Math.sin(phase + 0.6) + 6 * on * toChin);
+    rig.turn("Head", "roll", -4 * shimmy * Math.sin(phase) - 5 * on * toChin);
     for (const [side, sign] of SIDES) {
-      rig.shrug(side, sign, 12 * spread * curl);
-      const wide = new THREE.Vector3(0.62, -0.5, 0.32).lerp(new THREE.Vector3(0.42, -0.02, 0.42), curl);
-      rig.fist(side, sign, wide.toArray(), [0.3, -0.6, -1], spread);
-    }
-    if (tap > 0) {
-      const thump = THUMPS.reduce((sum, start) => sum + strike(t, start, OUT, 0.03, 0.16), 0);
-      rig.fist("Right", -1, [0.1, -0.12, press + 0.24 * (1 - thump)], [1, -1, -0.3], tap, rig.at("Spine"));
+      rig.shrug(side, sign, 9 * shimmy * Math.max(0, sign * Math.sin(phase)));
+      const bumped = new THREE.Vector3(meet + 0.22 * (1 - bump), -0.13, 0.58);
+      const dropped = new THREE.Vector3(0.3, -0.82, 0.16);
+      const fist = bumped.lerp(dropped, low);
+      const pole = new THREE.Vector3(0.45, -1, -0.15).lerp(new THREE.Vector3(0.3, -0.6, -1), low);
+      if (side === "Left" || toChin <= 0) { rig.fist(side, sign, fist.toArray(), pole.toArray(), on); continue; }
+      // The chin target rides on the head as it moves, so it is measured from the head bone, then expressed from the
+      // shoulder like every other fist target.
+      const target = rig.vec(sign, [-0.07, -0.19, chin + 0.16 * (1 - tap)]).add(rig.at("Head")).sub(rig.at(`${side}Arm`));
+      fist.lerp(new THREE.Vector3(...rig.offset(sign, target)), toChin);
+      pole.lerp(new THREE.Vector3(0.7, -1, 0.1), toChin);
+      rig.fist(side, sign, fist.toArray(), pole.toArray(), on);
     }
   }, (rig, sample) => {
-    // Chests and fists differ in depth (a gi, boxing gloves), so the thump is moved until the fist lands on the
-    // chest with ~5 mm of contact on this body.
+    // Gloves and faces differ (10 oz gloves, bare fists, MMA gloves), so the bumps and taps are moved until the
+    // fists just meet and the glove just touches the chin on this body.
+    for (let i = 0; i < 5; i++) {
+      sample(TAUNT_BUMPS[0] + BUMP_OUT);
+      meet -= (rig.contact.apart() + 0.004) / (2 * rig.L);
+    }
     for (let i = 0; i < 3; i++) {
-      sample(THUMPS[0] + OUT);
-      const gap = rig.gap("Right");
+      sample(TAUNT_TAPS[0] + TAP_OUT);
+      const gap = rig.contact.gap("Right", CHIN);
       if (!Number.isFinite(gap)) return;
-      press -= (gap + 0.01 * rig.L) / rig.L;
+      chin -= (gap + 0.004) / rig.L;
     }
   });
 }
@@ -613,9 +637,8 @@ function breathingClip(root) {
 
 const AUTHORED_MOVES = {
   Victory_Chest_Beat: victoryChestBeat,
-  Victory_Fists_Up: victoryFistsUp,
   Shadowbox_Combo: shadowboxCombo,
-  Taunt_Come_On: tauntComeOn
+  Taunt_Hands_Down: tauntHandsDown
 };
 
 // Builds the authored moves a tenant lists (each is sampled from the rig's current pose: the stance).

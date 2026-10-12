@@ -297,7 +297,7 @@ const projector = new THREE.Raycaster();
 
 const LATERAL = new Set(["left", "right"]);
 
-function makeSlot(spot, side, meshes) {
+function makeSlot(spot, side, meshes, owner = null) {
   // Side rays map x to +z on the left and -z on the right, so a left/right mirror negates x to land on the
   // world-symmetric spot (e.g. both sleeves when the arms hang slightly behind the torso).
   const lateralMirror = side !== spot.side && LATERAL.has(side) && LATERAL.has(spot.side);
@@ -324,7 +324,7 @@ function makeSlot(spot, side, meshes) {
   mesh.userData.spotId = spot.id;
   mesh.renderOrder = 2;
   athlete.add(mesh);
-  const slot = { spot, side, mesh, canvas: c, tex, point: hit.point.clone(), normal };
+  const slot = { spot, side, mesh, canvas: c, tex, point: hit.point.clone(), normal, owner };
   if (hit.object.isSkinnedMesh) {
     slot.mesh = mesh = skinDecal(mesh, hit.object);
     slot.anchor = surfaceAnchor(mesh, hit.point, normal);
@@ -334,18 +334,42 @@ function makeSlot(spot, side, meshes) {
   return slot;
 }
 
-function buildSlots(meshes) {
+// A garment with its own model (a walkout robe) swaps the athlete to that rigged model while its tab is selected. Its
+// placements are projected onto that model (each slot's `owner` is the garment), the kit's onto the tenant's model.
+let kit = null;              // { root, motion } of the tenant's model
+const outfits = new Map();   // garment id → { root, motion }, once its model has loaded
+function syncGarmentLayers() {
+  if (!kit) return;
+  const outfit = outfits.get(state.garment) || null;
+  const active = outfit || kit;
+  if (active.motion && active.motion !== motion) {
+    motion?.settle();
+    motion = active.motion;
+    renderMotionBar(null);
+  }
+  kit.root.visible = !outfit;
+  for (const entry of outfits.values()) entry.root.visible = entry === outfit;
+  const owner = outfit ? state.garment : null;
+  for (const slot of slotMeshes) slot.mesh.visible = !isCardCapture && slot.owner === owner;
+  renderer.shadowMap.needsUpdate = true;
+  invalidate();
+}
+
+function buildSlots(meshes, owner = null) {
   const missing = [];
+  // Each model carries only its own placements: the kit's on the tenant's model, a garment model's on that model.
   (isShowcase ? showcasePlacements : allPlacements).forEach((spot) => {
+    if ((garmentConfig(garmentOf(spot.id)).model ? garmentOf(spot.id) : null) !== owner) return;
     const failedSides = [];
     for (const side of new Set([spot.side, spot.mirror].filter(Boolean))) {
-      if (!makeSlot(spot, side, meshes)) failedSides.push(side);
+      if (!makeSlot(spot, side, meshes, owner)) failedSides.push(side);
     }
     if (failedSides.length) missing.push({ id: spot.id, sides: failedSides });
   });
-  if (isStudio) {
+  if (isStudio && !owner) {
+    // Garment-model placements are projected (and counted) on their own model, not this one.
     window.dispatchEvent(new CustomEvent("studio:fit", {
-      detail: { total: allPlacements.length, missing }
+      detail: { total: allPlacements.filter((spot) => !garmentConfig(garmentOf(spot.id)).model).length, missing }
     }));
   }
 }
@@ -394,36 +418,73 @@ const isEmbedded = window.self !== window.top || new URLSearchParams(location.se
 if (isEmbedded) document.documentElement.classList.add("is-embedded");
 const draco = new DRACOLoader().setDecoderPath(`${THREE_ADDONS}libs/draco/`);
 const loader = new GLTFLoader().setDRACOLoader(draco);
+// Shades, scales and faces a loaded athlete model the same way for the kit and any garment model.
+function prepareModel(gltf) {
+  const root = gltf.scene;
+  const meshes = [];
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = o.receiveShadow = true;
+    o.material = athleteMaterial(o.material, { anisotropy: renderer.capabilities.getMaxAnisotropy() });
+    for (const map of [o.material.normalMap, o.material.roughnessMap]) {
+      if (map) { map.anisotropy = renderer.capabilities.getMaxAnisotropy(); map.needsUpdate = true; }
+    }
+    if (o.isSkinnedMesh) o.frustumCulled = false; // limbs leave the rest-pose bounds mid-move
+    meshes.push(o);
+  });
+  athlete.add(root);
+  normalise(root);
+  const frontFacesPositiveZ = config.modelFacing === "positive-z" ||
+    (config.modelFacing !== "negative-z" && facesPositiveZ(meshes));
+  if (!frontFacesPositiveZ) { root.rotateY(Math.PI); normalise(root); }
+  return { root, meshes };
+}
+function projectSlots(rig, meshes, owner) {
+  const project = () => {
+    for (const m of meshes) if (m.isSkinnedMesh) { m.computeBoundingBox(); m.computeBoundingSphere(); }
+    buildSlots(meshes, owner);
+  };
+  if (rig) rig.withProjectionPose(project);
+  else project();
+}
+// Garment models load after the kit is on screen, so they never delay the first paint; until one arrives its tab shows
+// the kit and its placements have no slot yet.
+function loadOutfits() {
+  for (const garment of garments) {
+    if (!garment.model) continue;
+    loader.load(garment.model, (gltf) => {
+      const { root, meshes } = prepareModel(gltf);
+      root.visible = false;
+      const rig = motionFor(root, gltf.animations);
+      projectSlots(rig, meshes, garment.id);
+      outfits.set(garment.id, { root, motion: rig });
+      renderAll();
+      // A link to one of this garment's placements framed it before its slot existed: frame it again, unless the
+      // visitor has since moved the camera or picked something else.
+      if (linkedPlacement && state.selected === linkedPlacement.id && garmentOf(linkedPlacement.id) === garment.id &&
+          !userInteracted) flyToPlacement(linkedPlacement);
+    }, undefined, (err) => {
+      // Without its model the garment cannot be previewed: withdraw its tab rather than show the kit under its name.
+      console.warn("Garment model failed to load", garment.id, err);
+      const tab = document.querySelector(`.garment-tab[data-garment="${CSS.escape(garment.id)}"]`);
+      if (tab) tab.hidden = true;
+      if (state.garment === garment.id) setGarment(garments[0].id);
+    });
+  }
+}
 loader.load(
   modelUrl,
   (gltf) => {
-    const root = gltf.scene;
-    const meshes = [];
-    root.traverse((o) => {
-      if (!o.isMesh) return;
-      o.castShadow = o.receiveShadow = true;
-      o.material = athleteMaterial(o.material, { anisotropy: renderer.capabilities.getMaxAnisotropy() });
-      for (const map of [o.material.normalMap, o.material.roughnessMap]) {
-        if (map) { map.anisotropy = renderer.capabilities.getMaxAnisotropy(); map.needsUpdate = true; }
-      }
-      if (o.isSkinnedMesh) o.frustumCulled = false; // limbs leave the rest-pose bounds mid-move
-      meshes.push(o);
-    });
-    athlete.add(root);
-    normalise(root);
-    const frontFacesPositiveZ = config.modelFacing === "positive-z" ||
-      (config.modelFacing !== "negative-z" && facesPositiveZ(meshes));
-    if (!frontFacesPositiveZ) { root.rotateY(Math.PI); normalise(root); }
+    const { root, meshes } = prepareModel(gltf);
     setupMotion(root, gltf.animations);
-    const project = () => {
-      for (const m of meshes) if (m.isSkinnedMesh) { m.computeBoundingBox(); m.computeBoundingSphere(); }
-      buildSlots(meshes);
-    };
-    if (motion) motion.withProjectionPose(project);
-    else project();
+    kit = { root, motion };
+    projectSlots(motion, meshes, null);
     renderer.shadowMap.needsUpdate = true;
     // The first frames upload the 4K atlas and compile shaders: give them a grace window before judging speed.
-    firstRender().then(() => { settle(resolution, performance.now()); stage.classList.add("is-ready"); playIntro(); });
+    firstRender().then(() => {
+      settle(resolution, performance.now()); stage.classList.add("is-ready"); playIntro();
+      if (!isCardCapture) loadOutfits();
+    });
   },
   (xhr) => {
     if (!xhr.total) return;
@@ -443,13 +504,16 @@ loader.load(
 let motion = null;
 let bodyMoving = false;
 const motionBar = document.getElementById("motionBar");
-function setupMotion(root, clips) {
+function motionFor(root, clips) {
   // No GLB clips is fine: the power stance and authored moves are built from the rig itself.
-  if (!config.motion) return;
-  motion = createMotion(root, clips || [], config.motion.clips, {
+  if (!config.motion) return null;
+  return createMotion(root, clips || [], config.motion.clips, {
     rest: config.motion.rest, stance: config.motion.stance, onChange: renderMotionBar, onSettled: startPendingTurntable,
     idle: !prefersReducedMotion && !isCardCapture
   });
+}
+function setupMotion(root, clips) {
+  motion = motionFor(root, clips);
   if (!motion || isCardCapture || !motionBar) return;
   motionBar.setAttribute("aria-label", config.motion.label || "Moves");
   const title = document.createElement("span");
@@ -677,6 +741,7 @@ function renderBidPanel(spot, bid) {
 }
 function renderGarments() {
   document.querySelectorAll(".garment-tab").forEach((b) => { const on = b.dataset.garment === state.garment; b.classList.toggle("is-active", on); b.setAttribute("aria-selected", String(on)); });
+  syncGarmentLayers();
 }
 function renderOrientation() {
   const side = currentSide();
@@ -698,9 +763,11 @@ function setGarment(garment) {
   state.garment = garment;
   const g = garmentConfig(garment);
   const onThisSide = visiblePlacements(); // same rules as the inventory list (state.garment already updated)
+  // A garment model hides the kit and its decals, so its tab never falls back to a spot on the kit.
   const spot = isShowcase
     ? garmentPlacements(g)[0]?.id || null
-    : firstOpen(onThisSide) || firstOpen(g.placements) || firstOpen(allPlacements) || firstPlacement.id;
+    : firstOpen(onThisSide) || firstOpen(g.placements) || (g.model ? g.placements[0]?.id : null) ||
+      firstOpen(allPlacements) || firstPlacement.id;
   state.selected = spot;
   const target = allPlacements.find((p) => p.id === spot);
   if (target && !onThisSide.some((p) => p.id === spot)) flyTo({ az: SIDE_AZIMUTH[target.side], ...homeFraming() });
@@ -785,7 +852,7 @@ function pickSlot(e) {
   const rect = canvas.getBoundingClientRect();
   pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
-  return raycaster.intersectObjects(slotMeshes.map((s) => s.mesh), false)[0];
+  return raycaster.intersectObjects(slotMeshes.filter((s) => s.mesh.visible).map((s) => s.mesh), false)[0];
 }
 canvas.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
 canvas.addEventListener("pointercancel", () => { downAt = null; setHovered(null); });
@@ -1095,6 +1162,10 @@ function animate(now) {
   stepTween(dt);
   controls.update(dt);
   bodyMoving = Boolean(motion?.update(dt));
+  // A rig hidden mid-move (the visitor switched garments) keeps settling out of sight, so it reappears in its stance.
+  for (const rig of [kit, ...outfits.values()]) {
+    if (rig?.motion && rig.motion !== motion && rig.motion.active) rig.motion.update(dt);
+  }
   if (bodyMoving) {
     // Breathing barely moves the shadow: redraw it for moves and blends only.
     if (motion.active) renderer.shadowMap.needsUpdate = true;

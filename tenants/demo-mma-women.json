@@ -47,9 +47,9 @@
     "label": "Moves",
     "rest": "Power_Stance",
     "clips": [
-      { "clip": "Victory_Fists_Up", "label": "Victory" },
+      { "clip": "Victory_Chest_Beat", "label": "Victory" },
       { "clip": "Shadowbox_Combo", "label": "Shadowbox" },
-      { "clip": "Taunt_Come_On", "label": "Taunt" }
+      { "clip": "Taunt_Hands_Down", "label": "Taunt" }
     ]
   },
   "modelFacing": "positive-z",

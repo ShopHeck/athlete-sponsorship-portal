@@ -41,10 +41,15 @@ test("the demo fighters all rest in the power stance", () => {
   ]);
 });
 
-for (const config of configs) {
-  test(`${config.slug}: planted, square and wide, hands by the sides, placements unobstructed`, async () => {
+// The tenant's model carries the kit's placements; a garment with its own model (a walkout robe) carries its own.
+const models = configs.flatMap((config) => [
+  { config, name: config.slug, model: config.model, placements: config.garments.filter((g) => !g.model).flatMap((g) => g.placements) },
+  ...config.garments.filter((g) => g.model).map((g) => ({ config, name: `${config.slug} ${g.id}`, model: g.model, placements: g.placements }))
+]);
+for (const { config, name, model, placements } of models) {
+  test(`${name}: planted, square and wide, hands by the sides, placements unobstructed`, async () => {
     const { root, meshes, motion } = await loadPosed(
-      new URL(`../public/tenants/${config.slug}/${config.model}`, import.meta.url).pathname, config, config.motion.rest);
+      new URL(`../public/tenants/${config.slug}/${model}`, import.meta.url).pathname, config, config.motion.rest);
     assert.ok(motion, "the stance must be built from the rig");
     const point = (name) => root.getObjectByName(name).getWorldPosition(new THREE.Vector3());
     const skinned = meshes.filter((mesh) => mesh.isSkinnedMesh);
@@ -62,7 +67,7 @@ for (const config of configs) {
 
     motion.withProjectionPose(() => {
       const hands = skinned.flatMap((mesh) => weighted(mesh, /Hand$/, 0.5));
-      for (const spot of config.garments.flatMap((garment) => garment.placements)) {
+      for (const spot of placements) {
         for (const side of new Set([spot.side, spot.mirror].filter(Boolean))) {
           const mirrored = side !== spot.side && ["left", "right"].includes(side) && ["left", "right"].includes(spot.side);
           const [origin, direction] = RAYS[side](mirrored ? -spot.x : spot.x, spot.y);
@@ -116,6 +121,23 @@ test("motion.stance accepts known options in range and only with the power stanc
   assert.throws(() => validateConfig(withStance({ stance: { elbowFlare: 1 } }), `${base.slug}.json`), /not a stance option/);
   assert.throws(() => validateConfig(withStance({ stance: { kneeBend: 0.5 } }), `${base.slug}.json`), /from 0 to 0.1/);
   assert.throws(() => validateConfig(withStance({ rest: "Idle", stance: {} }), `${base.slug}.json`), /requires motion.rest/);
+});
+
+test("a garment model must be a .glb path on a moving tenant, after the kit", () => {
+  const base = configs.find(({ slug }) => slug === "demo-boxing-men");
+  assert.ok(base.garments.some((g) => g.model), "the boxing demo wears its walkout robe model");
+  const withRobe = (model, change = (config) => config) => {
+    const config = structuredClone(base);
+    config.garments.find((g) => g.model).model = model;
+    return change(config);
+  };
+  assert.doesNotThrow(() => validateConfig(withRobe("models/robe.glb"), `${base.slug}.json`));
+  for (const bad of ["models/robe.png", "../other/robe.glb", "https://example.com/robe.glb", 42]) {
+    assert.throws(() => validateConfig(withRobe(bad), `${base.slug}.json`), /must be a \.glb path/, String(bad));
+  }
+  assert.throws(() => validateConfig(withRobe("models/robe.glb", (c) => { delete c.motion; return c; }), `${base.slug}.json`), /needs a rigged/);
+  assert.throws(() => validateConfig(withRobe("models/robe.glb", (c) => { c.garments.reverse(); return c; }), `${base.slug}.json`),
+    /cannot be the first garment/);
 });
 
 test("a rig without GLB clips still gets the stance and authored moves", async () => {

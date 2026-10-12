@@ -92,6 +92,22 @@ counter-clockwise as the sponsor sees it) to turn the artwork on the garment, e.
 shorts side panel; `w`/`h` stay in the logo's own frame, so a 90° panel is `w` long up the leg and `h` thick. Ordering inside each garment
 is the order shown in the inventory.
 
+### Garment models (walkout robe)
+
+A garment may set its own `model`, a rigged GLB of the same athlete wearing that garment (a tenant-relative path like
+`config.model`). While its tab is selected the portal swaps to that model: it plays the same moves, and only that
+garment's placements show, projected onto it. The kit's model and decals hide meanwhile. Garment models load after the
+kit is on screen, so they never delay the first paint. Such a garment needs `motion` and cannot be the first garment;
+starter kits leave it out.
+
+`demo-boxing-men` wears a black satin robe with red trim (`models/demo-boxing-men-robe-animated.glb`), built with Meshy
+from `scripts/demo-models/demo-boxing-men-robe.json`. Its references are A-pose renders of the kit model and a face
+close-up, so the face and build match. Run `views front`, review, `views remaining`, then `model`. Rig with
+`animate-model.mjs --task <id> --height 1.86 --actions 403`, add PBR maps with `retexture-model.mjs` and `apply-pbr.mjs`,
+and strip the baked clip last. Place its slots on plain satin, away from the lapels, belt tails, front edge and cuffs.
+`placement-fabric.mjs`, `fight-moves.test.mjs` and `power-stance.test.mjs` check each garment model alongside the kit's;
+`refit-placements.mjs` covers only the kit's.
+
 ## Sold sponsors
 
 The config's `sold` map is keyed by placement ID. Store each logo in that tenant's asset directory:
@@ -185,10 +201,13 @@ side-of-leg decal box; `scripts/power-stance.test.mjs` fails if any hand would b
 (`handForward: 0` on the boxing demo) rather than the placement. Fists and facial expression are baked into the
 mesh and cannot be posed. After changing a tenant's rest, run `node scripts/refit-placements.mjs <slug> --from <old
 rest> --write` to follow every placement's surface point onto the new stance, then check the flagged ones.
-Demo moves are `Victory_Fists_Up` (Victory), `Shadowbox_Combo` (Shadowbox) and `Taunt_Come_On` (Taunt). They are
+Demo moves are `Victory_Chest_Beat` (Victory), `Shadowbox_Combo` (Shadowbox) and `Taunt_Hands_Down` (Taunt). They are
 authored in `public/motion.js` (no baked clip needed) on the power stance from any Meshy rig: feet stay planted, the
-athlete stays upright and facing the sponsor, every move ends exactly in the stance, and the Taunt's chest thumps are
-fitted to each body so the fist lands on the chest. `scripts/fight-moves.test.mjs` checks all of that for every demo
+athlete stays upright and facing the sponsor, and every move ends exactly in the stance. The Victory is Michael
+Heckert's: a bow, the right fist raised high and three beats of the left fist on the chest, with the camera pulling
+back to keep the fist in frame. The Taunt bumps the gloves twice, drops the hands for a chin-out shoulder shimmy, then
+taps the chin twice ("hit me, right here"). The chest beats, glove bumps and chin taps are fitted to each body so the
+fists make contact whatever the gloves, gi or build. `scripts/fight-moves.test.mjs` checks all of that for every demo
 tenant. Meshy's library moves (crouching `Boxing_Practice`, hunched `Chest_Pound_Taunt`, head-down
 `Victory_Fist_Pump`) are no longer offered. New demo models still need a Meshy rig, and the animation pipeline bakes at
 least one library move: `scripts/animate-model.mjs <slug> --task <id> --height <m> --actions 403` (5 credits for the
