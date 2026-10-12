@@ -113,7 +113,7 @@ and strip the baked clip last. Place its slots on plain satin, away from the lap
 A garment may set `item` to show a placeholder sponsorship item instead of the athlete's own apparel: `body` (robe,
 T-shirt, rash guards: decals on the athlete), `hat` (a cap fitted to the `Head` bone), `gloves` (a pair on the
 `LeftHand`/`RightHand` bones, in the brand accent) or `banner` (a roll-up stand beside the athlete). While its tab is
-selected only its placements show; a `body` item also hides the kit's decals. Prop placements need an `anchor`
+selected only its placements show and the kit's decals hide. Prop placements need an `anchor`
 (`head`, `leftHand`, `rightHand`, `banner`) and give `x`/`y` as offsets from it; `body` placements may anchor to
 `leftUpperArm`, `rightUpperArm`, `leftForearm` or `rightForearm` so sleeves land on the arm in any stance. Props are
 fitted in the displayed stance and need a Meshy-style rig; without the bones their placements are reported missing.

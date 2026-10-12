@@ -79,6 +79,8 @@ function measureHead(root, meshes) {
 
 function buildHat(root, meshes) {
   const { bone, base, height, rx, rz } = measureHead(root, meshes);
+  // An animated body without a Head bone would leave the cap behind when it moves: leave its placements unplaced.
+  if (!bone && meshes.some((mesh) => mesh.isSkinnedMesh)) return null;
   const fabric = material(0x23262d);
   const group = new THREE.Group();
   group.position.copy(base);
@@ -169,8 +171,10 @@ export function buildItemProps(root, bodyMeshes, surfaces, { parent, gloveColor 
   const anchors = {};
   if (surfaces.has("hat")) {
     const hat = buildHat(root, bodyMeshes);
-    groups.set("hat", [hat.group]);
-    Object.assign(anchors, hat.anchors);
+    if (hat) {
+      groups.set("hat", [hat.group]);
+      Object.assign(anchors, hat.anchors);
+    }
   }
   if (surfaces.has("gloves")) {
     const gloves = buildGloves(root, gloveColor);

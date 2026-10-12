@@ -345,8 +345,8 @@ function makeSlot(spot, side, meshes, owner = null, { anchor = null, layer = nul
 // placements are projected onto that model (each slot's `owner` is the garment), the kit's onto the tenant's model.
 let kit = null;              // { root, motion } of the tenant's model
 const outfits = new Map();   // garment id → { root, motion }, once its model has loaded
-// A placeholder sponsorship item's tab shows only its own placements (apparel items share the kit's surface) and,
-// for a hat, gloves or banner, its placeholder prop. `itemAnchors` resolves each placement anchor (arm bones and
+// A placeholder sponsorship item's tab shows only its own placements (the kit's decals hide meanwhile) and, for a
+// hat, gloves or banner, its placeholder prop. `itemAnchors` resolves each placement anchor (arm bones and
 // props) to the centre it is offset from and the meshes it lands on.
 let itemProps = { groups: new Map(), anchors: {} };
 let itemAnchors = {};
@@ -357,7 +357,6 @@ function syncGarmentLayers() {
   const outfit = outfits.get(state.garment) || null;
   const item = garmentConfig(state.garment)?.item || null;
   const layer = item ? state.garment : null;
-  const kitSlotsShown = item !== "body";
   const active = outfit || kit;
   if (active.motion && active.motion !== motion) {
     motion?.settle();
@@ -368,7 +367,7 @@ function syncGarmentLayers() {
   for (const entry of outfits.values()) entry.root.visible = entry === outfit;
   const owner = outfit ? state.garment : null;
   for (const slot of slotMeshes) {
-    slot.mesh.visible = !isCardCapture && slot.owner === owner && (slot.layer ? slot.layer === layer : kitSlotsShown);
+    slot.mesh.visible = !isCardCapture && slot.owner === owner && slot.layer === layer;
   }
   for (const [surface, groups] of itemProps.groups) {
     for (const group of groups) group.visible = !isCardCapture && !outfit && surface === item;
@@ -800,10 +799,10 @@ function setGarment(garment) {
   state.garment = garment;
   const g = garmentConfig(garment);
   const onThisSide = visiblePlacements(); // same rules as the inventory list (state.garment already updated)
-  // A garment model hides the kit and its decals, so its tab never falls back to a spot on the kit.
+  // A garment model or sponsorship item hides the kit's decals, so its tab never falls back to a spot elsewhere.
   const spot = isShowcase
     ? garmentPlacements(g)[0]?.id || null
-    : firstOpen(onThisSide) || firstOpen(g.placements) || (g.model ? g.placements[0]?.id : null) ||
+    : firstOpen(onThisSide) || firstOpen(g.placements) || (g.model || g.item ? g.placements[0]?.id : null) ||
       firstOpen(allPlacements) || firstPlacement.id;
   state.selected = spot;
   const target = allPlacements.find((p) => p.id === spot);
