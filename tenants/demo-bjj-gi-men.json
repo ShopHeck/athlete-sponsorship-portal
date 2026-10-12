@@ -46,11 +46,11 @@
   "motion": {
     "label": "Moves",
     "rest": "Power_Stance",
-    "intro": "Taunt_Come_On",
+    "intro": "Taunt_Hands_Down",
     "clips": [
-      { "clip": "Victory_Fists_Up", "label": "Victory" },
+      { "clip": "Victory_Chest_Beat", "label": "Victory" },
       { "clip": "Shadowbox_Combo", "label": "Shadowbox" },
-      { "clip": "Taunt_Come_On", "label": "Taunt" }
+      { "clip": "Taunt_Hands_Down", "label": "Taunt" }
     ]
   },
   "ring": {

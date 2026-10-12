@@ -62,7 +62,8 @@ for (const config of configs) {
 
     motion.withProjectionPose(() => {
       const hands = skinned.flatMap((mesh) => weighted(mesh, /Hand$/, 0.5));
-      for (const spot of config.garments.flatMap((garment) => garment.placements)) {
+      // Robe placements are checked on the robe itself (scripts/robe.test.mjs).
+      for (const spot of config.garments.filter((garment) => !garment.robe).flatMap((garment) => garment.placements)) {
         for (const side of new Set([spot.side, spot.mirror].filter(Boolean))) {
           const mirrored = side !== spot.side && ["left", "right"].includes(side) && ["left", "right"].includes(spot.side);
           const [origin, direction] = RAYS[side](mirrored ? -spot.x : spot.x, spot.y);

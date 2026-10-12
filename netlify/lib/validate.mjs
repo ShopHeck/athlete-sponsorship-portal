@@ -131,6 +131,17 @@ export function validateConfig(config, filename) {
     if (!Array.isArray(garment.placements)) {
       throw new Error(`garment ${garment.id} needs placements`);
     }
+    // A walkout robe is built over the kit from the rig (public/robe.js) and needs a rigged, animated model.
+    if (garment.robe !== undefined) {
+      const { robe } = garment;
+      const hex = (value) => value === undefined || (typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value));
+      if (!robe || typeof robe !== "object" || Array.isArray(robe) || !hex(robe.color) || !hex(robe.trim) ||
+          Object.keys(robe).some((key) => !["color", "trim"].includes(key))) {
+        throw new Error(`garment ${garment.id} robe may only set six-digit hex color and trim`);
+      }
+      if (!config.motion) throw new Error(`garment ${garment.id} robe needs a rigged model with motion`);
+      if (garment === config.garments[0]) throw new Error(`garment ${garment.id} robe cannot be the first garment`);
+    }
     for (const placement of garment.placements) {
       if (typeof placement.id !== "string" || !placement.id) {
         throw new Error(`tenant ${config.slug} has a placement without an id`);

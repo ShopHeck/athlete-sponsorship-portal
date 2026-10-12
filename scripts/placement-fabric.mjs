@@ -43,7 +43,8 @@ export async function samplePlacements(config, file) {
   const { meshes, motion } = await loadPosed(file, config, config.motion.rest);
   const out = {};
   motion.withProjectionPose(() => {
-    for (const spot of config.garments.flatMap((garment) => garment.placements)) {
+    // A robe's placements sit on the robe built at runtime (public/robe.js); scripts/robe.test.mjs covers them.
+    for (const spot of config.garments.filter((garment) => !garment.robe).flatMap((garment) => garment.placements)) {
       const samples = [];
       for (let x = 0; x <= 8; x++) for (let y = 0; y <= 6; y++) {
         const hit = new THREE.Raycaster(...RAYS[spot.side](spot.x + (x / 8 - 0.5) * spot.w, spot.y + (y / 6 - 0.5) * spot.h))

@@ -53,7 +53,7 @@ operating one. `reference/gotchas.md` first when debugging.
   draft/preview-token rules for API handlers.
 - **Rendering.** `portal.mjs` → `render.mjs` fills the `{{…}}` template and inlines the tenant config as
   `#portal-config`. `public/app.js` is the Three.js viewer and bid UI; `arena.js` builds ring styles, `motion.js`
-  handles rigged clips and skinned decals. `dashboard.js`, `studio.js`, `admin.js` drive the athlete and operator UIs.
+  handles rigged clips and skinned decals, `robe.js` builds the walkout robe. `dashboard.js`, `studio.js`, `admin.js` drive the athlete and operator UIs.
 - **Sponsorship logic.** `netlify/lib/sponsorship.mjs` `forTenant(config)` returns tenant-bound bid/lock/invoice/
   email handlers (Stripe and Resend over raw `fetch`, base URLs overridable for mocks). `connect.mjs` decides
   platform vs. connected account. `lib/close-auction.mjs` is shared by the `@daily` `close-auction` function and
@@ -71,6 +71,8 @@ operating one. `reference/gotchas.md` first when debugging.
 - Base PRs on `main`; never stack. Verify the Netlify build is live after merging.
 - Placement IDs and labels live only in `tenants/<slug>.json` under `garments[].placements`; the build generates the server allowlist and labels from these configs.
 - Add a tenant with `tenants/<slug>.json` and `public/tenants/<slug>/` assets. Set `status` to `draft`, preview with `?preview=$PREVIEW_TOKEN`, and change it to `live` after approval. Draft preview pages pass the token to bid APIs; preview bids are real records scoped to that tenant.
+- A garment with a `robe` block (`color`, `trim`) is a walkout robe built over the kit at runtime (`public/robe.js`);
+  its placements are projected onto the robe and it shows only while its tab is selected.
 - Optional `ring.style` selects `"ropes"` (default), `"octagon"`, `"boxing"`, or `"mat"`; `ring.backdrop` supplies a tenant arena image when no poster is configured. Mat rings accept two optional hex `matColors`.
 - A tenant with a `demo` block is a read-only showcase: bidding, locking, Connect onboarding, dashboard sales, Model Studio changes, and auction invoicing are disabled server-side.
 - Every tenant config requires `payments.mode` (`platform` or `connect`); Connect mode also sets `feePercent` and optional two-letter country. Connect uses direct charges; account creation requests `card_payments` and `transfers` because Stripe requires both. Bidding stays closed until charges are enabled and `card_payments` is active.

@@ -7,6 +7,7 @@ import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { DecalGeometry } from "three/addons/geometries/DecalGeometry.js";
 import { createMotion, posedGeometry, readAnchor, skinDecal, surfaceAnchor } from "./motion.js";
 import { athleteMaterial } from "./materials.js";
+import { buildRobe } from "./robe.js";
 import { nextRatio, resolutionPolicy, settle } from "./resolution.js";
 
 /* ---------------------------------------------------------------------------
@@ -334,12 +335,37 @@ function makeSlot(spot, side, meshes) {
   return slot;
 }
 
+// Garments worn over the kit (a walkout robe) are built from the rig and shown only while their tab is selected;
+// their placements are projected onto them, everyone else's onto the body.
+const overlays = new Map();
+function buildOverlays(meshes) {
+  const body = meshes.filter((m) => m.isSkinnedMesh)
+    .sort((a, b) => b.geometry.attributes.position.count - a.geometry.attributes.position.count)[0];
+  if (!body) return;
+  for (const garment of garments) {
+    if (!garment.robe) continue;
+    const robe = buildRobe(body, { ...garment.robe, anisotropy: renderer.capabilities.getMaxAnisotropy() });
+    if (robe) overlays.set(garment.id, robe);
+  }
+}
+function syncGarmentLayers() {
+  const covered = overlays.has(state.garment);
+  for (const [id, mesh] of overlays) mesh.visible = id === state.garment;
+  for (const slot of slotMeshes) {
+    const garment = garmentOf(slot.spot.id);
+    slot.mesh.visible = !isCardCapture && (overlays.has(garment) ? garment === state.garment : !covered);
+  }
+  renderer.shadowMap.needsUpdate = true;
+  invalidate();
+}
+
 function buildSlots(meshes) {
   const missing = [];
   (isShowcase ? showcasePlacements : allPlacements).forEach((spot) => {
     const failedSides = [];
+    const overlay = overlays.get(garmentOf(spot.id));
     for (const side of new Set([spot.side, spot.mirror].filter(Boolean))) {
-      if (!makeSlot(spot, side, meshes)) failedSides.push(side);
+      if (!makeSlot(spot, side, overlay ? [overlay] : meshes)) failedSides.push(side);
     }
     if (failedSides.length) missing.push({ id: spot.id, sides: failedSides });
   });
@@ -417,6 +443,7 @@ loader.load(
     setupMotion(root, gltf.animations);
     const project = () => {
       for (const m of meshes) if (m.isSkinnedMesh) { m.computeBoundingBox(); m.computeBoundingSphere(); }
+      buildOverlays(meshes);
       buildSlots(meshes);
     };
     if (motion) motion.withProjectionPose(project);
@@ -677,6 +704,7 @@ function renderBidPanel(spot, bid) {
 }
 function renderGarments() {
   document.querySelectorAll(".garment-tab").forEach((b) => { const on = b.dataset.garment === state.garment; b.classList.toggle("is-active", on); b.setAttribute("aria-selected", String(on)); });
+  syncGarmentLayers();
 }
 function renderOrientation() {
   const side = currentSide();
@@ -785,7 +813,7 @@ function pickSlot(e) {
   const rect = canvas.getBoundingClientRect();
   pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
-  return raycaster.intersectObjects(slotMeshes.map((s) => s.mesh), false)[0];
+  return raycaster.intersectObjects(slotMeshes.filter((s) => s.mesh.visible).map((s) => s.mesh), false)[0];
 }
 canvas.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
 canvas.addEventListener("pointercancel", () => { downAt = null; setHovered(null); });

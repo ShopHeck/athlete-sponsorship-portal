@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 import * as THREE from "three";
+import { BUMP_OUT, TAP_OUT, TAUNT_BUMPS, TAUNT_TAPS } from "../public/motion.js";
 import { loadPosed } from "./refit-placements.mjs";
 
 const tenantsDir = new URL("../tenants/", import.meta.url);
@@ -10,14 +11,14 @@ for (const file of (await readdir(tenantsDir)).filter((name) => name.endsWith(".
   const config = JSON.parse(await readFile(new URL(file, tenantsDir), "utf8"));
   if (config.demo && config.motion) configs.push(config);
 }
-const MOVES = [["Victory_Fists_Up", "Victory"], ["Shadowbox_Combo", "Shadowbox"], ["Taunt_Come_On", "Taunt"]];
+const MOVES = [["Victory_Chest_Beat", "Victory"], ["Shadowbox_Combo", "Shadowbox"], ["Taunt_Hands_Down", "Taunt"]];
 const STEP = 1 / 60;
 
-test("every demo fighter offers the authored Victory, Shadowbox and Taunt, and opens with the Taunt", () => {
+test("every demo fighter offers Michael Heckert's Victory, the authored Shadowbox and Taunt, and opens with the Taunt", () => {
   assert.equal(configs.length, 7);
   for (const config of configs) {
     assert.deepEqual(config.motion.clips.map(({ clip, label }) => [clip, label]), MOVES, config.slug);
-    assert.ok([undefined, "Taunt_Come_On"].includes(config.motion.intro), config.slug);
+    assert.ok([undefined, "Taunt_Hands_Down"].includes(config.motion.intro), config.slug);
   }
 });
 
@@ -69,15 +70,30 @@ for (const config of configs) {
     const feet = ["LeftFoot", "RightFoot"].map((name) => [name, point(name)]);
     const hips = point("Hips"), head = point("Head");
     const armLength = point("LeftArm").distanceTo(point("LeftForeArm")) + point("LeftForeArm").distanceTo(point("LeftHand"));
-    const facing = (name) => new THREE.Vector3(0, 0, 1).applyQuaternion(root.getObjectByName(name).getWorldQuaternion(new THREE.Quaternion()));
+    // Facing is judged on the horizontal heading: the Victory bows the head, which is not turning away.
+    const facing = (name) => new THREE.Vector3(0, 0, 1).applyQuaternion(root.getObjectByName(name).getWorldQuaternion(new THREE.Quaternion()))
+      .setY(0).normalize();
     const restFacing = { Hips: facing("Hips"), Head: facing("Head") };
+    // How far the side's fist is in front of the chest at its closest (negative: sunk into it).
+    const onChest = (side) => {
+      const torso = torsoSurface(meshes);
+      let gap = Infinity;
+      for (const p of handVertices(meshes, `${side}Hand`)) {
+        const hit = new THREE.Raycaster(new THREE.Vector3(p.x, p.y, 3), new THREE.Vector3(0, 0, -1)).intersectObjects(torso)[0];
+        if (hit) gap = Math.min(gap, p.z - hit.point.z);
+      }
+      return gap;
+    };
+    const near = (t, peaks, out) => peaks.some((start) => Math.abs(t - (start + out + 0.02)) < STEP / 2);
 
     for (const [name] of MOVES) {
       motion.play(name);
-      let frames = 0, highest = -Infinity, longestJab = 0, thump = Infinity;
+      let frames = 0, highest = -Infinity, longestJab = 0;
+      const beats = [], bumps = [], taps = [];
       while (motion.playing === name) {
         motion.update(STEP);
         frames++;
+        const t = frames * STEP;
         assert.ok(frames < 6 * 60, `${name} must end on its own`);
         for (const [foot, at] of feet) {
           assert.ok(point(foot).distanceTo(at) < 0.01, `${name}: ${foot} must stay planted (frame ${frames})`);
@@ -90,21 +106,29 @@ for (const config of configs) {
           const angle = THREE.MathUtils.radToDeg(facing(bone).angleTo(restFacing[bone]));
           assert.ok(angle < 35, `${name}: ${bone} turned ${angle.toFixed(0)}° away from the sponsor`);
         }
-        highest = Math.max(highest, Math.min(point("LeftHand").y, point("RightHand").y));
+        highest = Math.max(highest, point("RightHand").y);
         longestJab = Math.max(longestJab, point("LeftHand").z - point("LeftArm").z);
-        if (name === "Taunt_Come_On" && [2.33, 2.68].some((peak) => Math.abs(frames * STEP - peak) < 0.04)) {
-          // The right fist must reach the chest, and never sink into it.
-          const torso = torsoSurface(meshes);
-          for (const p of handVertices(meshes, "RightHand")) {
-            const hit = new THREE.Raycaster(new THREE.Vector3(p.x, p.y, 3), new THREE.Vector3(0, 0, -1)).intersectObjects(torso)[0];
-            if (hit) thump = Math.min(thump, p.z - hit.point.z);
-          }
+        if (name === "Victory_Chest_Beat" && [1.6, 2.05, 2.5].some((peak) => Math.abs(t - peak) < STEP / 2)) beats.push(onChest("Left"));
+        if (name === "Taunt_Hands_Down" && near(t, TAUNT_BUMPS, BUMP_OUT)) {
+          const inner = (side, sign) => Math.min(...handVertices(meshes, `${side}Hand`).map((p) => sign * p.x));
+          bumps.push(inner("Left", 1) + inner("Right", -1));
+        }
+        if (name === "Taunt_Hands_Down" && near(t, TAUNT_TAPS, TAP_OUT)) {
+          const face = handVertices(meshes, "Head");
+          taps.push(Math.min(...handVertices(meshes, "RightHand").map((p) => Math.min(...face.map((q) => p.distanceTo(q))))));
         }
       }
-      if (name === "Victory_Fists_Up") assert.ok(highest > head.y + 0.15, `both fists must go up overhead (${highest.toFixed(2)})`);
+      if (name === "Victory_Chest_Beat") {
+        assert.ok(highest > head.y + 0.15, `the right fist must go up overhead (${highest.toFixed(2)})`);
+        assert.equal(beats.length, 3);
+        for (const gap of beats) assert.ok(gap > -0.015 && gap < 0.02, `each beat must land on the chest, not in it (${gap.toFixed(3)} m)`);
+      }
       if (name === "Shadowbox_Combo") assert.ok(longestJab > 0.75 * armLength, `the jab must extend (${(longestJab / armLength).toFixed(2)} arm)`);
-      if (name === "Taunt_Come_On") {
-      assert.ok(thump > -0.015 && thump < 0.03, `the fist must land on the chest, not in it (${thump.toFixed(3)} m)`);
+      if (name === "Taunt_Hands_Down") {
+        assert.equal(bumps.length, 2);
+        for (const gap of bumps) assert.ok(gap > -0.02 && gap < 0.015, `the gloves must meet when they bump (${gap.toFixed(3)} m apart)`);
+        assert.equal(taps.length, 2);
+        for (const gap of taps) assert.ok(gap < 0.03, `the right fist must reach the chin (${gap.toFixed(3)} m away)`);
       }
       for (let i = 0; i < 60; i++) motion.update(STEP);
       for (const [bone, quaternion] of rest) {
