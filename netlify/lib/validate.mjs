@@ -131,16 +131,13 @@ export function validateConfig(config, filename) {
     if (!Array.isArray(garment.placements)) {
       throw new Error(`garment ${garment.id} needs placements`);
     }
-    // A walkout robe is built over the kit from the rig (public/robe.js) and needs a rigged, animated model.
-    if (garment.robe !== undefined) {
-      const { robe } = garment;
-      const hex = (value) => value === undefined || (typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value));
-      if (!robe || typeof robe !== "object" || Array.isArray(robe) || !hex(robe.color) || !hex(robe.trim) ||
-          Object.keys(robe).some((key) => !["color", "trim"].includes(key))) {
-        throw new Error(`garment ${garment.id} robe may only set six-digit hex color and trim`);
+    // A garment with its own model (a walkout robe) swaps the athlete to that rigged model while its tab is selected.
+    if (garment.model !== undefined) {
+      if (typeof garment.model !== "string" || !/^[\w./-]+\.glb$/.test(garment.model) || garment.model.includes("..")) {
+        throw new Error(`garment ${garment.id} model must be a .glb path`);
       }
-      if (!config.motion) throw new Error(`garment ${garment.id} robe needs a rigged model with motion`);
-      if (garment === config.garments[0]) throw new Error(`garment ${garment.id} robe cannot be the first garment`);
+      if (!config.motion) throw new Error(`garment ${garment.id} model needs a rigged tenant model with motion`);
+      if (garment === config.garments[0]) throw new Error(`garment ${garment.id} with its own model cannot be the first garment`);
     }
     for (const placement of garment.placements) {
       if (typeof placement.id !== "string" || !placement.id) {

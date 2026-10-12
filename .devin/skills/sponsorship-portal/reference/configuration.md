@@ -92,17 +92,21 @@ counter-clockwise as the sponsor sees it) to turn the artwork on the garment, e.
 shorts side panel; `w`/`h` stay in the logo's own frame, so a 90° panel is `w` long up the leg and `h` thick. Ordering inside each garment
 is the order shown in the inventory.
 
-### Walkout robe
+### Garment models (walkout robe)
 
-A garment with a `robe` block (`{ "color": "#0d0d10", "trim": "#c8102e" }`, both optional six-digit hex) is a satin
-boxing robe that `public/robe.js` builds over the kit from the athlete's rig and skins to the same skeleton, so it
-moves with every move. It needs a rigged model with `motion` and cannot be the first garment. The robe shows only while
-its tab is selected, and the other garments' decals hide under it. Its placements are projected onto the robe, not
-the model, in the same metres as any other placement: the hem sits 5 cm above the knees, the belt between the hips and
-the lowest spine joint, and the shawl collar opens into a V at the chest. `demo-boxing-men` wears one (black with red
-trim) with back, chest, skirt and sleeve placements. Placement tools (`placement-fabric.mjs`, `refit-placements.mjs`)
-skip robe garments; `scripts/robe.test.mjs` checks that every robe placement lands on the robe clear of the hands and
-that the kit stays hidden under it through every move. Starter kits leave the robe out.
+A garment may set its own `model`, a rigged GLB of the same athlete wearing that garment (a tenant-relative path like
+`config.model`). While its tab is selected the portal swaps to that model: it plays the same moves, and only that
+garment's placements show, projected onto it. The kit's model and decals hide meanwhile. Garment models load after the
+kit is on screen, so they never delay the first paint. Such a garment needs `motion` and cannot be the first garment;
+starter kits leave it out.
+
+`demo-boxing-men` wears a black satin robe with red trim (`models/demo-boxing-men-robe-animated.glb`), built with Meshy
+from `scripts/demo-models/demo-boxing-men-robe.json`. Its references are A-pose renders of the kit model and a face
+close-up, so the face and build match. Run `views front`, review, `views remaining`, then `model`. Rig with
+`animate-model.mjs --task <id> --height 1.86 --actions 403`, add PBR maps with `retexture-model.mjs` and `apply-pbr.mjs`,
+and strip the baked clip last. Place its slots on plain satin, away from the lapels, belt tails, front edge and cuffs.
+`placement-fabric.mjs`, `fight-moves.test.mjs` and `power-stance.test.mjs` check each garment model alongside the kit's;
+`refit-placements.mjs` covers only the kit's.
 
 ## Sold sponsors
 

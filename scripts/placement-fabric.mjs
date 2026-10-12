@@ -37,27 +37,36 @@ async function texturePixels(file) {
   return sharp(image).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 }
 
-// Colours under each placement's sample grid, keyed by placement ID (null where a ray misses the body).
+// Colours under each placement's sample grid, keyed by placement ID (null where a ray misses the body). `file` is the
+// tenant's model; a garment with its own model (a walkout robe) is sampled on that model, posed the same way.
 export async function samplePlacements(config, file) {
-  const { data, info } = await texturePixels(file);
-  const { meshes, motion } = await loadPosed(file, config, config.motion.rest);
+  const groups = new Map([[file, []]]);
+  for (const garment of config.garments) {
+    const model = garment.model ? path.join(path.dirname(file), path.relative(path.dirname(config.model), garment.model)) : file;
+    if (!groups.has(model)) groups.set(model, []);
+    groups.get(model).push(...garment.placements);
+  }
   const out = {};
-  motion.withProjectionPose(() => {
-    // A robe's placements sit on the robe built at runtime (public/robe.js); scripts/robe.test.mjs covers them.
-    for (const spot of config.garments.filter((garment) => !garment.robe).flatMap((garment) => garment.placements)) {
-      const samples = [];
-      for (let x = 0; x <= 8; x++) for (let y = 0; y <= 6; y++) {
-        const hit = new THREE.Raycaster(...RAYS[spot.side](spot.x + (x / 8 - 0.5) * spot.w, spot.y + (y / 6 - 0.5) * spot.h))
-          .intersectObjects(meshes, false)[0];
-        if (!hit?.uv) { samples.push(null); continue; }
-        const px = Math.min(info.width - 1, Math.max(0, Math.round(hit.uv.x * (info.width - 1))));
-        const py = Math.min(info.height - 1, Math.max(0, Math.round(hit.uv.y * (info.height - 1))));
-        const o = (py * info.width + px) * 4;
-        samples.push([data[o], data[o + 1], data[o + 2]]);
+  for (const [model, placements] of groups) {
+    if (!placements.length) continue;
+    const { data, info } = await texturePixels(model);
+    const { meshes, motion } = await loadPosed(model, config, config.motion.rest);
+    motion.withProjectionPose(() => {
+      for (const spot of placements) {
+        const samples = [];
+        for (let x = 0; x <= 8; x++) for (let y = 0; y <= 6; y++) {
+          const hit = new THREE.Raycaster(...RAYS[spot.side](spot.x + (x / 8 - 0.5) * spot.w, spot.y + (y / 6 - 0.5) * spot.h))
+            .intersectObjects(meshes, false)[0];
+          if (!hit?.uv) { samples.push(null); continue; }
+          const px = Math.min(info.width - 1, Math.max(0, Math.round(hit.uv.x * (info.width - 1))));
+          const py = Math.min(info.height - 1, Math.max(0, Math.round(hit.uv.y * (info.height - 1))));
+          const o = (py * info.width + px) * 4;
+          samples.push([data[o], data[o + 1], data[o + 2]]);
+        }
+        out[spot.id] = samples;
       }
-      out[spot.id] = samples;
-    }
-  });
+    });
+  }
   return out;
 }
 

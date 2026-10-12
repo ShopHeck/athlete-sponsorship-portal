@@ -59,9 +59,12 @@ function handVertices(meshes, name) {
   });
 }
 
-for (const config of configs) {
-  test(`${config.slug}: each move stays planted, upright and facing the sponsor, then returns to the stance`, async () => {
-    const file = new URL(`../public/tenants/${config.slug}/${config.model}`, import.meta.url).pathname;
+// Every model a fighter appears in: the kit's, and any garment's own model (a walkout robe).
+const models = configs.flatMap((config) => [[config, config.slug, config.model],
+  ...config.garments.filter((g) => g.model).map((g) => [config, `${config.slug} ${g.id}`, g.model])]);
+for (const [config, label, model] of models) {
+  test(`${label}: each move stays planted, upright and facing the sponsor, then returns to the stance`, async () => {
+    const file = new URL(`../public/tenants/${config.slug}/${model}`, import.meta.url).pathname;
     const { root, meshes, motion } = await loadPosed(file, config, config.motion.rest);
     assert.deepEqual(motion.moves.map(({ name, label }) => [name, label]), MOVES);
     const point = (name) => root.getObjectByName(name).getWorldPosition(new THREE.Vector3());

@@ -21,8 +21,9 @@ const sourceTenant = (source) => {
 
 function kitFromSource(definition) {
   const source = sourceTenant(definition.source);
-  // A demo's walkout robe stays a demo feature: kits keep the placements self-serve athletes have always had.
-  const garments = clone(source.garments.filter((garment) => !garment.robe));
+  // A demo garment with its own model (a walkout robe) stays a demo feature: kits keep the placements self-serve
+  // athletes have always had, on their own likeness.
+  const garments = clone(source.garments.filter((garment) => !garment.model));
   const placements = garments.flatMap((garment) => garment.placements.map((placement) => ({
     id: placement.id,
     label: placement.label,

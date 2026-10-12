@@ -13,6 +13,9 @@ const resolveAsset = (slug, value) => {
 export function resolveTenantAssets(config) {
   const resolved = structuredClone(config);
   resolved.model = resolveAsset(resolved.slug, resolved.model);
+  for (const garment of resolved.garments || []) {
+    if (garment.model) garment.model = resolveAsset(resolved.slug, garment.model);
+  }
   if (resolved.poster) {
     for (const key of ["card", "stage900", "stage1500", "ogImage"]) {
       resolved.poster[key] = resolveAsset(resolved.slug, resolved.poster[key]);
