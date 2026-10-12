@@ -71,6 +71,8 @@ operating one. `reference/gotchas.md` first when debugging.
 - Base PRs on `main`; never stack. Verify the Netlify build is live after merging.
 - Placement IDs and labels live only in `tenants/<slug>.json` under `garments[].placements`; the build generates the server allowlist and labels from these configs.
 - Add a tenant with `tenants/<slug>.json` and `public/tenants/<slug>/` assets. Set `status` to `draft`, preview with `?preview=$PREVIEW_TOKEN`, and change it to `live` after approval. Draft preview pages pass the token to bid APIs; preview bids are real records scoped to that tenant.
+- Athlete visuals come first: whenever Meshy (models, garments, retextures) gives a better-looking result than procedural
+  geometry or textures, use Meshy (`MESHY_API_KEY`; behind the proxy run the scripts with `NODE_USE_ENV_PROXY=1`).
 - A garment may set its own `model` (a rigged GLB of the athlete wearing it, e.g. the boxing demo's Meshy walkout robe);
   the portal swaps to that model while its tab is selected and projects that garment's placements onto it.
 - Optional `ring.style` selects `"ropes"` (default), `"octagon"`, `"boxing"`, or `"mat"`; `ring.backdrop` supplies a tenant arena image when no poster is configured. Mat rings accept two optional hex `matColors`.
