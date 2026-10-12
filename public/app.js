@@ -7,6 +7,7 @@ import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { DecalGeometry } from "three/addons/geometries/DecalGeometry.js";
 import { createMotion, posedGeometry, readAnchor, skinDecal, surfaceAnchor } from "./motion.js";
 import { athleteMaterial } from "./materials.js";
+import { armAnchors, buildItemProps } from "./items.js";
 import { nextRatio, resolutionPolicy, settle } from "./resolution.js";
 
 /* ---------------------------------------------------------------------------
@@ -297,12 +298,14 @@ const projector = new THREE.Raycaster();
 
 const LATERAL = new Set(["left", "right"]);
 
-function makeSlot(spot, side, meshes, owner = null) {
+function makeSlot(spot, side, meshes, owner = null, { anchor = null, layer = null } = {}) {
   // Side rays map x to +z on the left and -z on the right, so a left/right mirror negates x to land on the
   // world-symmetric spot (e.g. both sleeves when the arms hang slightly behind the torso).
   const lateralMirror = side !== spot.side && LATERAL.has(side) && LATERAL.has(spot.side);
   const spec = { ...spot, side, x: lateralMirror ? -spot.x : spot.x };
   const [origin, dir] = SIDE_RAY[side](spec.x, spec.y);
+  // An anchored placement (an arm bone or a prop) is offset from its anchor: shift the ray across the view to it.
+  if (anchor) origin.add(anchor.clone().addScaledVector(dir, -anchor.dot(dir)));
   projector.set(origin, dir);
   const hit = projector.intersectObjects(meshes, false)[0];
   if (!hit) { console.warn("No surface found for placement", spot.id, side); return null; }
@@ -324,10 +327,14 @@ function makeSlot(spot, side, meshes, owner = null) {
   mesh.userData.spotId = spot.id;
   mesh.renderOrder = 2;
   athlete.add(mesh);
-  const slot = { spot, side, mesh, canvas: c, tex, point: hit.point.clone(), normal, owner };
+  const slot = { spot, side, mesh, canvas: c, tex, point: hit.point.clone(), normal, owner, layer };
   if (hit.object.isSkinnedMesh) {
     slot.mesh = mesh = skinDecal(mesh, hit.object);
     slot.anchor = surfaceAnchor(mesh, hit.point, normal);
+  } else if (anchor) {
+    // Prop decals ride on the prop's (unscaled) group, which follows its bone; the callout follows two local points.
+    hit.object.parent.attach(mesh);
+    slot.follow = { local: mesh.worldToLocal(hit.point.clone()), tip: mesh.worldToLocal(hit.point.clone().add(normal)) };
   }
   slotMeshes.push(slot);
   drawSlot(slot);
@@ -338,9 +345,18 @@ function makeSlot(spot, side, meshes, owner = null) {
 // placements are projected onto that model (each slot's `owner` is the garment), the kit's onto the tenant's model.
 let kit = null;              // { root, motion } of the tenant's model
 const outfits = new Map();   // garment id → { root, motion }, once its model has loaded
+// A placeholder sponsorship item's tab shows only its own placements (the kit's decals hide meanwhile) and, for a
+// hat, gloves or banner, its placeholder prop. `itemAnchors` resolves each placement anchor (arm bones and
+// props) to the centre it is offset from and the meshes it lands on.
+let itemProps = { groups: new Map(), anchors: {} };
+let itemAnchors = {};
+const PROP_ANCHORS = new Set(["head", "leftHand", "rightHand", "banner"]);
+const isPropSpot = (spot) => PROP_ANCHORS.has(spot.anchor);
 function syncGarmentLayers() {
   if (!kit) return;
   const outfit = outfits.get(state.garment) || null;
+  const item = garmentConfig(state.garment)?.item || null;
+  const layer = item ? state.garment : null;
   const active = outfit || kit;
   if (active.motion && active.motion !== motion) {
     motion?.settle();
@@ -350,28 +366,31 @@ function syncGarmentLayers() {
   kit.root.visible = !outfit;
   for (const entry of outfits.values()) entry.root.visible = entry === outfit;
   const owner = outfit ? state.garment : null;
-  for (const slot of slotMeshes) slot.mesh.visible = !isCardCapture && slot.owner === owner;
+  for (const slot of slotMeshes) {
+    slot.mesh.visible = !isCardCapture && slot.owner === owner && slot.layer === layer;
+  }
+  for (const [surface, groups] of itemProps.groups) {
+    for (const group of groups) group.visible = !isCardCapture && !outfit && surface === item;
+  }
   renderer.shadowMap.needsUpdate = true;
   invalidate();
 }
 
-function buildSlots(meshes, owner = null) {
-  const missing = [];
+function buildSlots(meshes, owner, missing, include) {
   // Each model carries only its own placements: the kit's on the tenant's model, a garment model's on that model.
   (isShowcase ? showcasePlacements : allPlacements).forEach((spot) => {
-    if ((garmentConfig(garmentOf(spot.id)).model ? garmentOf(spot.id) : null) !== owner) return;
+    const garment = garmentConfig(garmentOf(spot.id));
+    if ((garment.model ? garment.id : null) !== owner || !include(spot)) return;
+    // An anchored placement needs its bone or prop: a rig without hand bones, say, leaves the gloves unplaced.
+    const anchor = spot.anchor ? itemAnchors[spot.anchor] : null;
+    const options = { anchor: anchor?.center || null, layer: garment.item ? garment.id : null };
     const failedSides = [];
     for (const side of new Set([spot.side, spot.mirror].filter(Boolean))) {
-      if (!makeSlot(spot, side, meshes, owner)) failedSides.push(side);
+      if (spot.anchor && !anchor) { failedSides.push(side); continue; }
+      if (!makeSlot(spot, side, anchor ? anchor.meshes : meshes, owner, options)) failedSides.push(side);
     }
     if (failedSides.length) missing.push({ id: spot.id, sides: failedSides });
   });
-  if (isStudio && !owner) {
-    // Garment-model placements are projected (and counted) on their own model, not this one.
-    window.dispatchEvent(new CustomEvent("studio:fit", {
-      detail: { total: allPlacements.filter((spot) => !garmentConfig(garmentOf(spot.id)).model).length, missing }
-    }));
-  }
 }
 
 /* --------------------------------------------------------------- model */
@@ -439,13 +458,30 @@ function prepareModel(gltf) {
   if (!frontFacesPositiveZ) { root.rotateY(Math.PI); normalise(root); }
   return { root, meshes };
 }
-function projectSlots(rig, meshes, owner) {
+function projectSlots(rig, meshes, owner, root = null) {
+  const missing = [];
+  const items = !owner && root && garments.some((garment) => garment.item);
   const project = () => {
     for (const m of meshes) if (m.isSkinnedMesh) { m.computeBoundingBox(); m.computeBoundingSphere(); }
-    buildSlots(meshes, owner);
+    if (items) itemAnchors = armAnchors(root, meshes);
+    buildSlots(meshes, owner, missing, (spot) => !isPropSpot(spot));
   };
   if (rig) rig.withProjectionPose(project);
   else project();
+  // Props are fitted (and their decals projected) in the pose the visitor sees, so a cap sits level on the head;
+  // their decals ride on the props from then on.
+  const surfaces = new Set(garments.map((garment) => garment.item).filter((item) => item && item !== "body"));
+  if (items && surfaces.size) {
+    itemProps = buildItemProps(root, meshes, surfaces, { parent: athlete, gloveColor: config.brand.accent });
+    Object.assign(itemAnchors, itemProps.anchors);
+    buildSlots(meshes, owner, missing, isPropSpot);
+  }
+  if (isStudio && !owner) {
+    // Garment-model placements are projected (and counted) on their own model, not this one.
+    window.dispatchEvent(new CustomEvent("studio:fit", {
+      detail: { total: allPlacements.filter((spot) => !garmentConfig(garmentOf(spot.id)).model).length, missing }
+    }));
+  }
 }
 // Garment models load after the kit is on screen, so they never delay the first paint; until one arrives its tab shows
 // the kit and its placements have no slot yet.
@@ -478,7 +514,7 @@ loader.load(
     const { root, meshes } = prepareModel(gltf);
     setupMotion(root, gltf.animations);
     kit = { root, motion };
-    projectSlots(motion, meshes, null);
+    projectSlots(motion, meshes, null, root);
     renderer.shadowMap.needsUpdate = true;
     // The first frames upload the 4K atlas and compile shaders: give them a grace window before judging speed.
     firstRender().then(() => {
@@ -763,14 +799,17 @@ function setGarment(garment) {
   state.garment = garment;
   const g = garmentConfig(garment);
   const onThisSide = visiblePlacements(); // same rules as the inventory list (state.garment already updated)
-  // A garment model hides the kit and its decals, so its tab never falls back to a spot on the kit.
+  // A garment model or sponsorship item hides the kit's decals, so its tab never falls back to a spot elsewhere.
   const spot = isShowcase
     ? garmentPlacements(g)[0]?.id || null
-    : firstOpen(onThisSide) || firstOpen(g.placements) || (g.model ? g.placements[0]?.id : null) ||
+    : firstOpen(onThisSide) || firstOpen(g.placements) || (g.model || g.item ? g.placements[0]?.id : null) ||
       firstOpen(allPlacements) || firstPlacement.id;
   state.selected = spot;
   const target = allPlacements.find((p) => p.id === spot);
-  if (target && !onThisSide.some((p) => p.id === spot)) flyTo({ az: SIDE_AZIMUTH[target.side], ...homeFraming() });
+  const banner = g.item === "banner" ? bannerFraming() : null;
+  if (banner) flyTo(banner);
+  else if (target && !onThisSide.some((p) => p.id === spot)) flyTo({ az: SIDE_AZIMUTH[target.side], ...homeFraming() });
+  else if (Math.abs(controls.target.x) > 0.01) flyTo(homeFraming());
   renderAll();
 }
 
@@ -778,9 +817,9 @@ function setGarment(garment) {
 // One eased camera move at a time across azimuth, polar angle, distance and look-at height.
 let tween = null;
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-const homeFraming = () => ({ polar: HOME.polar, dist: HOME.dist, targetY: HOME.targetY, fov: HOME_FOV });
+const homeFraming = () => ({ polar: HOME.polar, dist: HOME.dist, targetY: HOME.targetY, targetX: 0, fov: HOME_FOV });
 function cameraPose() {
-  return { az: controls.getAzimuthalAngle(), polar: controls.getPolarAngle(), dist: camera.position.distanceTo(controls.target), targetY: controls.target.y, fov: camera.fov };
+  return { az: controls.getAzimuthalAngle(), polar: controls.getPolarAngle(), dist: camera.position.distanceTo(controls.target), targetY: controls.target.y, targetX: controls.target.x, fov: camera.fov };
 }
 function flyTo(to, { duration = 0.9, from = cameraPose(), onDone = null } = {}) {
   controls.autoRotate = false;
@@ -789,12 +828,12 @@ function flyTo(to, { duration = 0.9, from = cameraPose(), onDone = null } = {}) 
   const pose = { ...from, ...to };
   let dAz = pose.az - from.az; dAz = Math.atan2(Math.sin(dAz), Math.cos(dAz));
   if (prefersReducedMotion) duration = 0.001;
-  tween = { from, delta: { az: dAz, polar: pose.polar - from.polar, dist: pose.dist - from.dist, targetY: pose.targetY - from.targetY, fov: pose.fov - from.fov }, t: 0, duration, onDone };
+  tween = { from, delta: { az: dAz, polar: pose.polar - from.polar, dist: pose.dist - from.dist, targetY: pose.targetY - from.targetY, targetX: pose.targetX - from.targetX, fov: pose.fov - from.fov }, t: 0, duration, onDone };
   invalidate();
 }
 function rotateTo(azimuth) { flyTo({ az: azimuth }, { duration: 0.75 }); }
-function applyPose({ az, polar, dist, targetY, fov = camera.fov }) {
-  controls.target.y = targetY;
+function applyPose({ az, polar, dist, targetY, targetX = controls.target.x, fov = camera.fov }) {
+  controls.target.set(targetX, targetY, 0);
   camera.position.setFromSpherical(new THREE.Spherical(dist, polar, az)).add(controls.target);
   if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
   camera.lookAt(controls.target);
@@ -804,7 +843,7 @@ function stepTween(dt) {
   tween.t = Math.min(1, tween.t + dt / tween.duration);
   const e = easeInOut(tween.t);
   const { from, delta } = tween;
-  applyPose({ az: from.az + delta.az * e, polar: from.polar + delta.polar * e, dist: from.dist + delta.dist * e, targetY: from.targetY + delta.targetY * e, fov: from.fov + delta.fov * e });
+  applyPose({ az: from.az + delta.az * e, polar: from.polar + delta.polar * e, dist: from.dist + delta.dist * e, targetY: from.targetY + delta.targetY * e, targetX: from.targetX + delta.targetX * e, fov: from.fov + delta.fov * e });
   invalidate();
   if (tween.t >= 1) {
     const done = tween.onDone;
@@ -820,7 +859,14 @@ function flyToPlacement(spot) {
   motion?.settle();
   const slot = slotFor(spot);
   const targetY = slot ? THREE.MathUtils.clamp(slot.point.y, 0.55, 1.5) : HOME.targetY;
-  flyTo({ az: SIDE_AZIMUTH[spot.side], polar: 1.55, dist: 1.85, targetY, fov: HOME_FOV }, { duration: 1.05 });
+  // The banner stands beside the athlete, so its close-ups re-centre on it; everything else orbits the athlete.
+  const targetX = spot.anchor === "banner" && slot ? slot.point.x : 0;
+  flyTo({ az: SIDE_AZIMUTH[spot.side], polar: 1.55, dist: 1.85, targetY, targetX, fov: HOME_FOV }, { duration: 1.05 });
+}
+// The banner's tab frames the whole banner with the athlete beside it.
+function bannerFraming() {
+  const center = itemProps.anchors.banner?.center;
+  return center ? { az: 0, polar: HOME.polar, dist: 2.7, targetY: center.y, targetX: center.x * 0.6, fov: HOME_FOV } : null;
 }
 // Opening shot: start tight on the face, then pull back to the full athlete and begin a slow turntable.
 function playIntro() {
@@ -1137,6 +1183,10 @@ function positionCallout() {
   const ready = stage.classList.contains("is-ready") && !(tween && tween.duration > 2);
   if (!slot || !ready) { callout.classList.remove("is-visible"); return; }
   if (bodyMoving && slot.anchor) readAnchor(slot.anchor, slot.point, slot.normal);
+  else if (bodyMoving && slot.follow) {
+    slot.mesh.localToWorld(slot.point.copy(slot.follow.local));
+    slot.mesh.localToWorld(slot.normal.copy(slot.follow.tip)).sub(slot.point).normalize();
+  }
   toCamera.copy(camera.position).sub(slot.point).normalize();
   projected.copy(slot.point).project(camera);
   const facing = slot.normal.dot(toCamera) > 0.25 && projected.z < 1;
