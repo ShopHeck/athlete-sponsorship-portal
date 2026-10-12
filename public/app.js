@@ -363,8 +363,12 @@ function buildSlots(meshes) {
   const missing = [];
   (isShowcase ? showcasePlacements : allPlacements).forEach((spot) => {
     const failedSides = [];
-    const overlay = overlays.get(garmentOf(spot.id));
+    const garment = garmentConfig(garmentOf(spot.id));
+    const overlay = overlays.get(garment.id);
     for (const side of new Set([spot.side, spot.mirror].filter(Boolean))) {
+      // A robe that could not be built (the rig lacks a bone it needs) leaves its placements unprojected rather
+      // than painting them on the kit underneath.
+      if (garment.robe && !overlay) { console.warn("No robe for placement", spot.id, side); failedSides.push(side); continue; }
       if (!makeSlot(spot, side, overlay ? [overlay] : meshes)) failedSides.push(side);
     }
     if (failedSides.length) missing.push({ id: spot.id, sides: failedSides });
@@ -726,9 +730,11 @@ function setGarment(garment) {
   state.garment = garment;
   const g = garmentConfig(garment);
   const onThisSide = visiblePlacements(); // same rules as the inventory list (state.garment already updated)
+  // A robe hides every other garment's decals, so its tab never falls back to a spot on the kit.
   const spot = isShowcase
     ? garmentPlacements(g)[0]?.id || null
-    : firstOpen(onThisSide) || firstOpen(g.placements) || firstOpen(allPlacements) || firstPlacement.id;
+    : firstOpen(onThisSide) || firstOpen(g.placements) || (g.robe ? g.placements[0]?.id : null) ||
+      firstOpen(allPlacements) || firstPlacement.id;
   state.selected = spot;
   const target = allPlacements.find((p) => p.id === spot);
   if (target && !onThisSide.some((p) => p.id === spot)) flyTo({ az: SIDE_AZIMUTH[target.side], ...homeFraming() });
