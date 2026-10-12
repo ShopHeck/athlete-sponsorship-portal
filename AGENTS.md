@@ -86,7 +86,9 @@ operating one. `reference/gotchas.md` first when debugging.
   Per-slug writes are serialized within an instance; cross-instance races are not prevented.
   Placement removal and bid/sale creation each write first and then recheck the other store, so a placement with activity cannot be removed.
 - Dynamic dashboard settings may rename kit placements and select an arena/backdrop; placement IDs and geometry stay
-  kit-defined. Poster variants and offline-sale sponsor logos are stored in the strong-consistency `tenant-assets`
+  kit-defined. Athletes may also add placeholder sponsorship items (robe, T-shirt, rash guards, hat, gloves, banner)
+  with a placement count each (`settings.items`); the catalog, stable IDs and slot geometry live only in
+  `netlify/lib/sponsor-items.mjs`, and `public/items.js` builds the hat, glove and banner props on the rig. Poster variants and offline-sale sponsor logos are stored in the strong-consistency `tenant-assets`
   Blobs store under tenant-prefixed keys; poster metadata is written only by poster endpoints.
 - Tenant API routes are `/api/<slug>/bids`, `/api/<slug>/logos/<id>`, and `/api/<slug>/connect/{onboard,status}`;
   public dynamic poster assets use `/api/<slug>/poster/:variant?v=<version>` and offline-sale sponsor logos use

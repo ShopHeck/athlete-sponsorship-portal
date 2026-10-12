@@ -2,6 +2,7 @@ import platform from "./platform.generated.json";
 import { resolveTenantAssets } from "./render.mjs";
 import template from "./starter-template.json";
 import { deriveBrand } from "./brand.mjs";
+import { itemGarments } from "./sponsor-items.mjs";
 
 const KIT_SOURCES = [
   { id: "boxing-trunks", name: "Boxing trunks", sport: "Men's Boxing", source: "demo-boxing-men" },
@@ -262,7 +263,8 @@ export function materializeConfig(settings, kitId) {
             };
           })
       }))
-      .filter((garment) => garment.placements.length > 0),
+      .filter((garment) => garment.placements.length > 0)
+      .concat(itemGarments(settings.items, settings.placementNames)),
     sold: {}
   };
   return config;

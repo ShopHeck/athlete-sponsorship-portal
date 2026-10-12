@@ -108,6 +108,17 @@ and strip the baked clip last. Place its slots on plain satin, away from the lap
 `placement-fabric.mjs`, `fight-moves.test.mjs` and `power-stance.test.mjs` check each garment model alongside the kit's;
 `refit-placements.mjs` covers only the kit's.
 
+### Placeholder sponsorship items
+
+A garment may set `item` to show a placeholder sponsorship item instead of the athlete's own apparel: `body` (robe,
+T-shirt, rash guards: decals on the athlete), `hat` (a cap fitted to the `Head` bone), `gloves` (a pair on the
+`LeftHand`/`RightHand` bones, in the brand accent) or `banner` (a roll-up stand beside the athlete). While its tab is
+selected only its placements show; a `body` item also hides the kit's decals. Prop placements need an `anchor`
+(`head`, `leftHand`, `rightHand`, `banner`) and give `x`/`y` as offsets from it; `body` placements may anchor to
+`leftUpperArm`, `rightUpperArm`, `leftForearm` or `rightForearm` so sleeves land on the arm in any stance. Props are
+fitted in the displayed stance and need a Meshy-style rig; without the bones their placements are reported missing.
+The catalog, slot geometry and IDs (`TEE-01`, `HAT-02`, ...) live in `netlify/lib/sponsor-items.mjs`.
+
 ## Sold sponsors
 
 The config's `sold` map is keyed by placement ID. Store each logo in that tenant's asset directory:
@@ -135,9 +146,12 @@ per-site environment variables.
 
 ## Dynamic dashboard look and placements
 
-Dynamic tenants may store optional `placementNames`, `arena`, and `backdrop` values in their tenant record.
-Placement-name keys must be IDs from the selected starter kit; athletes can rename or offer only those ready-made
-spots, without changing placement IDs or geometry. `arena` selects one of the kit-supported arena styles, and
+Dynamic tenants may store optional `items`, `placementNames`, `arena`, and `backdrop` values in their tenant record.
+`items` maps sponsorship item IDs (`robe`, `tee`, `rashguard-short`, `rashguard-long`, `hat`, `gloves`, `banner`) to
+how many of that item's ordered slots are offered; a count of N offers its first N slots, so IDs stay stable as counts
+change, and a placement with bids or a sale keeps its count from dropping below it. A portal needs at least one kit
+spot or item placement. Placement-name keys must be IDs from the selected starter kit or the item catalog; athletes
+can rename or offer only those ready-made spots, without changing placement IDs or geometry. `arena` selects one of the kit-supported arena styles, and
 `backdrop` selects the fight poster or arena photo. Poster metadata is managed by the dashboard poster endpoints,
 not by the general settings endpoint. Poster variants and offline-sale sponsor logos live in the strong-consistency
 `tenant-assets` Blobs store under tenant-prefixed keys.

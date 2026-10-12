@@ -1,4 +1,5 @@
 import path from "node:path";
+import { ITEM_SURFACES, SURFACE_ANCHORS } from "./sponsor-items.mjs";
 
 export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])$/;
 const PLACEMENT_SIDES = new Set(["front", "back", "left", "right"]);
@@ -139,6 +140,14 @@ export function validateConfig(config, filename) {
       if (!config.motion) throw new Error(`garment ${garment.id} model needs a rigged tenant model with motion`);
       if (garment === config.garments[0]) throw new Error(`garment ${garment.id} with its own model cannot be the first garment`);
     }
+    // A placeholder sponsorship item (see sponsor-items.mjs): its tab shows only its own placements, and prop items
+    // (hat, gloves, banner) are drawn as placeholder geometry that their placements' anchors resolve to.
+    if (garment.item !== undefined) {
+      if (!ITEM_SURFACES.has(garment.item)) {
+        throw new Error(`garment ${garment.id} item must be one of ${[...ITEM_SURFACES].join(", ")}`);
+      }
+      if (garment.model !== undefined) throw new Error(`garment ${garment.id} cannot set both item and model`);
+    }
     for (const placement of garment.placements) {
       if (typeof placement.id !== "string" || !placement.id) {
         throw new Error(`tenant ${config.slug} has a placement without an id`);
@@ -151,6 +160,13 @@ export function validateConfig(config, filename) {
       }
       if (!placement.label || !PLACEMENT_SIDES.has(placement.side)) {
         throw new Error(`placement ${placement.id} needs a label and valid side`);
+      }
+      const anchors = SURFACE_ANCHORS[garment.item] || [];
+      const anchorRequired = garment.item !== undefined && garment.item !== "body";
+      if ((placement.anchor !== undefined || anchorRequired) && !anchors.includes(placement.anchor)) {
+        throw new Error(anchors.length
+          ? `placement ${placement.id} anchor must be one of ${anchors.join(", ")}`
+          : `placement ${placement.id} anchor is only allowed on a sponsorship item`);
       }
       ids.add(placement.id);
     }

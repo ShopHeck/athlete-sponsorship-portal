@@ -228,6 +228,14 @@ summary:hover,details[open] summary{background:var(--panel-2)}
 .placement-name{min-width:0}
 .btn-remove-placement{min-height:36px;padding:6px 10px}
 .placement-add-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:12px}
+.item-options{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));align-items:start;gap:12px;margin-top:10px}
+.item-card{display:grid;align-content:start;gap:8px;margin:0;padding:10px;border:1px solid var(--line);border-radius:8px}
+.item-card.is-on{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
+.item-card legend{padding:0 6px;color:var(--ink);font-weight:700}
+.item-stepper{display:flex;align-items:center;gap:8px}
+.item-step{min-width:36px;min-height:36px;padding:4px 10px;font-size:18px;line-height:1}
+.item-count{min-width:24px;text-align:center;color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums}
+.item-placement-row{display:grid;grid-template-columns:72px minmax(0,1fr);align-items:center;gap:10px}
 .placement-add-row .settings-field{margin:0}
 .placement-add-row .btn{margin-bottom:0}
 .look-card{margin:16px 0}

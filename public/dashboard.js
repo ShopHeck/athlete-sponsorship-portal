@@ -350,6 +350,54 @@ function renderSettings() {
         addButton)] : [])
     );
   }
+  // Placeholder sponsorship items: each count offers that many of the item's ready-made spots, in order.
+  const itemCounts = { ...(values.items || {}) };
+  const itemCatalog = settings.kit?.items || [];
+  const itemOptions = el("div", { class: "item-options" });
+  function paintItems() {
+    itemOptions.replaceChildren(...itemCatalog.map((item) => {
+      const count = itemCounts[item.id] || 0;
+      const lastState = count ? summary.placements.find((entry) => entry.id === item.placements[count - 1].id)?.state || "open" : "open";
+      const step = (delta) => { itemCounts[item.id] = count + delta; paintItems(); };
+      const rows = item.placements.slice(0, count).map((placement) => {
+        const name = el("input", {
+          class: "placement-name",
+          type: "text",
+          maxlength: "60",
+          placeholder: placement.name,
+          value: placementNames[placement.id] || "",
+          disabled: locked,
+          "aria-label": `${placement.id} display name`
+        });
+        name.addEventListener("input", () => { placementNames[placement.id] = name.value; });
+        return el("div", { class: "item-placement-row" }, el("span", { class: "pid placement-id-chip", text: placement.id }), name);
+      });
+      return el("fieldset", { class: `item-card${count ? " is-on" : ""}` },
+        el("legend", { text: item.name }),
+        el("div", { class: "item-stepper" },
+          el("button", {
+            class: "btn btn-ghost item-step",
+            type: "button",
+            text: "−",
+            "aria-label": `Fewer ${item.name} placements`,
+            disabled: locked || count === 0 || lastState !== "open",
+            title: lastState !== "open" ? "Its last placement has bids — can't remove" : "",
+            onclick: () => step(-1)
+          }),
+          el("output", { class: "item-count", "aria-live": "polite", text: String(count) }),
+          el("button", {
+            class: "btn btn-ghost item-step",
+            type: "button",
+            text: "+",
+            "aria-label": `More ${item.name} placements`,
+            disabled: locked || count >= item.max,
+            onclick: () => step(1)
+          }),
+          el("span", { class: "muted small", text: count ? `of ${item.max} placements` : `Up to ${item.max} placements` })),
+        rows);
+    }));
+  }
+  paintItems();
   addButton.addEventListener("click", () => {
     if (!addSelect.value) return;
     offered.add(addSelect.value);
@@ -373,6 +421,10 @@ function renderSettings() {
     field("Intro", intro),
     field("Accent", accent),
     el("div", {}, el("p", { class: "eyebrow", text: "Offered placements" }), placements),
+    itemCatalog.length ? el("div", {},
+      el("p", { class: "eyebrow", text: "Sponsorship items" }),
+      el("p", { class: "muted small", text: "Add the gear you sell space on and how many logo placements each carries. They appear on your 3D athlete as placeholder items." }),
+      itemOptions) : null,
     error,
     el("div", { class: "actions" }, save)
   );
@@ -393,13 +445,17 @@ function renderSettings() {
       intro: intro.value,
       accent: accent.value,
       offeredPlacementIds: placementList.filter((placement) => offered.has(placement.id)).map((placement) => placement.id),
-      placementNames: Object.fromEntries(placementList
-        .filter((placement) => offered.has(placement.id))
-        .map((placement) => [placement.id, (placementNames[placement.id] || "").trim()])
-        .filter(([id, name]) => name && name !== (placementList.find((placement) => placement.id === id)?.name || "")))
+      items: Object.fromEntries(itemCatalog.map((item) => [item.id, itemCounts[item.id] || 0]).filter(([, count]) => count > 0)),
+      placementNames: Object.fromEntries([
+        ...placementList.filter((placement) => offered.has(placement.id)),
+        ...itemCatalog.flatMap((item) => item.placements.slice(0, itemCounts[item.id] || 0))
+      ]
+        .map((placement) => [placement.id, (placementNames[placement.id] || "").trim(), placement.name || ""])
+        .filter(([, name, original]) => name && name !== original)
+        .map(([id, name]) => [id, name]))
     };
     if (locked) {
-      for (const key of ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds", "placementNames"]) delete body[key];
+      for (const key of ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds", "items", "placementNames"]) delete body[key];
     }
     try {
       await api(`/api/dashboard/${encodeURIComponent(slug)}/settings`, { method: "POST", body });

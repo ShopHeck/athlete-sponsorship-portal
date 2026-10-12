@@ -32,6 +32,9 @@ import { getLivePointer, loadReview, saveAthleteReview } from "../lib/model-revi
 import { MeshyConfigurationError } from "../lib/meshy.mjs";
 import { getTenant, listTenants, tenantPreviewToken } from "../lib/tenants.mjs";
 import { ARENA_OPTIONS, getStarterKit } from "../lib/starter-kits.mjs";
+import {
+  ITEM_PLACEMENTS, countsCovering, itemCatalog, offeredItemPlacementIds, validateItemCounts
+} from "../lib/sponsor-items.mjs";
 import { loadDynamicTenant, TenantStoreError, updateDynamicTenant } from "../lib/tenant-store.mjs";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -402,6 +405,7 @@ async function summary(req, slug) {
         intro: dynamicRecord.settings.intro,
         accent: dynamicRecord.settings.accent,
         offeredPlacementIds: dynamicRecord.settings.offeredPlacementIds,
+        items: dynamicRecord.settings.items || {},
         placementNames: dynamicRecord.settings.placementNames || {},
         arena: dynamicRecord.settings.arena || null,
         backdrop: dynamicRecord.settings.backdrop || "poster",
@@ -424,6 +428,7 @@ async function summary(req, slug) {
         intro: tenant.hero.intro,
         accent: tenant.brand?.accent || null,
         offeredPlacementIds: tenant.garments.flatMap((garment) => garment.placements.map((placement) => placement.id)),
+        items: {},
         placementNames: {},
         arena: null,
         backdrop: "poster",
@@ -440,7 +445,8 @@ async function summary(req, slug) {
           name: placement.name,
           garmentName: placement.garmentName,
           offered: dynamicRecord.settings.offeredPlacementIds.includes(placement.id)
-        }))
+        })),
+        items: itemCatalog()
       } : null
     },
     launch: {
@@ -496,6 +502,11 @@ function eventEnd(value) {
   return Date.parse(`${value}T23:59:59.999Z`);
 }
 
+// Every placement a dynamic tenant offers: the kit spots it kept plus the sponsorship items it added.
+function offeredIds(settings) {
+  return [...(settings.offeredPlacementIds || []), ...offeredItemPlacementIds(settings.items)];
+}
+
 function validSettings(settings, kit, current = {}) {
   const eventName = typeof settings.eventName === "string" ? settings.eventName.trim() : "";
   if (eventName.length < 1 || eventName.length > 80) return "Event name must be between 1 and 80 characters.";
@@ -519,15 +530,18 @@ function validSettings(settings, kit, current = {}) {
   }
   if (typeof settings.intro !== "string" || settings.intro.length > 400) return "Intro must be 400 characters or fewer.";
   if (typeof settings.accent !== "string" || !/^#[0-9a-f]{6}$/i.test(settings.accent)) return "Accent must be a hex color such as #2f7bff.";
-  if (!Array.isArray(settings.offeredPlacementIds) || settings.offeredPlacementIds.length < 1) return "Select at least one placement.";
+  if (!Array.isArray(settings.offeredPlacementIds)) return "Select at least one placement.";
   const placementIds = new Set(kit.placements.map((placement) => placement.id));
   if (settings.offeredPlacementIds.some((id) => typeof id !== "string" || !placementIds.has(id))) return "Select only placements from this starter kit.";
+  const itemsError = validateItemCounts(settings.items);
+  if (itemsError) return itemsError;
+  if (offeredIds(settings).length < 1) return "Select at least one placement.";
   if (settings.placementNames !== undefined) {
     if (!settings.placementNames || typeof settings.placementNames !== "object" || Array.isArray(settings.placementNames)) {
-      return "Placement names must be an object keyed by starter-kit placement IDs.";
+      return "Placement names must be an object keyed by placement IDs.";
     }
     for (const [id, name] of Object.entries(settings.placementNames)) {
-      if (!placementIds.has(id)) return "Placement names can only use IDs from this starter kit.";
+      if (!placementIds.has(id) && !ITEM_PLACEMENTS.has(id)) return "Placement names can only use IDs from this starter kit or its sponsorship items.";
       if (typeof name !== "string" || name.trim() !== name || name.length < 1 || name.length > 60 ||
           /[\u0000-\u001f\u007f-\u009f]/.test(name)) {
         return "Placement names must be trimmed, 1 to 60 characters, and contain no control characters.";
@@ -568,8 +582,8 @@ async function activePlacementIds(slug, ids) {
 }
 
 async function assertPlacementsRemainRemovable(slug, currentSettings, nextSettings) {
-  const removed = (currentSettings.offeredPlacementIds || [])
-    .filter((id) => !nextSettings.offeredPlacementIds.includes(id));
+  const next = new Set(offeredIds(nextSettings));
+  const removed = offeredIds(currentSettings).filter((id) => !next.has(id));
   const active = await activePlacementIds(slug, removed);
   if (active.length) {
     throw new SettingsMutationError(409, `${active[0]} has bids or a sale, so it can't be removed.`);
@@ -597,7 +611,7 @@ export async function launchChecks(tenant, record, base) {
     record.settings.increment <= record.settings.minBid &&
     record.settings.lockPrice > record.settings.minBid &&
     record.settings.lockPrice <= 250000;
-  const placementsOk = Array.isArray(record.settings.offeredPlacementIds) && record.settings.offeredPlacementIds.length > 0;
+  const placementsOk = offeredIds(record.settings).length > 0;
   return [
     {
       id: "payouts",
@@ -650,16 +664,20 @@ async function updateSettings(req, slug) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "A valid request body is required." }, 400);
   const current = record.settings;
   const copyOnly = tenant.status === "live";
-  if (copyOnly && ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds", "placementNames"].some((key) =>
-    Object.hasOwn(body, key) && JSON.stringify(body[key]) !== JSON.stringify(current[key]))) {
+  if (copyOnly && ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds", "items", "placementNames"].some((key) =>
+    Object.hasOwn(body, key) && JSON.stringify(body[key]) !== JSON.stringify(current[key] ?? (key === "items" ? {} : undefined)))) {
     return json({ error: "Event, pricing, dates and placements are locked after launch" }, 409);
   }
   const allowedSettings = new Set([
     "eventName", "eventDate", "timeZone", "deadline", "minBid", "increment",
     "lockPrice", "packageName", "benefits", "intro", "accent", "offeredPlacementIds",
-    "placementNames", "arena", "backdrop"
+    "items", "placementNames", "arena", "backdrop"
   ]);
   const changes = Object.fromEntries(Object.entries(body).filter(([key]) => allowedSettings.has(key)));
+  // Items left at zero are not offered; storing only the rest keeps the record and launch lock comparisons stable.
+  if (changes.items && typeof changes.items === "object" && !Array.isArray(changes.items)) {
+    changes.items = Object.fromEntries(Object.entries(changes.items).filter(([, count]) => count !== 0));
+  }
   const next = { ...current, ...changes };
   const kit = getStarterKit(record.kitId);
   const error = validSettings(next, kit, current);
@@ -670,8 +688,8 @@ async function updateSettings(req, slug) {
       const merged = { ...existing.settings, ...changes };
       const mutationError = validSettings(merged, kit, existing.settings);
       if (mutationError) throw new SettingsMutationError(400, mutationError);
-      removedPlacementIds = (existing.settings.offeredPlacementIds || [])
-        .filter((id) => !merged.offeredPlacementIds.includes(id));
+      const kept = new Set(offeredIds(merged));
+      removedPlacementIds = offeredIds(existing.settings).filter((id) => !kept.has(id));
       await assertPlacementsRemainRemovable(slug, existing.settings, merged);
       return { ...existing, settings: merged };
     });
@@ -686,7 +704,8 @@ async function updateSettings(req, slug) {
             ...existing.settings,
             offeredPlacementIds: kit.placements
               .map(({ id }) => id)
-              .filter((id) => offeredPlacementIds.has(id))
+              .filter((id) => offeredPlacementIds.has(id)),
+            items: countsCovering(existing.settings.items, activeRemovedIds)
           }
         };
       });

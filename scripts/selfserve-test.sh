@@ -357,6 +357,47 @@ fi
 post_json "$BASE/api/dashboard/avery-selfserve/settings" "$GOOD_SETTINGS" "$TMP_DIR/settings-restore-name.json" "$ATHLETE_COOKIE"
 check "valid placement name is restored after XSS check" "$LAST_CODE" "200"
 
+for kind in unknown-item over-max fractional negative; do
+  BAD_ITEMS=$(node -e '
+const x=JSON.parse(process.argv[1]);
+x.items={"unknown-item":{cape:1},"over-max":{tee:9},fractional:{hat:1.5},negative:{gloves:-1}}[process.argv[2]];
+process.stdout.write(JSON.stringify(x));
+' "$GOOD_SETTINGS" "$kind")
+  post_json "$BASE/api/dashboard/avery-selfserve/settings" "$BAD_ITEMS" "$TMP_DIR/items-invalid.json" "$ATHLETE_COOKIE"
+  check "invalid sponsorship items ($kind) are rejected" "$LAST_CODE" "400"
+done
+ITEM_SETTINGS=$(node -e '
+const x=JSON.parse(process.argv[1]);
+x.items={tee:2,hat:1,banner:1,gloves:0};
+x.placementNames={...x.placementNames,"TEE-02":"Back sponsor"};
+process.stdout.write(JSON.stringify(x));
+' "$GOOD_SETTINGS")
+post_json "$BASE/api/dashboard/avery-selfserve/settings" "$ITEM_SETTINGS" "$TMP_DIR/items-settings.json" "$ATHLETE_COOKIE"
+check "sponsorship items and counts can be saved" "$LAST_CODE" "200"
+json_check "zero item counts are not stored" "$TMP_DIR/items-settings.json" \
+  'const x=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(JSON.stringify(x.settings.items)===JSON.stringify({tee:2,hat:1,banner:1})?0:1)'
+ITEMS_SUMMARY_CODE=$(curl -sS -o "$TMP_DIR/items-summary.json" -w '%{http_code}' \
+  -H "Cookie: asp_dash=$ATHLETE_COOKIE" "$BASE/api/dashboard/avery-selfserve/summary")
+check "item summary loads" "$ITEMS_SUMMARY_CODE" "200"
+json_check "summary lists the item catalog, counts and item placements" "$TMP_DIR/items-summary.json" \
+  'const x=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const ids=x.placements.map(p=>p.id);const catalog=x.settings.kit.items.map(i=>i.id).sort().join();process.exit(catalog==="banner,gloves,hat,rashguard-long,rashguard-short,robe,tee"&&x.settings.values.items.tee===2&&["TEE-01","TEE-02","HAT-01","BNR-01"].every(id=>ids.includes(id))&&!ids.includes("TEE-03")&&x.placements.find(p=>p.id==="TEE-02")?.label==="T-shirt · Back sponsor"?0:1)'
+ITEMS_PREVIEW=$(curl -sS "$BASE/avery-selfserve?preview=$TENANT_TOKEN")
+if printf '%s' "$ITEMS_PREVIEW" | grep -Fq '"id":"item-hat"' && printf '%s' "$ITEMS_PREVIEW" | grep -Fq '"item":"banner"' &&
+  printf '%s' "$ITEMS_PREVIEW" | grep -Fq '"anchor":"head"' && ! printf '%s' "$ITEMS_PREVIEW" | grep -Fq '"TEE-03"'; then
+  echo "  ok   item garments and prop anchors appear in preview config"
+else
+  echo "  FAIL item garments and prop anchors appear in preview config"
+  FAIL=1
+fi
+ITEMS_ONLY=$(node -e 'const x=JSON.parse(process.argv[1]);x.offeredPlacementIds=[];x.items={gloves:2};process.stdout.write(JSON.stringify(x))' "$GOOD_SETTINGS")
+post_json "$BASE/api/dashboard/avery-selfserve/settings" "$ITEMS_ONLY" "$TMP_DIR/items-only.json" "$ATHLETE_COOKIE"
+check "a portal may offer sponsorship items without kit spots" "$LAST_CODE" "200"
+NOTHING_OFFERED=$(node -e 'const x=JSON.parse(process.argv[1]);x.offeredPlacementIds=[];x.items={};process.stdout.write(JSON.stringify(x))' "$GOOD_SETTINGS")
+post_json "$BASE/api/dashboard/avery-selfserve/settings" "$NOTHING_OFFERED" "$TMP_DIR/nothing-offered.json" "$ATHLETE_COOKIE"
+check "a portal must offer at least one kit spot or item placement" "$LAST_CODE" "400"
+post_json "$BASE/api/dashboard/avery-selfserve/settings" "$ITEM_SETTINGS" "$TMP_DIR/items-restore.json" "$ATHLETE_COOKIE"
+check "kit spots and items are restored" "$LAST_CODE" "200"
+
 post_json_file "$BASE/api/dashboard/avery-selfserve/poster/card" "$TMP_DIR/card.json" "$TMP_DIR/poster-unauth.json"
 check "poster upload requires a dashboard session" "$LAST_CODE" "401"
 post_json_file "$BASE/api/dashboard/avery-selfserve/poster/card" "$TMP_DIR/bad-version.json" "$TMP_DIR/poster-bad-version.json" "$ATHLETE_COOKIE"
@@ -497,6 +538,19 @@ else
   echo "  FAIL removal conflict identifies the placement"
   FAIL=1
 fi
+ITEM_BID_CODE=$(curl -sS -o "$TMP_DIR/item-bid.json" -w '%{http_code}' -X POST "$BASE/api/avery-selfserve/bids" \
+  -H "Origin: $BASE" -H "x-preview-token: $TENANT_TOKEN" -H 'content-type: application/json' \
+  -d '{"id":"TEE-02","type":"bid","amount":350,"company":"Item Sponsor","name":"Item Bidder","email":"item-bidder@example.test"}')
+check "draft preview bid is recorded for an item placement" "$ITEM_BID_CODE" "200"
+FEWER_ITEMS=$(node -e 'const x=JSON.parse(process.argv[1]);x.items={tee:1,hat:1,banner:1};process.stdout.write(JSON.stringify(x))' "$PLACEMENTS_WITH_SECOND")
+post_json "$BASE/api/dashboard/avery-selfserve/settings" "$FEWER_ITEMS" "$TMP_DIR/items-bid-remove.json" "$ATHLETE_COOKIE"
+check "lowering an item count cannot drop a placement with a bid" "$LAST_CODE" "409"
+if grep -Fq "TEE-02 has bids or a sale, so it can't be removed." "$TMP_DIR/items-bid-remove.json"; then
+  echo "  ok   item removal conflict identifies the placement"
+else
+  echo "  FAIL item removal conflict identifies the placement"
+  FAIL=1
+fi
 DYNAMIC_SALE_LOGO=$(node -e 'const fs=require("fs");process.stdout.write(`data:image/png;base64,${fs.readFileSync("public/tenants/michael-heckert/sponsors/boxrope.png").toString("base64")}`)')
 DYNAMIC_SALE_CODE=$(curl -sS -o "$TMP_DIR/dynamic-sale.json" -w '%{http_code}' -X POST \
   "$BASE/api/dashboard/avery-selfserve/placements/$FIRST_PLACEMENT/sold" \
@@ -590,6 +644,9 @@ if grep -Fq 'Event, pricing, dates and placements are locked after launch' "$TMP
 LOCKED_PLACEMENT_NAMES=$(node -e 'const x=JSON.parse(process.argv[1]);x.placementNames={[x.offeredPlacementIds[0]]:"Changed after launch"};process.stdout.write(JSON.stringify(x))' "$GOOD_SETTINGS")
 post_json "$BASE/api/dashboard/avery-selfserve/settings" "$LOCKED_PLACEMENT_NAMES" "$TMP_DIR/locked-placement-names.json" "$ATHLETE_COOKIE"
 check "post-launch placement-name changes are locked" "$LAST_CODE" "409"
+LOCKED_ITEMS=$(node -e 'const x=JSON.parse(process.argv[1]);x.items={tee:3,hat:1,banner:1};process.stdout.write(JSON.stringify(x))' "$GOOD_SETTINGS")
+post_json "$BASE/api/dashboard/avery-selfserve/settings" "$LOCKED_ITEMS" "$TMP_DIR/locked-items.json" "$ATHLETE_COOKIE"
+check "post-launch item count changes are locked" "$LAST_CODE" "409"
 post_json "$BASE/api/dashboard/avery-selfserve/poster" \
   "{\"version\":\"$POSTER_VERSION\",\"title\":\"Avery Live Poster\",\"subtitle\":\"Live sponsor night\"}" \
   "$TMP_DIR/poster-live-commit.json" "$ATHLETE_COOKIE"
