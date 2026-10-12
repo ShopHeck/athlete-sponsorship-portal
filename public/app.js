@@ -367,8 +367,9 @@ function buildSlots(meshes, owner = null) {
     if (failedSides.length) missing.push({ id: spot.id, sides: failedSides });
   });
   if (isStudio && !owner) {
+    // Garment-model placements are projected (and counted) on their own model, not this one.
     window.dispatchEvent(new CustomEvent("studio:fit", {
-      detail: { total: allPlacements.length, missing }
+      detail: { total: allPlacements.filter((spot) => !garmentConfig(garmentOf(spot.id)).model).length, missing }
     }));
   }
 }
@@ -458,7 +459,17 @@ function loadOutfits() {
       projectSlots(rig, meshes, garment.id);
       outfits.set(garment.id, { root, motion: rig });
       renderAll();
-    }, undefined, (err) => console.warn("Garment model failed to load", garment.id, err));
+      // A link to one of this garment's placements framed it before its slot existed: frame it again, unless the
+      // visitor has since moved the camera or picked something else.
+      if (linkedPlacement && state.selected === linkedPlacement.id && garmentOf(linkedPlacement.id) === garment.id &&
+          !userInteracted) flyToPlacement(linkedPlacement);
+    }, undefined, (err) => {
+      // Without its model the garment cannot be previewed: withdraw its tab rather than show the kit under its name.
+      console.warn("Garment model failed to load", garment.id, err);
+      const tab = document.querySelector(`.garment-tab[data-garment="${CSS.escape(garment.id)}"]`);
+      if (tab) tab.hidden = true;
+      if (state.garment === garment.id) setGarment(garments[0].id);
+    });
   }
 }
 loader.load(
@@ -1151,6 +1162,10 @@ function animate(now) {
   stepTween(dt);
   controls.update(dt);
   bodyMoving = Boolean(motion?.update(dt));
+  // A rig hidden mid-move (the visitor switched garments) keeps settling out of sight, so it reappears in its stance.
+  for (const rig of [kit, ...outfits.values()]) {
+    if (rig?.motion && rig.motion !== motion && rig.motion.active) rig.motion.update(dt);
+  }
   if (bodyMoving) {
     // Breathing barely moves the shadow: redraw it for moves and blends only.
     if (motion.active) renderer.shadowMap.needsUpdate = true;
