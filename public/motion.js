@@ -96,15 +96,30 @@ export function spatialIndex(geo) {
   return entry;
 }
 
-export function localSubGeometry(body, worldPoint, radius) {
+export function localSubGeometry(body, worldPoint, specOrRadius, side = "front") {
   const geo = body.isSkinnedMesh ? posedGeometry(body) : body.geometry;
   const inv = body.matrixWorld.clone().invert();
   const lc = worldPoint.clone().applyMatrix4(inv);
-  const scale = new THREE.Vector3().setFromMatrixScale(inv);
-  const r = radius * Math.max(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z));
-  const minX = lc.x - r, maxX = lc.x + r;
-  const minY = lc.y - r, maxY = lc.y + r;
-  const minZ = lc.z - r, maxZ = lc.z + r;
+  const s = new THREE.Vector3().setFromMatrixScale(inv);
+  const sx = Math.abs(s.x), sy = Math.abs(s.y), sz = Math.abs(s.z);
+  let rx, ry, rz;
+  if (typeof specOrRadius === "object" && specOrRadius !== null) {
+    const rad = THREE.MathUtils.degToRad(specOrRadius.rotate || 0);
+    const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+    const spanW = (specOrRadius.w * cos + specOrRadius.h * sin) * 0.54 + 0.01;
+    const spanH = (specOrRadius.w * sin + specOrRadius.h * cos) * 0.54 + 0.01;
+    const depth = 0.065;
+    const isFrontBack = side === "front" || side === "back";
+    rx = (isFrontBack ? spanW : depth) * sx;
+    ry = spanH * sy;
+    rz = (isFrontBack ? depth : spanW) * sz;
+  } else {
+    const r = Number(specOrRadius) * Math.max(sx, sy, sz);
+    rx = ry = rz = r;
+  }
+  const minX = lc.x - rx, maxX = lc.x + rx;
+  const minY = lc.y - ry, maxY = lc.y + ry;
+  const minZ = lc.z - rz, maxZ = lc.z + rz;
   const { minY: gMinY, spanY, bins, count } = spatialIndex(geo);
   const b0 = Math.max(0, Math.min(BINS - 1, Math.floor(((minY - gMinY) / spanY) * BINS)));
   const b1 = Math.max(0, Math.min(BINS - 1, Math.floor(((maxY - gMinY) / spanY) * BINS)));

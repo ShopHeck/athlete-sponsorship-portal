@@ -354,7 +354,7 @@ function makeSlot(spot, side, meshes, owner = null, { anchor = null, layer = nul
   const orientation = new THREE.Euler().setFromRotationMatrix(m);
   // DecalGeometry only reads geometry + matrixWorld, so skinned bodies are projected onto a local slice of the posed mesh.
   const subGeo = hit.object.isSkinnedMesh
-    ? localSubGeometry(hit.object, hit.point, Math.hypot(spec.w, spec.h, 0.10) * 0.65)
+    ? localSubGeometry(hit.object, hit.point, spec, side)
     : null;
   const localTris = subGeo?.userData.tris || null;
   const target = subGeo
@@ -442,25 +442,22 @@ async function buildSlots(meshes, owner, missing, include, rig = null) {
     return (garment.model ? garment.id : null) === owner && include(spot);
   });
   let sliceStart = performance.now();
-  const projectOne = (spot) => {
+  for (const spot of spots) {
     const garment = garmentConfig(garmentOf(spot.id));
-    // An anchored placement needs its bone or prop: a rig without hand bones, say, leaves the gloves unplaced.
     const anchor = spot.anchor ? itemAnchors[spot.anchor] : null;
     const options = { anchor: anchor?.center || null, layer: garment.item ? garment.id : null };
     const failedSides = [];
     for (const side of new Set([spot.side, spot.mirror].filter(Boolean))) {
       if (spot.anchor && !anchor) { failedSides.push(side); continue; }
-      if (!makeSlot(spot, side, anchor ? anchor.meshes : meshes, owner, options)) failedSides.push(side);
+      const runSide = () => makeSlot(spot, side, anchor ? anchor.meshes : meshes, owner, options);
+      const slot = rig ? rig.withProjectionPose(runSide) : runSide();
+      if (!slot) failedSides.push(side);
+      if (performance.now() - sliceStart > 5) {
+        await yieldToMain();
+        sliceStart = performance.now();
+      }
     }
     if (failedSides.length) missing.push({ id: spot.id, sides: failedSides });
-  };
-  for (const spot of spots) {
-    if (rig) rig.withProjectionPose(() => projectOne(spot));
-    else projectOne(spot);
-    if (performance.now() - sliceStart > 6) {
-      await yieldToMain();
-      sliceStart = performance.now();
-    }
   }
 }
 
