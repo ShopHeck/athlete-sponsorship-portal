@@ -189,8 +189,44 @@ export function intersectPosedMeshes(raycaster, meshes) {
 }
 
 const posed = new WeakMap();
-// The body as currently posed (the rest stance), in its local space. Placements are projected onto this so they
-// land where visitors see the garment, not on the arms-out bind pose the rig was built from.
+export function posedBounds(body) {
+  body.updateMatrixWorld(true);
+  body.skeleton.update();
+  const posAttr = body.geometry.attributes.position;
+  const sIdxAttr = body.geometry.attributes.skinIndex;
+  const sWgtAttr = body.geometry.attributes.skinWeight;
+  const n = posAttr.count;
+  const bones = body.skeleton.bones, inverses = body.skeleton.boneInverses;
+  const bm = new Float32Array(bones.length * 16);
+  const tmpM = new THREE.Matrix4();
+  for (let b = 0; b < bones.length; b++) {
+    tmpM.multiplyMatrices(bones[b].matrixWorld, inverses[b]).multiply(body.bindMatrix);
+    tmpM.premultiply(body.bindMatrixInverse);
+    tmpM.toArray(bm, b * 16);
+  }
+  const box = new THREE.Box3(), v = new THREE.Vector3();
+  const step = n > 4000 ? 16 : 1;
+  if (!posAttr.isInterleavedBufferAttribute && !sIdxAttr.isInterleavedBufferAttribute && !sWgtAttr.isInterleavedBufferAttribute) {
+    const pos = posAttr.array, sIdx = sIdxAttr.array, sWgt = sWgtAttr.array;
+    for (let i = 0; i < n; i += step) {
+      const i3 = i * 3, i4 = i * 4;
+      const px = pos[i3], py = pos[i3 + 1], pz = pos[i3 + 2];
+      let rx = 0, ry = 0, rz = 0;
+      for (let k = 0; k < 4; k++) {
+        const w = sWgt[i4 + k];
+        if (w === 0) continue;
+        const mOff = sIdx[i4 + k] * 16;
+        rx += (bm[mOff] * px + bm[mOff + 4] * py + bm[mOff + 8] * pz + bm[mOff + 12]) * w;
+        ry += (bm[mOff] * px + bm[mOff + 5] * py + bm[mOff + 9] * pz + bm[mOff + 13]) * w;
+        rz += (bm[mOff] * px + bm[mOff + 6] * py + bm[mOff + 10] * pz + bm[mOff + 14]) * w;
+      }
+      box.expandByPoint(v.set(rx, ry, rz));
+    }
+  } else {
+    for (let i = 0; i < n; i += step) box.expandByPoint(body.getVertexPosition(i, v));
+  }
+  return box;
+}
 export function posedGeometry(body, { cache = true } = {}) {
   if (cache) {
     const cached = posed.get(body);

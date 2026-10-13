@@ -11,6 +11,7 @@ let DecalGeometry = null;
 let createMotion = null;
 let intersectPosedMeshes = null;
 let localSubGeometry = null;
+let posedBounds = null;
 let posedGeometry = null;
 let spatialIndex = null;
 let readAnchor = null;
@@ -486,11 +487,13 @@ function normalise(root) {
   const childBox = new THREE.Box3();
   root.traverse((o) => {
     if (!o.isMesh || !o.geometry) return;
-    const g = o.isSkinnedMesh ? posedGeometry(o, { cache: false }) : o.geometry;
-    if (!g.boundingBox) g.computeBoundingBox();
-    childBox.copy(g.boundingBox).applyMatrix4(o.matrixWorld);
+    if (o.isSkinnedMesh) {
+      childBox.copy(posedBounds(o)).applyMatrix4(o.matrixWorld);
+    } else {
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      childBox.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
+    }
     box.union(childBox);
-    if (o.isSkinnedMesh) g.dispose();
   });
   const size = box.getSize(new THREE.Vector3());
   const s = MODEL_HEIGHT / (size.y || 1);
@@ -661,6 +664,7 @@ async function startViewer() {
   createMotion = motionMod.createMotion;
   intersectPosedMeshes = motionMod.intersectPosedMeshes;
   localSubGeometry = motionMod.localSubGeometry;
+  posedBounds = motionMod.posedBounds;
   posedGeometry = motionMod.posedGeometry;
   spatialIndex = motionMod.spatialIndex;
   readAnchor = motionMod.readAnchor;
@@ -696,7 +700,7 @@ async function startViewer() {
     resize();
   }
   await yieldToMain();
-  if (!scene.environment && !isSoftwareGpu) {
+  if (!scene.environment && !isSoftwareGpu && !narrowViewport.matches) {
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = 0.55;
