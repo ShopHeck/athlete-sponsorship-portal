@@ -435,13 +435,12 @@ function syncGarmentLayers() {
 
 const yieldToMain = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function buildSlots(meshes, owner, missing, include, rig = null) {
+async function buildSlots(meshes, owner, missing, include) {
   // Each model carries only its own placements: the kit's on the tenant's model, a garment model's on that model.
   const spots = (isShowcase ? showcasePlacements : allPlacements).filter((spot) => {
     const garment = garmentConfig(garmentOf(spot.id));
     return (garment.model ? garment.id : null) === owner && include(spot);
   });
-  let sliceStart = performance.now();
   for (const spot of spots) {
     const garment = garmentConfig(garmentOf(spot.id));
     const anchor = spot.anchor ? itemAnchors[spot.anchor] : null;
@@ -449,13 +448,8 @@ async function buildSlots(meshes, owner, missing, include, rig = null) {
     const failedSides = [];
     for (const side of new Set([spot.side, spot.mirror].filter(Boolean))) {
       if (spot.anchor && !anchor) { failedSides.push(side); continue; }
-      const runSide = () => makeSlot(spot, side, anchor ? anchor.meshes : meshes, owner, options);
-      const slot = rig ? rig.withProjectionPose(runSide) : runSide();
-      if (!slot) failedSides.push(side);
-      if (performance.now() - sliceStart > 5) {
-        await yieldToMain();
-        sliceStart = performance.now();
-      }
+      if (!makeSlot(spot, side, anchor ? anchor.meshes : meshes, owner, options)) failedSides.push(side);
+      await yieldToMain();
     }
     if (failedSides.length) missing.push({ id: spot.id, sides: failedSides });
   }

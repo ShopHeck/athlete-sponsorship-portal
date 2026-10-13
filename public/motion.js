@@ -74,8 +74,12 @@ const spatialCache = new WeakMap();
 export function spatialIndex(geo) {
   let entry = spatialCache.get(geo);
   if (entry) return entry;
-  geo.computeBoundingBox();
-  const minY = geo.boundingBox.min.y, maxY = geo.boundingBox.max.y;
+  let minY = geo.userData?.minY, maxY = geo.userData?.maxY;
+  if (minY === undefined || maxY === undefined) {
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    minY = geo.boundingBox.min.y;
+    maxY = geo.boundingBox.max.y;
+  }
   const spanY = (maxY - minY) || 1;
   const bins = Array.from({ length: BINS }, () => []);
   const pos = geo.attributes.position.array;
@@ -261,6 +265,8 @@ export function posedGeometry(body, { cache = true } = {}) {
     tmpM.premultiply(body.bindMatrixInverse);
     tmpM.toArray(bm, b * 16);
   }
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   if (!posAttr.isInterleavedBufferAttribute && !sIdxAttr.isInterleavedBufferAttribute && !sWgtAttr.isInterleavedBufferAttribute) {
     const pos = posAttr.array, sIdx = sIdxAttr.array, sWgt = sWgtAttr.array;
     for (let i = 0; i < n; i++) {
@@ -276,19 +282,32 @@ export function posedGeometry(body, { cache = true } = {}) {
         rz += (bm[mOff + 2] * px + bm[mOff + 6] * py + bm[mOff + 10] * pz + bm[mOff + 14]) * w;
       }
       out[i3] = rx; out[i3 + 1] = ry; out[i3 + 2] = rz;
+      if (rx < minX) minX = rx; if (rx > maxX) maxX = rx;
+      if (ry < minY) minY = ry; if (ry > maxY) maxY = ry;
+      if (rz < minZ) minZ = rz; if (rz > maxZ) maxZ = rz;
     }
   } else {
     const v = new THREE.Vector3();
-    for (let i = 0; i < n; i++) body.getVertexPosition(i, v).toArray(out, i * 3);
+    for (let i = 0; i < n; i++) {
+      body.getVertexPosition(i, v).toArray(out, i * 3);
+      if (v.x < minX) minX = v.x; if (v.x > maxX) maxX = v.x;
+      if (v.y < minY) minY = v.y; if (v.y > maxY) maxY = v.y;
+      if (v.z < minZ) minZ = v.z; if (v.z > maxZ) maxZ = v.z;
+    }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(out, 3));
   if (body.geometry.index) geo.setIndex(body.geometry.index);
+  geo.boundingBox = new THREE.Box3(new THREE.Vector3(minX, minY, minZ), new THREE.Vector3(maxX, maxY, maxZ));
+  geo.userData.minY = minY;
+  geo.userData.maxY = maxY;
   if (cache) posed.set(body, geo);
   return geo;
 }
 
 const grids = new WeakMap();
+const jBuf = new Uint16Array(12);
+const wBuf = new Float32Array(12);
 // DecalGeometry is built in world space on the posed body; map each vertex onto the same point of its body triangle
 // in bind space and borrow that triangle's skin weights, so the artwork deforms with the athlete.
 export function skinDecal(decal, body, subsetTris = null) {
@@ -299,12 +318,11 @@ export function skinDecal(decal, body, subsetTris = null) {
     locate = grids.get(body);
     if (!locate) grids.set(body, (locate = triangleGrid(posedGeometry(body))));
   }
-  decal.updateMatrixWorld(true);
-  body.updateMatrixWorld(true);
   const geo = decal.geometry;
   geo.applyMatrix4(body.matrixWorld.clone().invert().multiply(decal.matrixWorld));
   const pos = geo.attributes.position, bind = body.geometry.attributes.position;
   const srcIndex = body.geometry.attributes.skinIndex, srcWeight = body.geometry.attributes.skinWeight;
+  const sIdxArr = srcIndex.array, sIdxItemSize = srcIndex.itemSize;
   const skinIndex = new Uint16Array(pos.count * 4), skinWeight = new Float32Array(pos.count * 4);
   const p = new THREE.Vector3(), q = new THREE.Vector3(), bary = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
@@ -314,16 +332,43 @@ export function skinDecal(decal, body, subsetTris = null) {
     for (let k = 0; k < 3; k++) p.addScaledVector(q.fromBufferAttribute(bind, ids[k]), bary.getComponent(k));
     pos.setXYZ(i, p.x, p.y, p.z);
     // Blend the corners' influences as the surface itself interpolates them, keeping the four strongest.
-    const influence = new Map();
-    for (let c = 0; c < 3; c++) for (let k = 0; k < 4; k++) {
-      const w = srcWeight.getComponent(ids[c], k) * bary.getComponent(c);
-      if (w <= 0) continue;
-      const joint = srcIndex.array[ids[c] * srcIndex.itemSize + k]; // joint indices are never normalized
-      influence.set(joint, (influence.get(joint) || 0) + w);
+    let len = 0;
+    for (let c = 0; c < 3; c++) {
+      const bc = bary.getComponent(c);
+      if (bc <= 0) continue;
+      const vid = ids[c];
+      for (let k = 0; k < 4; k++) {
+        const w = srcWeight.getComponent(vid, k) * bc;
+        if (w <= 0) continue;
+        const joint = sIdxArr[vid * sIdxItemSize + k];
+        let found = -1;
+        for (let m = 0; m < len; m++) {
+          if (jBuf[m] === joint) { found = m; break; }
+        }
+        if (found >= 0) wBuf[found] += w;
+        else { jBuf[len] = joint; wBuf[len] = w; len++; }
+      }
     }
-    const top = [...influence].sort((a, b) => b[1] - a[1]).slice(0, 4);
-    const total = top.reduce((sum, [, w]) => sum + w, 0) || 1;
-    top.forEach(([joint, w], k) => { skinIndex[i * 4 + k] = joint; skinWeight[i * 4 + k] = w / total; });
+    // Partial selection sort for top 4 weights
+    const limit = len < 4 ? len : 4;
+    let total = 0;
+    for (let m = 0; m < limit; m++) {
+      let best = m;
+      for (let n = m + 1; n < len; n++) {
+        if (wBuf[n] > wBuf[best]) best = n;
+      }
+      if (best !== m) {
+        const tj = jBuf[m]; jBuf[m] = jBuf[best]; jBuf[best] = tj;
+        const tw = wBuf[m]; wBuf[m] = wBuf[best]; wBuf[best] = tw;
+      }
+      total += wBuf[m];
+    }
+    const invTotal = total > 0 ? 1 / total : 1;
+    const base = i * 4;
+    for (let m = 0; m < limit; m++) {
+      skinIndex[base + m] = jBuf[m];
+      skinWeight[base + m] = wBuf[m] * invTotal;
+    }
   }
   geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(skinIndex, 4));
   geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(skinWeight, 4));
