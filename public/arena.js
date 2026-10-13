@@ -17,17 +17,17 @@ const ROPE_HEIGHTS = [0.48, 0.8, 1.12, 1.44];
 function padTexture(base, ink, text) {
   if (text == null) return null;
   const c = document.createElement("canvas");
-  c.width = 1024; c.height = 1024;
+  c.width = 512; c.height = 512;
   const ctx = c.getContext("2d");
   ctx.fillStyle = base; ctx.fillRect(0, 0, c.width, c.height);
   ctx.fillStyle = ink;
-  ctx.font = "900 215px 'Barlow Condensed', Impact, sans-serif";
+  ctx.font = "900 108px 'Barlow Condensed', Impact, sans-serif";
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   for (let i = 0; i < 4; i++) {
     ctx.save();
     ctx.translate(c.width * (i + 0.5) / 4, c.height / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.letterSpacing = "18px";
+    ctx.letterSpacing = "9px";
     ctx.fillText(text, 0, 0);
     ctx.restore();
   }
@@ -68,7 +68,7 @@ function fenceTexture(maxAnisotropy) {
 
 function canvasTexture() {
   const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = 512;
+  canvas.width = canvas.height = 128;
   const context = canvas.getContext("2d");
   const image = context.createImageData(canvas.width, canvas.height);
   for (let y = 0; y < canvas.height; y++) {
@@ -261,7 +261,7 @@ function buildOctagonArena(scene, ringConfig, { accentColor = "#14a3a8", maxAnis
 
 function surfaceTexture(base, grain, vignette) {
   const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = 512;
+  canvas.width = canvas.height = 128;
   const context = canvas.getContext("2d");
   const image = context.createImageData(canvas.width, canvas.height);
   for (let y = 0; y < canvas.height; y++) {

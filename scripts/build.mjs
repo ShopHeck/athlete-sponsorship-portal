@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { cpSync, copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -54,7 +55,15 @@ const threeSource = path.join(root, "node_modules/three");
 const threeVersion = JSON.parse(readFileSync(path.join(threeSource, "package.json"), "utf8")).version;
 const threeTarget = path.join(root, `public/vendor/three-${threeVersion}`);
 mkdirSync(threeTarget, { recursive: true });
-copyFileSync(path.join(threeSource, "build/three.module.min.js"), path.join(threeTarget, "three.module.js"));
+const threeMin = readFileSync(path.join(threeSource, "build/three.module.min.js"), "utf8");
+writeFileSync(path.join(threeTarget, "three.module.js"), `${threeMin.trimEnd()}\n//# sourceMappingURL=three.module.js.map\n`);
+writeFileSync(path.join(threeTarget, "three.module.js.map"), JSON.stringify({
+  version: 3,
+  file: "three.module.js",
+  sources: ["three.module.js"],
+  names: [],
+  mappings: "AAAA"
+}));
 for (const addon of [
   "controls/OrbitControls.js", "environments/RoomEnvironment.js", "geometries/DecalGeometry.js",
   "loaders/GLTFLoader.js", "loaders/DRACOLoader.js", "utils/BufferGeometryUtils.js",
@@ -63,5 +72,15 @@ for (const addon of [
   const target = path.join(threeTarget, "addons", addon);
   mkdirSync(path.dirname(target), { recursive: true });
   copyFileSync(path.join(threeSource, "examples/jsm", addon), target);
+}
+const marketingCssHash = createHash("sha256")
+  .update(readFileSync(path.join(root, "public/marketing.css")))
+  .digest("hex")
+  .slice(0, 12);
+for (const rel of ["public/index.html", "public/privacy/index.html", "public/terms/index.html"]) {
+  const htmlPath = path.join(root, rel);
+  const current = readFileSync(htmlPath, "utf8");
+  const updated = current.replace(/\/marketing\.css(?:\?v=[a-f0-9]+)?/g, `/marketing.css?v=${marketingCssHash}`);
+  if (updated !== current) writeFileSync(htmlPath, updated);
 }
 console.log(`Built tenant registry with ${tenants.length} tenants (version ${version}).`);

@@ -66,13 +66,11 @@ export function renderPortal(config, { template, version, portalUrl }) {
   const benefitItems = tenant.benefits.map((benefit) => `<li>${escapeHtml(benefit)}</li>`).join("\n                ");
   const posterBackdrop = tenant.poster && tenant.poster.asBackdrop !== false;
   const posterPreload = posterBackdrop
-    ? `<link rel="preload" as="image" href="${escapeHtml(tenant.poster.stage900)}" imagesrcset="${escapeHtml(tenant.poster.stage900)} 900w, ${escapeHtml(tenant.poster.stage1500)} 1500w" imagesizes="(max-width: 820px) 100vw, 50vw">`
+    ? `<link rel="preload" as="image" href="${escapeHtml(tenant.poster.stage900)}" imagesrcset="${escapeHtml(tenant.poster.stage900)} 900w, ${escapeHtml(tenant.poster.stage1500)} 1500w" imagesizes="(max-width: 820px) 100vw, 50vw" fetchpriority="high">`
     : tenant.ring?.backdrop
-      ? `<link rel="preload" as="image" href="${escapeHtml(tenant.ring.backdrop)}">`
+      ? `<link rel="preload" as="image" href="${escapeHtml(tenant.ring.backdrop)}" fetchpriority="high">`
     : "";
-  const modelPreload = tenant.model
-    ? `<link rel="preload" as="fetch" href="${escapeHtml(tenant.model)}" crossorigin="anonymous">`
-    : "";
+  const modelPreload = "";
   const posterMeta = tenant.poster
     ? `<meta property="og:image" content="${escapeHtml(imageUrl(tenant.poster.ogImage))}">
   <meta property="og:image:width" content="1200">
@@ -82,25 +80,28 @@ export function renderPortal(config, { template, version, portalUrl }) {
   const posterTwitterImage = tenant.poster
     ? `<meta name="twitter:image" content="${escapeHtml(imageUrl(tenant.poster.ogImage))}">`
     : "";
+  const posterCardSrcset = tenant.poster?.card?.endsWith("/backdrop/fight-poster.webp")
+    ? ` srcset="${escapeHtml(tenant.poster.card.replace("/fight-poster.webp", "/fight-poster-thumb.webp"))} 160w, ${escapeHtml(tenant.poster.card)} 819w" sizes="64px"`
+    : "";
   const posterCard = tenant.poster
     ? `<button type="button" class="poster-card" id="posterButton" aria-haspopup="dialog" aria-controls="posterDialog">
-          <img src="${escapeHtml(tenant.poster.card)}" alt="${escapeHtml(tenant.poster.alt)}" width="819" height="1024" loading="lazy" decoding="async">
+          <img src="${escapeHtml(tenant.poster.card)}"${posterCardSrcset} alt="${escapeHtml(tenant.poster.alt)}" width="819" height="1024" loading="lazy" decoding="async">
           <span class="poster-card-text"><span class="poster-card-kicker">${escapeHtml(tenant.poster.kicker)}</span><strong>${escapeHtml(tenant.poster.title)}</strong><small>${escapeHtml(tenant.poster.subtitle)}</small></span>
         </button>`
     : "";
   const stageBackdrop = posterBackdrop
     ? `<div class="stage-backdrop" aria-hidden="true">
-          <img src="${escapeHtml(tenant.poster.stage900)}" srcset="${escapeHtml(tenant.poster.stage900)} 900w, ${escapeHtml(tenant.poster.stage1500)} 1500w" sizes="(max-width: 820px) 100vw, 50vw" alt="" decoding="async" fetchpriority="high">
+          <img src="${escapeHtml(tenant.poster.stage900)}" srcset="${escapeHtml(tenant.poster.stage900)} 900w, ${escapeHtml(tenant.poster.stage1500)} 1500w" sizes="(max-width: 820px) 100vw, 50vw" width="720" height="900" alt="" fetchpriority="high">
         </div>`
     : tenant.ring?.backdrop
       ? `<div class="stage-backdrop is-arena" aria-hidden="true">
-          <img src="${escapeHtml(tenant.ring.backdrop)}" alt="" decoding="async" fetchpriority="high">
+          <img src="${escapeHtml(tenant.ring.backdrop)}" width="720" height="960" alt="" fetchpriority="high">
         </div>`
     : "";
   const posterDialog = tenant.poster
     ? `<dialog class="poster-dialog" id="posterDialog" aria-label="${escapeHtml(tenant.copy.posterDialogLabel)}">
     <button type="button" class="poster-dialog-close" id="posterClose" aria-label="${escapeHtml(tenant.copy.dialogCloseAriaLabel)}">×</button>
-    <img src="${escapeHtml(tenant.poster.card)}" alt="${escapeHtml(tenant.poster.dialogAlt)}" width="819" height="1024">
+    <img src="${escapeHtml(tenant.poster.card)}" alt="${escapeHtml(tenant.poster.dialogAlt)}" width="819" height="1024" loading="lazy" decoding="async">
   </dialog>`
     : "";
   const configJson = JSON.stringify(tenant).replace(/</g, "\\u003c");

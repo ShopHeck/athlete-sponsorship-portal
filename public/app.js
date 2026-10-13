@@ -1,14 +1,24 @@
-import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { buildArena, ROPE_RADIUS } from "./arena.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
-import { DecalGeometry } from "three/addons/geometries/DecalGeometry.js";
-import { createMotion, posedGeometry, readAnchor, skinDecal, surfaceAnchor } from "./motion.js";
-import { athleteMaterial } from "./materials.js";
-import { armAnchors, buildItemProps } from "./items.js";
 import { nextRatio, resolutionPolicy, settle } from "./resolution.js";
+
+let THREE = null;
+let OrbitControls = null;
+let RoomEnvironment = null;
+let buildArena = null;
+let ROPE_RADIUS = 3.31;
+let GLTFLoader = null;
+let DRACOLoader = null;
+let DecalGeometry = null;
+let createMotion = null;
+let intersectPosedMeshes = null;
+let localSubGeometry = null;
+let posedGeometry = null;
+let spatialIndex = null;
+let readAnchor = null;
+let skinDecal = null;
+let surfaceAnchor = null;
+let athleteMaterial = null;
+let armAnchors = null;
+let buildItemProps = null;
 
 /* ---------------------------------------------------------------------------
    Placements are defined in the tenant config as rectangles in metres on a
@@ -34,7 +44,7 @@ const garmentPlacements = (garment) => isShowcase
 const garmentConfig = (id) => garments.find((garment) => garment.id === id);
 const garmentOf = (id) => garments.find((garment) => garment.placements.some((spot) => spot.id === id))?.id || garments[0].id;
 const firstPlacement = isShowcase ? showcasePlacements[0] || null : allPlacements[0];
-const accentColor = new THREE.Color(config.brand.accent);
+let accentColor = null;
 const formatCopy = (template, values = {}) => String(template).replace(/\{([A-Za-z][A-Za-z0-9]*)\}/g, (_, key) => values[key] ?? "");
 
 const SIDE_AZIMUTH = { front: 0, back: Math.PI, left: Math.PI / 2, right: -Math.PI / 2 };
@@ -100,110 +110,133 @@ const orientationLabel = document.getElementById("orientationLabel");
 const orientationNeedle = document.getElementById("orientationNeedle");
 
 /* ------------------------------------------------------------ renderer */
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
-const resolution = resolutionPolicy(window.devicePixelRatio || 1);
-renderer.setPixelRatio(resolution.ratio);
-// Neutral tone mapping keeps sponsor brand colours true to their artwork.
-renderer.toneMapping = THREE.NeutralToneMapping;
-renderer.toneMappingExposure = 1.0;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-// Lights and athlete are static: the shadow map is redrawn only when the scene changes.
-renderer.shadowMap.autoUpdate = false;
-const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-// Frames are drawn only when something changed (camera, decals, resize).
-let needsRender = true;
-const invalidate = () => { needsRender = true; };
-
-const scene = new THREE.Scene();
-const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = 0.55;
-
-const HOME_FOV = 38;
-const camera = new THREE.PerspectiveCamera(HOME_FOV, 1, 0.1, 40);
-const HOME = isCardCapture
-  ? { dist: 2.65, polar: 1.5, targetY: 1.38, az: -0.75 }
-  : { dist: 3.05, polar: 1.57, targetY: 0.95, az: 0 };
-const TARGET = new THREE.Vector3(0, HOME.targetY, 0);
-camera.position.setFromSpherical(new THREE.Spherical(HOME.dist, HOME.polar, HOME.az)).add(TARGET);
-
-const controls = new OrbitControls(camera, canvas);
 const narrowViewport = window.matchMedia("(max-width:1100px)");
 function syncTouchScrolling() {
   canvas.style.touchAction = narrowViewport.matches ? "pan-y" : "none";
 }
 narrowViewport.addEventListener("change", syncTouchScrolling);
 syncTouchScrolling();
-controls.target.copy(TARGET);
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-controls.enablePan = false;
-controls.minDistance = 1.2;
-controls.maxDistance = ROPE_RADIUS - 0.2; // stay inside the ropes
-controls.minPolarAngle = 0.9;
-controls.maxPolarAngle = 1.75;
-controls.autoRotate = false;
-controls.autoRotateSpeed = 0.7;
+
+if (narrowViewport.matches && typeof window.createImageBitmap === "function") {
+  const nativeCreateImageBitmap = window.createImageBitmap.bind(window);
+  window.createImageBitmap = function (source, ...args) {
+    if (source instanceof Blob && source.size > 60000 && args.length <= 1) {
+      return nativeCreateImageBitmap(source, { ...(args[0] || {}), resizeWidth: 512, resizeHeight: 512, resizeQuality: "medium" });
+    }
+    return nativeCreateImageBitmap(source, ...args);
+  };
+}
+
+let renderer = null;
+let isSoftwareGpu = false;
+let maxAnisotropy = 4;
+const resolution = resolutionPolicy(window.devicePixelRatio || 1);
+let prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Frames are drawn only when something changed (camera, decals, resize).
+let needsRender = true;
+const invalidate = () => { needsRender = true; };
+
+const HOME_FOV = 38;
+const HOME = isCardCapture
+  ? { dist: 2.65, polar: 1.5, targetY: 1.38, az: -0.75 }
+  : { dist: 3.05, polar: 1.57, targetY: 0.95, az: 0 };
+let scene = null;
+let camera = null;
+let TARGET = null;
+let controls = null;
+let key = null;
+let athlete = null;
+let projector = null;
+let draco = null;
+let loader = null;
+let raycaster = null;
+let pointer = null;
+let projected = null;
+let toCamera = null;
+let clock = null;
 let userInteracted = false;
-controls.addEventListener("start", () => { controls.autoRotate = false; userInteracted = true; tween = null; });
-controls.addEventListener("change", invalidate);
 
-const arena = buildArena(scene, config.ring, {
-  accentColor: config.brand.accent,
-  maxAnisotropy: renderer.capabilities.getMaxAnisotropy()
-});
+function initThreeScene() {
+  if (scene) return;
+  accentColor = new THREE.Color(config.brand.accent);
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(HOME_FOV, 1, 0.1, 40);
+  TARGET = new THREE.Vector3(0, HOME.targetY, 0);
+  camera.position.setFromSpherical(new THREE.Spherical(HOME.dist, HOME.polar, HOME.az)).add(TARGET);
 
-const key = new THREE.DirectionalLight(0xfff0dc, 2.5);
-key.position.set(2.5, 4.5, 3.5);
-key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
-key.shadow.camera.near = 1; key.shadow.camera.far = 12;
-key.shadow.camera.left = key.shadow.camera.bottom = -1.6;
-key.shadow.camera.right = key.shadow.camera.top = 1.6;
-key.shadow.bias = -0.0005; key.shadow.normalBias = 0.03;
-key.shadow.radius = 4;
-scene.add(key);
-const rim = new THREE.DirectionalLight(accentColor, 1.9);
-rim.position.set(-3, 2.2, -3.5);
-scene.add(rim);
-// Cool edge light from the opposite back corner separates the silhouette from the backdrop.
-const edge = new THREE.DirectionalLight(0xdfe8ff, 1.1);
-edge.position.set(3.2, 2.8, -3);
-scene.add(edge);
-const fill = new THREE.DirectionalLight(0x8fa3ff, 0.45);
-fill.position.set(-2.5, 1.5, 3);
-scene.add(fill);
-scene.add(new THREE.AmbientLight(0xffffff, 0.15));
+  controls = new OrbitControls(camera, canvas);
+  controls.target.copy(TARGET);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.enablePan = false;
+  controls.minDistance = 1.2;
+  controls.maxDistance = ROPE_RADIUS - 0.2;
+  controls.minPolarAngle = 0.9;
+  controls.maxPolarAngle = 1.75;
+  controls.autoRotate = false;
+  controls.autoRotateSpeed = 0.7;
+  controls.addEventListener("start", () => { controls.autoRotate = false; userInteracted = true; tween = null; });
+  controls.addEventListener("change", invalidate);
 
-// Shadow-only floor so the fight-poster backdrop shows through and the athlete still grounds with a soft shadow.
-const floor = new THREE.Mesh(new THREE.CircleGeometry(ROPE_RADIUS + 0.4, 96), new THREE.ShadowMaterial({ opacity: 0.55 }));
-floor.rotation.x = -Math.PI / 2;
-floor.receiveShadow = true;
-scene.add(floor);
-const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.66, 96), new THREE.MeshBasicMaterial({ color: accentColor, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
-ring.rotation.x = -Math.PI / 2; ring.position.y = 0.002;
-scene.add(ring);
-// Soft spotlight pool on the canvas under the athlete.
-const pool = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), new THREE.MeshBasicMaterial({
-  map: (() => {
-    const c = document.createElement("canvas"); c.width = c.height = 256;
-    const g = c.getContext("2d");
-    const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-    grad.addColorStop(0, "rgba(255,244,228,0.55)");
-    grad.addColorStop(0.35, "rgba(255,244,228,0.22)");
-    grad.addColorStop(1, "rgba(255,244,228,0)");
-    g.fillStyle = grad; g.fillRect(0, 0, 256, 256);
-    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
-  })(),
-  transparent: true, depthWrite: false, toneMapped: false
-}));
-pool.rotation.x = -Math.PI / 2; pool.position.y = 0.001; pool.renderOrder = -1;
-scene.add(pool);
+  key = new THREE.DirectionalLight(0xfff0dc, 2.5);
+  key.position.set(2.5, 4.5, 3.5);
+  key.castShadow = !narrowViewport.matches;
+  const shadowSize = narrowViewport.matches ? 1024 : 2048;
+  key.shadow.mapSize.set(shadowSize, shadowSize);
+  key.shadow.camera.near = 1; key.shadow.camera.far = 12;
+  key.shadow.camera.left = key.shadow.camera.bottom = -1.6;
+  key.shadow.camera.right = key.shadow.camera.top = 1.6;
+  key.shadow.bias = -0.0005; key.shadow.normalBias = 0.03;
+  key.shadow.radius = 4;
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(accentColor, 1.9);
+  rim.position.set(-3, 2.2, -3.5);
+  scene.add(rim);
+  const edge = new THREE.DirectionalLight(0xdfe8ff, 1.1);
+  edge.position.set(3.2, 2.8, -3);
+  scene.add(edge);
+  const fill = new THREE.DirectionalLight(0x8fa3ff, 0.45);
+  fill.position.set(-2.5, 1.5, 3);
+  scene.add(fill);
+  scene.add(new THREE.HemisphereLight(0xfff5e8, 0x1c1e26, 0.55));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.15));
 
-const athlete = new THREE.Group();
-scene.add(athlete);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(ROPE_RADIUS + 0.4, 64), new THREE.ShadowMaterial({ opacity: 0.55 }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = !narrowViewport.matches;
+  scene.add(floor);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.66, 64), new THREE.MeshBasicMaterial({ color: accentColor, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.002;
+  scene.add(ring);
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), new THREE.MeshBasicMaterial({
+    map: (() => {
+      const c = document.createElement("canvas"); c.width = c.height = 128;
+      const g = c.getContext("2d");
+      const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      grad.addColorStop(0, "rgba(10,10,12,0.42)");
+      grad.addColorStop(0.16, "rgba(255,244,228,0.48)");
+      grad.addColorStop(0.4, "rgba(255,244,228,0.2)");
+      grad.addColorStop(1, "rgba(255,244,228,0)");
+      g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+    })(),
+    transparent: true, depthWrite: false, toneMapped: false
+  }));
+  pool.rotation.x = -Math.PI / 2; pool.position.y = 0.001; pool.renderOrder = -1;
+  scene.add(pool);
+
+  athlete = new THREE.Group();
+  scene.add(athlete);
+  projector = new THREE.Raycaster();
+  raycaster = new THREE.Raycaster();
+  pointer = new THREE.Vector2();
+  projected = new THREE.Vector3();
+  toCamera = new THREE.Vector3();
+  clock = new THREE.Clock();
+  draco = new DRACOLoader().setDecoderPath(`${THREE_ADDONS}libs/draco/`);
+  loader = new GLTFLoader().setDRACOLoader(draco);
+}
 
 /* ------------------------------------------------------------- slots */
 const slotMeshes = [];
@@ -211,22 +244,24 @@ const decalMaterialBase = { transparent: true, roughness: 0.7, metalness: 0, dep
 
 function slotTexture(spec) {
   const c = document.createElement("canvas");
-  c.width = 512; c.height = Math.max(160, Math.round(512 * spec.h / spec.w));
+  const baseW = narrowViewport.matches ? 256 : 512;
+  c.width = baseW; c.height = Math.max(80, Math.round(baseW * spec.h / spec.w));
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  tex.anisotropy = maxAnisotropy;
   return { canvas: c, tex };
 }
-// Artwork is drawn at 1024px wide so sponsor logos stay crisp in close-ups; empty slots stay at 512px.
-function ensureArtworkResolution(slot) {
-  if (slot.canvas.width >= 1024) return;
+// Artwork is drawn at higher resolution when high-res artwork is supplied; base resolution covers standard logos cleanly.
+function ensureArtworkResolution(slot, img) {
+  const targetW = narrowViewport.matches ? 512 : 1024;
+  if (slot.canvas.width >= targetW || (img && img.width <= slot.canvas.width)) return;
   const { spot } = slot;
-  slot.canvas.width = 1024;
-  slot.canvas.height = Math.max(320, Math.round(1024 * spot.h / spot.w));
+  slot.canvas.width = targetW;
+  slot.canvas.height = Math.max(160, Math.round(targetW * spot.h / spot.w));
   slot.tex.dispose();
   slot.tex = new THREE.CanvasTexture(slot.canvas);
   slot.tex.colorSpace = THREE.SRGBColorSpace;
-  slot.tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  slot.tex.anisotropy = maxAnisotropy;
   slot.mesh.material.map = slot.tex;
 }
 function drawSlot(slot) {
@@ -239,7 +274,8 @@ function drawSlot(slot) {
   // Skip the canvas redraw and texture upload when nothing this slot shows has changed.
   if (slot.inputs && inputs.every((v, i) => v === slot.inputs[i])) return;
   slot.inputs = inputs;
-  if (soldImg || state.logoImages[spot.id]) ensureArtworkResolution(slot);
+  const activeImg = soldImg || state.logoImages[spot.id];
+  if (activeImg) ensureArtworkResolution(slot, activeImg);
   const { canvas: c, tex } = slot;
   const g = c.getContext("2d");
   const u = c.width / 512;
@@ -294,7 +330,6 @@ const SIDE_RAY = {
   left: (x, y) => [new THREE.Vector3(3, y, x), new THREE.Vector3(-1, 0, 0)],
   right: (x, y) => [new THREE.Vector3(-3, y, -x), new THREE.Vector3(1, 0, 0)]
 };
-const projector = new THREE.Raycaster();
 
 const LATERAL = new Set(["left", "right"]);
 
@@ -307,7 +342,7 @@ function makeSlot(spot, side, meshes, owner = null, { anchor = null, layer = nul
   // An anchored placement (an arm bone or a prop) is offset from its anchor: shift the ray across the view to it.
   if (anchor) origin.add(anchor.clone().addScaledVector(dir, -anchor.dot(dir)));
   projector.set(origin, dir);
-  const hit = projector.intersectObjects(meshes, false)[0];
+  const hit = intersectPosedMeshes(projector, meshes)[0];
   if (!hit) { console.warn("No surface found for placement", spot.id, side); return null; }
   const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
   if (normal.dot(dir) > 0) normal.negate();
@@ -316,20 +351,40 @@ function makeSlot(spot, side, meshes, owner = null, { anchor = null, layer = nul
   // the logo's own frame, so a 90° side panel is w long up the leg and h thick.
   if (spec.rotate) m.multiply(new THREE.Matrix4().makeRotationZ(THREE.MathUtils.degToRad(spec.rotate)));
   const orientation = new THREE.Euler().setFromRotationMatrix(m);
-  // DecalGeometry only reads geometry + matrixWorld, so skinned bodies are projected as currently posed.
-  const target = hit.object.isSkinnedMesh
-    ? { geometry: posedGeometry(hit.object), matrixWorld: hit.object.matrixWorld }
+  // DecalGeometry only reads geometry + matrixWorld, so skinned bodies are projected onto a local slice of the posed mesh.
+  const subGeo = hit.object.isSkinnedMesh
+    ? localSubGeometry(hit.object, hit.point, Math.hypot(spec.w, spec.h, 0.10) * 0.65)
+    : null;
+  const localTris = subGeo?.userData.tris || null;
+  const target = subGeo
+    ? { geometry: subGeo, matrixWorld: hit.object.matrixWorld }
     : hit.object;
   const geo = new DecalGeometry(target, hit.point, orientation, new THREE.Vector3(spec.w, spec.h, 0.10));
+  subGeo?.dispose();
   const { canvas: c, tex } = slotTexture(spec);
-  let mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, ...decalMaterialBase }));
+  const decalMat = new THREE.MeshStandardMaterial({ map: tex, ...decalMaterialBase });
+  decalMat.customProgramCacheKey = () => "decal-v1";
+  let mesh = new THREE.Mesh(geo, decalMat);
   mesh.visible = !isCardCapture;
   mesh.userData.spotId = spot.id;
+  if (hit.object.isSkinnedMesh && geo.attributes.position.count >= 3) {
+    const pos = geo.attributes.position.array;
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i + 2 < geo.attributes.position.count; i += 3) {
+      const i0 = i * 3, i1 = (i + 1) * 3, i2 = (i + 2) * 3;
+      const cx = (pos[i0] + pos[i1] + pos[i2]) / 3 - hit.point.x;
+      const cy = (pos[i0 + 1] + pos[i1 + 1] + pos[i2 + 1]) / 3 - hit.point.y;
+      const cz = (pos[i0 + 2] + pos[i1 + 2] + pos[i2 + 2]) / 3 - hit.point.z;
+      const d = cx * cx + cy * cy + cz * cz;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    mesh.userData.anchorTri = [best, best + 1, best + 2];
+  }
   mesh.renderOrder = 2;
   athlete.add(mesh);
   const slot = { spot, side, mesh, canvas: c, tex, point: hit.point.clone(), normal, owner, layer };
   if (hit.object.isSkinnedMesh) {
-    slot.mesh = mesh = skinDecal(mesh, hit.object);
+    slot.mesh = mesh = skinDecal(mesh, hit.object, localTris);
     slot.anchor = surfaceAnchor(mesh, hit.point, normal);
   } else if (anchor) {
     // Prop decals ride on the prop's (unscaled) group, which follows its bone; the callout follows two local points.
@@ -338,6 +393,7 @@ function makeSlot(spot, side, meshes, owner = null, { anchor = null, layer = nul
   }
   slotMeshes.push(slot);
   drawSlot(slot);
+  if (renderer) renderer.initTexture(slot.tex);
   return slot;
 }
 
@@ -372,15 +428,21 @@ function syncGarmentLayers() {
   for (const [surface, groups] of itemProps.groups) {
     for (const group of groups) group.visible = !isCardCapture && !outfit && surface === item;
   }
-  renderer.shadowMap.needsUpdate = true;
+  if (renderer) renderer.shadowMap.needsUpdate = !isSoftwareGpu;
   invalidate();
 }
 
-function buildSlots(meshes, owner, missing, include) {
+const yieldToMain = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+async function buildSlots(meshes, owner, missing, include, rig = null) {
   // Each model carries only its own placements: the kit's on the tenant's model, a garment model's on that model.
-  (isShowcase ? showcasePlacements : allPlacements).forEach((spot) => {
+  const spots = (isShowcase ? showcasePlacements : allPlacements).filter((spot) => {
     const garment = garmentConfig(garmentOf(spot.id));
-    if ((garment.model ? garment.id : null) !== owner || !include(spot)) return;
+    return (garment.model ? garment.id : null) === owner && include(spot);
+  });
+  let sliceStart = performance.now();
+  const projectOne = (spot) => {
+    const garment = garmentConfig(garmentOf(spot.id));
     // An anchored placement needs its bone or prop: a rig without hand bones, say, leaves the gloves unplaced.
     const anchor = spot.anchor ? itemAnchors[spot.anchor] : null;
     const options = { anchor: anchor?.center || null, layer: garment.item ? garment.id : null };
@@ -390,7 +452,15 @@ function buildSlots(meshes, owner, missing, include) {
       if (!makeSlot(spot, side, anchor ? anchor.meshes : meshes, owner, options)) failedSides.push(side);
     }
     if (failedSides.length) missing.push({ id: spot.id, sides: failedSides });
-  });
+  };
+  for (const spot of spots) {
+    if (rig) rig.withProjectionPose(() => projectOne(spot));
+    else projectOne(spot);
+    if (performance.now() - sliceStart > 6) {
+      await yieldToMain();
+      sliceStart = performance.now();
+    }
+  }
 }
 
 /* --------------------------------------------------------------- model */
@@ -400,7 +470,7 @@ function facesPositiveZ(meshes) {
     let best = 0;
     for (const x of [-0.1, 0.1]) {
       projector.set(new THREE.Vector3(x, 0.05, dir * 3), new THREE.Vector3(0, 0, -dir));
-      const hit = projector.intersectObjects(meshes, false)[0];
+      const hit = intersectPosedMeshes(projector, meshes)[0];
       if (hit) best = Math.max(best, Math.abs(hit.point.z));
     }
     return best;
@@ -409,13 +479,25 @@ function facesPositiveZ(meshes) {
 }
 
 function normalise(root) {
-  const box = new THREE.Box3().setFromObject(root);
+  root.scale.setScalar(1);
+  root.position.set(0, 0, 0);
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  const childBox = new THREE.Box3();
+  root.traverse((o) => {
+    if (!o.isMesh || !o.geometry) return;
+    const g = o.isSkinnedMesh ? posedGeometry(o, { cache: false }) : o.geometry;
+    if (!g.boundingBox) g.computeBoundingBox();
+    childBox.copy(g.boundingBox).applyMatrix4(o.matrixWorld);
+    box.union(childBox);
+    if (o.isSkinnedMesh) g.dispose();
+  });
   const size = box.getSize(new THREE.Vector3());
-  root.scale.setScalar(MODEL_HEIGHT / size.y);
-  box.setFromObject(root);
-  root.position.y -= box.min.y;
-  root.position.x -= (box.min.x + box.max.x) / 2;
-  root.position.z -= (box.min.z + box.max.z) / 2;
+  const s = MODEL_HEIGHT / (size.y || 1);
+  root.scale.setScalar(s);
+  root.position.y = -box.min.y * s;
+  root.position.x = -((box.min.x + box.max.x) / 2) * s;
+  root.position.z = -((box.min.z + box.max.z) / 2) * s;
   root.updateMatrixWorld(true);
 }
 
@@ -423,30 +505,42 @@ function normalise(root) {
 function loadImage(src) {
   return new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = src; });
 }
-const sponsorsReady = Promise.all(Object.entries(config.sold || {}).map(async ([id, entry]) => {
-    if (!allPlacements.some((p) => p.id === id)) { console.warn(config.copy.unknownSponsorPlacement, id); return; }
-    state.sold[id] = entry;
-    if (entry.logo) {
-      try { state.soldImages[id] = await loadImage(entry.logo); }
-      catch { console.warn(config.copy.sponsorsLogoLoadError, id, entry.logo); }
-    }
-  }));
+for (const [id, entry] of Object.entries(config.sold || {})) {
+  if (!allPlacements.some((p) => p.id === id)) { console.warn(config.copy.unknownSponsorPlacement, id); continue; }
+  state.sold[id] = entry;
+}
+function loadSoldLogos() {
+  for (const [id, entry] of Object.entries(state.sold)) {
+    if (!entry.logo) continue;
+    loadImage(entry.logo).then((img) => {
+      state.soldImages[id] = img;
+      slotMeshes.forEach((s) => { if (s.spot.id === id) drawSlot(s); });
+      if (state.selected === id) renderSelection();
+    }).catch(() => { console.warn(config.copy.sponsorsLogoLoadError, id, entry.logo); });
+  }
+}
+const sponsorsReady = Promise.resolve();
 
 const modelUrl = new URLSearchParams(location.search).get("model") || config.model;
 const isEmbedded = window.self !== window.top || new URLSearchParams(location.search).has("embed");
 if (isEmbedded) document.documentElement.classList.add("is-embedded");
-const draco = new DRACOLoader().setDecoderPath(`${THREE_ADDONS}libs/draco/`);
-const loader = new GLTFLoader().setDRACOLoader(draco);
 // Shades, scales and faces a loaded athlete model the same way for the kit and any garment model.
 function prepareModel(gltf) {
   const root = gltf.scene;
   const meshes = [];
+  const castShadows = !isSoftwareGpu && !narrowViewport.matches;
   root.traverse((o) => {
     if (!o.isMesh) return;
-    o.castShadow = o.receiveShadow = true;
-    o.material = athleteMaterial(o.material, { anisotropy: renderer.capabilities.getMaxAnisotropy() });
-    for (const map of [o.material.normalMap, o.material.roughnessMap]) {
-      if (map) { map.anisotropy = renderer.capabilities.getMaxAnisotropy(); map.needsUpdate = true; }
+    o.castShadow = o.receiveShadow = castShadows;
+    o.material = athleteMaterial(o.material, { anisotropy: maxAnisotropy });
+    for (const map of [o.material.map, o.material.normalMap, o.material.roughnessMap]) {
+      if (!map) continue;
+      map.anisotropy = maxAnisotropy;
+      if (narrowViewport.matches && (map.image?.width > 1024 || map.image?.height > 1024)) {
+        map.generateMipmaps = false;
+        map.minFilter = THREE.LinearFilter;
+      }
+      map.needsUpdate = true;
     }
     if (o.isSkinnedMesh) o.frustumCulled = false; // limbs leave the rest-pose bounds mid-move
     meshes.push(o);
@@ -458,23 +552,41 @@ function prepareModel(gltf) {
   if (!frontFacesPositiveZ) { root.rotateY(Math.PI); normalise(root); }
   return { root, meshes };
 }
-function projectSlots(rig, meshes, owner, root = null) {
+async function warmModelTextures(meshes) {
+  if (!renderer) return;
+  for (const m of meshes) {
+    for (const map of [m.material?.map, m.material?.normalMap, m.material?.roughnessMap]) {
+      if (map) {
+        renderer.initTexture(map);
+        await yieldToMain();
+      }
+    }
+  }
+}
+async function projectSlots(rig, meshes, owner, root = null) {
   const missing = [];
   const items = !owner && root && garments.some((garment) => garment.item);
-  const project = () => {
-    for (const m of meshes) if (m.isSkinnedMesh) { m.computeBoundingBox(); m.computeBoundingSphere(); }
-    if (items) itemAnchors = armAnchors(root, meshes);
-    buildSlots(meshes, owner, missing, (spot) => !isPropSpot(spot));
-  };
-  if (rig) rig.withProjectionPose(project);
-  else project();
+  for (const m of meshes) {
+    if (!m.isSkinnedMesh) continue;
+    let geo;
+    if (rig) rig.withProjectionPose(() => { geo = posedGeometry(m); });
+    else geo = posedGeometry(m);
+    await yieldToMain();
+    spatialIndex(geo);
+    await yieldToMain();
+  }
+  if (items) {
+    if (rig) rig.withProjectionPose(() => { itemAnchors = armAnchors(root, meshes); });
+    else itemAnchors = armAnchors(root, meshes);
+  }
+  await buildSlots(meshes, owner, missing, (spot) => !isPropSpot(spot), rig);
   // Props are fitted (and their decals projected) in the pose the visitor sees, so a cap sits level on the head;
   // their decals ride on the props from then on.
   const surfaces = new Set(garments.map((garment) => garment.item).filter((item) => item && item !== "body"));
   if (items && surfaces.size) {
     itemProps = buildItemProps(root, meshes, surfaces, { parent: athlete, gloveColor: config.brand.accent });
     Object.assign(itemAnchors, itemProps.anchors);
-    buildSlots(meshes, owner, missing, isPropSpot);
+    await buildSlots(meshes, owner, missing, isPropSpot, null);
   }
   if (isStudio && !owner) {
     // Garment-model placements are projected (and counted) on their own model, not this one.
@@ -488,11 +600,11 @@ function projectSlots(rig, meshes, owner, root = null) {
 function loadOutfits() {
   for (const garment of garments) {
     if (!garment.model) continue;
-    loader.load(garment.model, (gltf) => {
+    loader.load(garment.model, async (gltf) => {
       const { root, meshes } = prepareModel(gltf);
       root.visible = false;
       const rig = motionFor(root, gltf.animations);
-      projectSlots(rig, meshes, garment.id);
+      await projectSlots(rig, meshes, garment.id);
       outfits.set(garment.id, { root, motion: rig });
       renderAll();
       // A link to one of this garment's placements framed it before its slot existed: frame it again, unless the
@@ -508,34 +620,136 @@ function loadOutfits() {
     });
   }
 }
-loader.load(
-  modelUrl,
-  (gltf) => {
-    const { root, meshes } = prepareModel(gltf);
-    setupMotion(root, gltf.animations);
-    kit = { root, motion };
-    projectSlots(motion, meshes, null, root);
-    renderer.shadowMap.needsUpdate = true;
-    // The first frames upload the 4K atlas and compile shaders: give them a grace window before judging speed.
-    firstRender().then(() => {
-      settle(resolution, performance.now()); stage.classList.add("is-ready"); playIntro();
-      if (!isCardCapture) loadOutfits();
-    });
-  },
-  (xhr) => {
-    if (!xhr.total) return;
-    const percent = Math.round((xhr.loaded / xhr.total) * 100);
-    loadingEl.textContent = formatCopy(config.copy.modelLoadingProgress, { percent });
-    loadBar?.style.setProperty("--progress", `${percent}%`);
-  },
-  (err) => {
-    console.error(err);
-    stage.classList.add("has-error");
-    loadingEl.textContent = config.copy.modelLoadError;
-    if (isStudio) window.dispatchEvent(new CustomEvent("studio:fit", { detail: { error: true } }));
-    firstRender();
+let loopStarted = false;
+function ensureLoop() {
+  if (loopStarted) return;
+  loopStarted = true;
+  requestAnimationFrame(animate);
+}
+async function startViewer() {
+  const [
+    threeMod,
+    { OrbitControls: OC },
+    { RoomEnvironment: RE },
+    { buildArena: ba, ROPE_RADIUS: rr },
+    { GLTFLoader: GLTF },
+    { DRACOLoader: DRACO },
+    { DecalGeometry: DG },
+    motionMod,
+    { athleteMaterial: am },
+    { armAnchors: aa, buildItemProps: bip }
+  ] = await Promise.all([
+    import("three"),
+    import("three/addons/controls/OrbitControls.js"),
+    import("three/addons/environments/RoomEnvironment.js"),
+    import("./arena.js"),
+    import("three/addons/loaders/GLTFLoader.js"),
+    import("three/addons/loaders/DRACOLoader.js"),
+    import("three/addons/geometries/DecalGeometry.js"),
+    import("./motion.js"),
+    import("./materials.js"),
+    import("./items.js")
+  ]);
+  THREE = threeMod;
+  OrbitControls = OC;
+  RoomEnvironment = RE;
+  buildArena = ba;
+  ROPE_RADIUS = rr;
+  GLTFLoader = GLTF;
+  DRACOLoader = DRACO;
+  DecalGeometry = DG;
+  createMotion = motionMod.createMotion;
+  intersectPosedMeshes = motionMod.intersectPosedMeshes;
+  localSubGeometry = motionMod.localSubGeometry;
+  posedGeometry = motionMod.posedGeometry;
+  spatialIndex = motionMod.spatialIndex;
+  readAnchor = motionMod.readAnchor;
+  skinDecal = motionMod.skinDecal;
+  surfaceAnchor = motionMod.surfaceAnchor;
+  athleteMaterial = am;
+  armAnchors = aa;
+  buildItemProps = bip;
+
+  await yieldToMain();
+  initThreeScene();
+  await yieldToMain();
+  if (!renderer) {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: !narrowViewport.matches, alpha: true, powerPreference: "high-performance" });
+    await yieldToMain();
+    const gl = renderer.getContext();
+    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+    const gpuName = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : "";
+    isSoftwareGpu = /SwiftShader|llvmpipe|Software|Basic Render Driver/i.test(gpuName);
+    maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+    if (isSoftwareGpu) {
+      resolution.ratio = 1;
+      prefersReducedMotion = true;
+    }
+    const useShadows = !isSoftwareGpu && !narrowViewport.matches;
+    renderer.setPixelRatio(resolution.ratio);
+    renderer.toneMapping = THREE.NeutralToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.shadowMap.enabled = useShadows;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = false;
+    key.castShadow = useShadows;
+    resize();
   }
-);
+  await yieldToMain();
+  if (!scene.environment && !isSoftwareGpu) {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.55;
+    await yieldToMain();
+  }
+  buildArena(scene, config.ring, {
+    accentColor: config.brand.accent,
+    maxAnisotropy
+  });
+  await yieldToMain();
+  loadSoldLogos();
+  loader.load(
+    modelUrl,
+    async (gltf) => {
+      await yieldToMain();
+      const { root, meshes } = prepareModel(gltf);
+      await yieldToMain();
+      await warmModelTextures(meshes);
+      await yieldToMain();
+      setupMotion(root, gltf.animations);
+      kit = { root, motion };
+      await yieldToMain();
+      await projectSlots(motion, meshes, null, root);
+      await yieldToMain();
+      if (renderer.compileAsync) {
+        await renderer.compileAsync(scene, camera);
+        await yieldToMain();
+      }
+      if (renderer.shadowMap.enabled) renderer.shadowMap.needsUpdate = true;
+      // The first frames upload the 4K atlas and compile shaders: give them a grace window before judging speed.
+      await firstRender();
+      await yieldToMain();
+      settle(resolution, performance.now());
+      stage.classList.add("is-ready");
+      playIntro();
+      ensureLoop();
+      if (!isCardCapture) loadOutfits();
+    },
+    (xhr) => {
+      if (!xhr.total) return;
+      const percent = Math.round((xhr.loaded / xhr.total) * 100);
+      loadingEl.textContent = formatCopy(config.copy.modelLoadingProgress, { percent });
+      loadBar?.style.setProperty("--progress", `${percent}%`);
+    },
+    (err) => {
+      console.error(err);
+      stage.classList.add("has-error");
+      loadingEl.textContent = config.copy.modelLoadError;
+      if (isStudio) window.dispatchEvent(new CustomEvent("studio:fit", { detail: { error: true } }));
+      firstRender().then(ensureLoop);
+    }
+  );
+}
 /* ------------------------------------------------------------- moves */
 let motion = null;
 let bodyMoving = false;
@@ -713,11 +927,12 @@ function renderSelection() {
   previewThumb.hidden = !preview || Boolean(sold || locked);
   if (preview) previewImg.src = preview;
   const cardLogo = sold ? state.soldImages[spot.id] : locked ? state.bidImages[spot.id] : null;
-  sponsorLogoEl.hidden = !cardLogo;
-  if (cardLogo) {
-    sponsorLogoEl.src = cardLogo.src;
+  const cardLogoSrc = cardLogo?.src || sold?.logo || null;
+  sponsorLogoEl.hidden = !cardLogoSrc;
+  if (cardLogoSrc) {
+    sponsorLogoEl.src = cardLogoSrc;
     sponsorLogoEl.alt = `${sold ? sold.sponsor : holder || config.copy.sponsorFallback} logo`;
-    sponsorLogoEl.classList.toggle("is-dark-art", isDarkArtwork(cardLogo));
+    sponsorLogoEl.classList.toggle("is-dark-art", cardLogo ? isDarkArtwork(cardLogo) : false);
   }
   const anyOpen = !isShowcase && allPlacements.some((p) => !isSold(p.id));
   openPlacementsBtn.hidden = isShowcase || !sold || !anyOpen;
@@ -809,7 +1024,7 @@ function setGarment(garment) {
   const banner = g.item === "banner" ? bannerFraming() : null;
   if (banner) flyTo(banner);
   else if (target && !onThisSide.some((p) => p.id === spot)) flyTo({ az: SIDE_AZIMUTH[target.side], ...homeFraming() });
-  else if (Math.abs(controls.target.x) > 0.01) flyTo(homeFraming());
+  else if (controls && Math.abs(controls.target.x) > 0.01) flyTo(homeFraming());
   renderAll();
 }
 
@@ -819,9 +1034,16 @@ let tween = null;
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const homeFraming = () => ({ polar: HOME.polar, dist: HOME.dist, targetY: HOME.targetY, targetX: 0, fov: HOME_FOV });
 function cameraPose() {
+  if (!controls || !camera) return { az: state.azimuth, polar: HOME.polar, dist: HOME.dist, targetY: HOME.targetY, targetX: 0, fov: HOME_FOV };
   return { az: controls.getAzimuthalAngle(), polar: controls.getPolarAngle(), dist: camera.position.distanceTo(controls.target), targetY: controls.target.y, targetX: controls.target.x, fov: camera.fov };
 }
 function flyTo(to, { duration = 0.9, from = cameraPose(), onDone = null } = {}) {
+  if (!controls || !camera) {
+    if (to.az !== undefined) state.azimuth = to.az;
+    renderAll();
+    onDone?.();
+    return;
+  }
   controls.autoRotate = false;
   turntablePending = false;
   from = { ...cameraPose(), ...from };
@@ -832,7 +1054,8 @@ function flyTo(to, { duration = 0.9, from = cameraPose(), onDone = null } = {}) 
   invalidate();
 }
 function rotateTo(azimuth) { flyTo({ az: azimuth }, { duration: 0.75 }); }
-function applyPose({ az, polar, dist, targetY, targetX = controls.target.x, fov = camera.fov }) {
+function applyPose({ az, polar, dist, targetY, targetX = controls?.target.x || 0, fov = camera?.fov || HOME_FOV }) {
+  if (!controls || !camera) return;
   controls.target.set(targetX, targetY, 0);
   camera.position.setFromSpherical(new THREE.Spherical(dist, polar, az)).add(controls.target);
   if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
@@ -858,7 +1081,7 @@ function slotFor(spot) {
 function flyToPlacement(spot) {
   motion?.settle();
   const slot = slotFor(spot);
-  const targetY = slot ? THREE.MathUtils.clamp(slot.point.y, 0.55, 1.5) : HOME.targetY;
+  const targetY = slot ? Math.min(1.5, Math.max(0.55, slot.point.y)) : HOME.targetY;
   // The banner stands beside the athlete, so its close-ups re-centre on it; everything else orbits the athlete.
   const targetX = spot.anchor === "banner" && slot ? slot.point.x : 0;
   flyTo({ az: SIDE_AZIMUTH[spot.side], polar: 1.55, dist: 1.85, targetY, targetX, fov: HOME_FOV }, { duration: 1.05 });
@@ -886,15 +1109,14 @@ function playIntro() {
 }
 document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => flyTo({ az: SIDE_AZIMUTH[b.dataset.view], ...homeFraming() })));
 canvas.addEventListener("dblclick", () => flyTo(homeFraming()));
-document.getElementById("rotatePrev").addEventListener("click", () => rotateTo(controls.getAzimuthalAngle() - Math.PI / 4));
-document.getElementById("rotateNext").addEventListener("click", () => rotateTo(controls.getAzimuthalAngle() + Math.PI / 4));
+document.getElementById("rotatePrev").addEventListener("click", () => rotateTo((controls ? controls.getAzimuthalAngle() : state.azimuth) - Math.PI / 4));
+document.getElementById("rotateNext").addEventListener("click", () => rotateTo((controls ? controls.getAzimuthalAngle() : state.azimuth) + Math.PI / 4));
 document.querySelectorAll(".garment-tab").forEach((b) => b.addEventListener("click", () => setGarment(b.dataset.garment)));
 
 /* ------------------------------------------------------------ picking */
-const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2();
 let downAt = null;
 function pickSlot(e) {
+  if (!raycaster || !pointer || !camera) return null;
   const rect = canvas.getBoundingClientRect();
   pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
@@ -924,8 +1146,8 @@ canvas.addEventListener("pointermove", (e) => {
 });
 canvas.addEventListener("pointerleave", () => setHovered(null));
 canvas.addEventListener("keydown", (e) => {
-  if (e.key === "ArrowLeft") { e.preventDefault(); rotateTo(controls.getAzimuthalAngle() - Math.PI / 4); }
-  if (e.key === "ArrowRight") { e.preventDefault(); rotateTo(controls.getAzimuthalAngle() + Math.PI / 4); }
+  if (e.key === "ArrowLeft") { e.preventDefault(); rotateTo((controls ? controls.getAzimuthalAngle() : state.azimuth) - Math.PI / 4); }
+  if (e.key === "ArrowRight") { e.preventDefault(); rotateTo((controls ? controls.getAzimuthalAngle() : state.azimuth) + Math.PI / 4); }
 });
 
 /* ------------------------------------------------------- logo upload */
@@ -1122,9 +1344,11 @@ function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   if (!w || !h) return;
   settle(resolution, performance.now());
-  renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
+  if (renderer) renderer.setSize(w, h, false);
+  if (camera) {
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
   invalidate();
 }
 new ResizeObserver(resize).observe(stage);
@@ -1159,8 +1383,6 @@ stage.append(callout);
 const calloutCode = callout.querySelector(".spot-callout-code");
 const calloutName = callout.querySelector(".spot-callout-name");
 const calloutMeta = callout.querySelector(".spot-callout-meta");
-const projected = new THREE.Vector3();
-const toCamera = new THREE.Vector3();
 function renderCalloutText() {
   const spot = findPlacement();
   if (!spot) {
@@ -1181,7 +1403,7 @@ function positionCallout() {
   const spot = findPlacement();
   const slot = spot ? slotFor(spot) : null;
   const ready = stage.classList.contains("is-ready") && !(tween && tween.duration > 2);
-  if (!slot || !ready) { callout.classList.remove("is-visible"); return; }
+  if (!slot || !ready || !camera || !toCamera || !projected) { callout.classList.remove("is-visible"); return; }
   if (bodyMoving && slot.anchor) readAnchor(slot.anchor, slot.point, slot.normal);
   else if (bodyMoving && slot.follow) {
     slot.mesh.localToWorld(slot.point.copy(slot.follow.local));
@@ -1204,21 +1426,21 @@ function printSize(spot) {
 }
 
 let lastSide = null;
-const clock = new THREE.Clock();
+let slowDevice = false;
 function animate(now) {
   requestAnimationFrame(animate);
+  if (!stageVisible || document.hidden || !renderer || !clock) { lastFrameAt = 0; return; }
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (!stageVisible || document.hidden) { lastFrameAt = 0; return; }
   stepTween(dt);
   controls.update(dt);
-  bodyMoving = Boolean(motion?.update(dt));
+  bodyMoving = Boolean(motion && (!slowDevice || motion.active) && motion.update(dt));
   // A rig hidden mid-move (the visitor switched garments) keeps settling out of sight, so it reappears in its stance.
   for (const rig of [kit, ...outfits.values()]) {
     if (rig?.motion && rig.motion !== motion && rig.motion.active) rig.motion.update(dt);
   }
   if (bodyMoving) {
     // Breathing barely moves the shadow: redraw it for moves and blends only.
-    if (motion.active) renderer.shadowMap.needsUpdate = true;
+    if (motion.active && !slowDevice) renderer.shadowMap.needsUpdate = true;
     invalidate();
   }
   if (!needsRender) { lastFrameAt = 0; return; }
@@ -1234,9 +1456,27 @@ function animate(now) {
     renderInventory();
   }
   renderOrientation();
+  const renderStart = performance.now();
   renderer.render(scene, camera);
+  const renderMs = performance.now() - renderStart;
+  if (renderMs > 38) {
+    slowDevice = true;
+    if (!userInteracted) {
+      controls.autoRotate = false;
+      turntablePending = false;
+      if (tween) {
+        const { from, delta, onDone } = tween;
+        applyPose({ az: from.az + delta.az, polar: from.polar + delta.polar, dist: from.dist + delta.dist, targetY: from.targetY + delta.targetY, targetX: from.targetX + delta.targetX, fov: from.fov + delta.fov });
+        tween = null;
+        lastSide = null;
+        onDone?.();
+      }
+      motion?.settle();
+    }
+  }
   positionCallout();
   if (now) sampleFrame(now);
 }
+selectInitial();
 renderAll();
-requestAnimationFrame(animate);
+startViewer();

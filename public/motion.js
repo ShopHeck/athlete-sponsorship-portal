@@ -4,20 +4,27 @@ import * as THREE from "three";
 // Nearest-vertex lookup over a skinned mesh's rest-pose positions (uniform hash grid).
 // Spatial hash of a geometry's triangles: finds the body triangle a decal vertex was clipped from, so artwork maps
 // to that exact surface rather than a nearby one (e.g. a braid resting on the chest).
-function triangleGrid(geometry) {
+function triangleGrid(geometry, subsetTris = null) {
   const pos = geometry.attributes.position, index = geometry.index;
-  const vert = index ? (t, k) => index.getX(t * 3 + k) : (t, k) => t * 3 + k;
-  const count = (index ? index.count : pos.count) / 3;
-  geometry.computeBoundingBox();
+  const posArr = pos.array, idxArr = index ? index.array : null;
+  const vert = idxArr ? (t, k) => idxArr[t * 3 + k] : (t, k) => t * 3 + k;
+  const count = (idxArr ? idxArr.length : pos.count) / 3;
+  if (!geometry.boundingBox) geometry.computeBoundingBox();
   const size = geometry.boundingBox.getSize(new THREE.Vector3());
   const cell = Math.max(size.x, size.y, size.z) / 160 || 1;
-  const key = (x, y, z) => `${x},${y},${z}`;
-  const cells = new Map(), box = new THREE.Box3(), v = new THREE.Vector3();
-  for (let t = 0; t < count; t++) {
-    box.makeEmpty();
-    for (let k = 0; k < 3; k++) box.expandByPoint(v.fromBufferAttribute(pos, vert(t, k)));
-    const x0 = Math.floor(box.min.x / cell), y0 = Math.floor(box.min.y / cell), z0 = Math.floor(box.min.z / cell);
-    const x1 = Math.floor(box.max.x / cell), y1 = Math.floor(box.max.y / cell), z1 = Math.floor(box.max.z / cell);
+  const invCell = 1 / cell;
+  const key = (x, y, z) => ((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) | 0;
+  const cells = new Map();
+  const total = subsetTris ? subsetTris.length : count;
+  for (let s = 0; s < total; s++) {
+    const t = subsetTris ? subsetTris[s] : s;
+    const i0 = vert(t, 0) * 3, i1 = vert(t, 1) * 3, i2 = vert(t, 2) * 3;
+    const x0 = Math.floor(Math.min(posArr[i0], posArr[i1], posArr[i2]) * invCell);
+    const y0 = Math.floor(Math.min(posArr[i0 + 1], posArr[i1 + 1], posArr[i2 + 1]) * invCell);
+    const z0 = Math.floor(Math.min(posArr[i0 + 2], posArr[i1 + 2], posArr[i2 + 2]) * invCell);
+    const x1 = Math.floor(Math.max(posArr[i0], posArr[i1], posArr[i2]) * invCell);
+    const y1 = Math.floor(Math.max(posArr[i0 + 1], posArr[i1 + 1], posArr[i2 + 1]) * invCell);
+    const z1 = Math.floor(Math.max(posArr[i0 + 2], posArr[i1 + 2], posArr[i2 + 2]) * invCell);
     for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) {
       const k = key(x, y, z);
       let list = cells.get(k);
@@ -27,15 +34,31 @@ function triangleGrid(geometry) {
   }
   const tri = new THREE.Triangle(), closest = new THREE.Vector3(), best = new THREE.Vector3();
   return function locate(p, outBary) {
-    const cx = Math.floor(p.x / cell), cy = Math.floor(p.y / cell), cz = Math.floor(p.z / cell);
+    const cx = Math.floor(p.x * invCell), cy = Math.floor(p.y * invCell), cz = Math.floor(p.z * invCell);
     let found = -1, bestD = Infinity;
-    for (let r = 1; r <= 4 && found < 0; r *= 2) {
-      for (let x = cx - r; x <= cx + r; x++) for (let y = cy - r; y <= cy + r; y++) for (let z = cz - r; z <= cz + r; z++) {
-        for (const t of cells.get(key(x, y, z)) || []) {
-          tri.setFromAttributeAndIndices(pos, vert(t, 0), vert(t, 1), vert(t, 2)).closestPointToPoint(p, closest);
-          const d = closest.distanceToSquared(p);
-          if (d < bestD) { bestD = d; found = t; best.copy(closest); }
+    const c0 = cells.get(key(cx, cy, cz));
+    if (c0) {
+      for (let i = 0; i < c0.length; i++) {
+        const t = c0[i];
+        tri.setFromAttributeAndIndices(pos, vert(t, 0), vert(t, 1), vert(t, 2)).closestPointToPoint(p, closest);
+        const d = closest.distanceToSquared(p);
+        if (d < bestD) { bestD = d; found = t; best.copy(closest); if (d < 1e-8) break; }
+      }
+    }
+    if (bestD > 1e-6) {
+      for (let r = 1; r <= 4 && (found < 0 || r === 1); r *= 2) {
+        for (let x = cx - r; x <= cx + r; x++) for (let y = cy - r; y <= cy + r; y++) for (let z = cz - r; z <= cz + r; z++) {
+          if (r === 1 && x === cx && y === cy && z === cz) continue;
+          const list = cells.get(key(x, y, z));
+          if (!list) continue;
+          for (let i = 0; i < list.length; i++) {
+            const t = list[i];
+            tri.setFromAttributeAndIndices(pos, vert(t, 0), vert(t, 1), vert(t, 2)).closestPointToPoint(p, closest);
+            const d = closest.distanceToSquared(p);
+            if (d < bestD) { bestD = d; found = t; best.copy(closest); }
+          }
         }
+        if (found >= 0) break;
       }
     }
     if (found < 0) return null;
@@ -46,30 +69,185 @@ function triangleGrid(geometry) {
   };
 }
 
+const BINS = 64;
+const spatialCache = new WeakMap();
+export function spatialIndex(geo) {
+  let entry = spatialCache.get(geo);
+  if (entry) return entry;
+  geo.computeBoundingBox();
+  const minY = geo.boundingBox.min.y, maxY = geo.boundingBox.max.y;
+  const spanY = (maxY - minY) || 1;
+  const bins = Array.from({ length: BINS }, () => []);
+  const pos = geo.attributes.position.array;
+  const idx = geo.index ? geo.index.array : null;
+  const count = idx ? idx.length : pos.length / 3;
+  for (let i = 0; i < count; i += 3) {
+    const ia = (idx ? idx[i] : i) * 3;
+    const ib = (idx ? idx[i + 1] : i + 1) * 3;
+    const ic = (idx ? idx[i + 2] : i + 2) * 3;
+    const y0 = Math.min(pos[ia + 1], pos[ib + 1], pos[ic + 1]);
+    const y1 = Math.max(pos[ia + 1], pos[ib + 1], pos[ic + 1]);
+    const b0 = Math.max(0, Math.min(BINS - 1, Math.floor(((y0 - minY) / spanY) * BINS)));
+    const b1 = Math.max(0, Math.min(BINS - 1, Math.floor(((y1 - minY) / spanY) * BINS)));
+    for (let b = b0; b <= b1; b++) bins[b].push(i);
+  }
+  entry = { minY, maxY, spanY, bins, count };
+  spatialCache.set(geo, entry);
+  return entry;
+}
+
+export function localSubGeometry(body, worldPoint, radius) {
+  const geo = body.isSkinnedMesh ? posedGeometry(body) : body.geometry;
+  const inv = body.matrixWorld.clone().invert();
+  const lc = worldPoint.clone().applyMatrix4(inv);
+  const scale = new THREE.Vector3().setFromMatrixScale(inv);
+  const r = radius * Math.max(Math.abs(scale.x), Math.abs(scale.y), Math.abs(scale.z));
+  const minX = lc.x - r, maxX = lc.x + r;
+  const minY = lc.y - r, maxY = lc.y + r;
+  const minZ = lc.z - r, maxZ = lc.z + r;
+  const { minY: gMinY, spanY, bins, count } = spatialIndex(geo);
+  const b0 = Math.max(0, Math.min(BINS - 1, Math.floor(((minY - gMinY) / spanY) * BINS)));
+  const b1 = Math.max(0, Math.min(BINS - 1, Math.floor(((maxY - gMinY) / spanY) * BINS)));
+  const seen = new Uint8Array(Math.ceil(count / 3));
+  const pos = geo.attributes.position.array;
+  const idx = geo.index ? geo.index.array : null;
+  const outPos = [], tris = [];
+  for (let b = b0; b <= b1; b++) {
+    const list = bins[b];
+    for (let k = 0; k < list.length; k++) {
+      const i = list[k];
+      const t = (i / 3) | 0;
+      if (seen[t]) continue;
+      seen[t] = 1;
+      const a = (idx ? idx[i] : i) * 3;
+      const bIdx = (idx ? idx[i + 1] : i + 1) * 3;
+      const c = (idx ? idx[i + 2] : i + 2) * 3;
+      if ((pos[a + 1] < minY && pos[bIdx + 1] < minY && pos[c + 1] < minY) || (pos[a + 1] > maxY && pos[bIdx + 1] > maxY && pos[c + 1] > maxY) ||
+          (pos[a] < minX && pos[bIdx] < minX && pos[c] < minX) || (pos[a] > maxX && pos[bIdx] > maxX && pos[c] > maxX) ||
+          (pos[a + 2] < minZ && pos[bIdx + 2] < minZ && pos[c + 2] < minZ) || (pos[a + 2] > maxZ && pos[bIdx + 2] > maxZ && pos[c + 2] > maxZ)) continue;
+      outPos.push(pos[a], pos[a + 1], pos[a + 2], pos[bIdx], pos[bIdx + 1], pos[bIdx + 2], pos[c], pos[c + 1], pos[c + 2]);
+      tris.push(t);
+    }
+  }
+  const sub = new THREE.BufferGeometry();
+  sub.setAttribute("position", new THREE.Float32BufferAttribute(outPos, 3));
+  sub.computeVertexNormals();
+  sub.userData.tris = new Uint32Array(tris);
+  return sub;
+}
+
+export function intersectPosedMeshes(raycaster, meshes) {
+  if (Math.abs(raycaster.ray.direction.y) > 1e-4) {
+    return raycaster.intersectObjects(meshes, false);
+  }
+  const hits = [];
+  const origin = raycaster.ray.origin;
+  for (const m of meshes) {
+    if (!m.isSkinnedMesh) {
+      hits.push(...raycaster.intersectObject(m, false));
+      continue;
+    }
+    const geo = posedGeometry(m);
+    const inv = m.matrixWorld.clone().invert();
+    const localY = origin.clone().applyMatrix4(inv).y;
+    const { minY: gMinY, spanY, bins, count } = spatialIndex(geo);
+    const b0 = Math.max(0, Math.min(BINS - 1, Math.floor(((localY - 0.005 - gMinY) / spanY) * BINS)));
+    const b1 = Math.max(0, Math.min(BINS - 1, Math.floor(((localY + 0.005 - gMinY) / spanY) * BINS)));
+    const seen = new Uint8Array(Math.ceil(count / 3));
+    const pos = geo.attributes.position.array;
+    const idx = geo.index ? geo.index.array : null;
+    const outPos = [];
+    for (let b = b0; b <= b1; b++) {
+      const list = bins[b];
+      for (let k = 0; k < list.length; k++) {
+        const i = list[k];
+        const t = (i / 3) | 0;
+        if (seen[t]) continue;
+        seen[t] = 1;
+        const a = (idx ? idx[i] : i) * 3;
+        const bIdx = (idx ? idx[i + 1] : i + 1) * 3;
+        const c = (idx ? idx[i + 2] : i + 2) * 3;
+        if ((pos[a + 1] < localY - 0.005 && pos[bIdx + 1] < localY - 0.005 && pos[c + 1] < localY - 0.005) ||
+            (pos[a + 1] > localY + 0.005 && pos[bIdx + 1] > localY + 0.005 && pos[c + 1] > localY + 0.005)) continue;
+        outPos.push(pos[a], pos[a + 1], pos[a + 2], pos[bIdx], pos[bIdx + 1], pos[bIdx + 2], pos[c], pos[c + 1], pos[c + 2]);
+      }
+    }
+    if (!outPos.length) continue;
+    const sliceGeo = new THREE.BufferGeometry();
+    sliceGeo.setAttribute("position", new THREE.Float32BufferAttribute(outPos, 3));
+    const proxy = new THREE.Mesh(sliceGeo, m.material);
+    proxy.matrixWorld.copy(m.matrixWorld);
+    const meshHits = raycaster.intersectObject(proxy, false);
+    sliceGeo.dispose();
+    for (const h of meshHits) {
+      h.object = m;
+      hits.push(h);
+    }
+  }
+  hits.sort((a, b) => a.distance - b.distance);
+  return hits;
+}
+
 const posed = new WeakMap();
 // The body as currently posed (the rest stance), in its local space. Placements are projected onto this so they
 // land where visitors see the garment, not on the arms-out bind pose the rig was built from.
-export function posedGeometry(body) {
-  let geo = posed.get(body);
-  if (geo) return geo;
+export function posedGeometry(body, { cache = true } = {}) {
+  if (cache) {
+    const cached = posed.get(body);
+    if (cached) return cached;
+  }
   body.updateMatrixWorld(true);
   body.skeleton.update();
-  const n = body.geometry.attributes.position.count, out = new Float32Array(n * 3), v = new THREE.Vector3();
-  for (let i = 0; i < n; i++) body.getVertexPosition(i, v).toArray(out, i * 3);
-  geo = new THREE.BufferGeometry();
+  const posAttr = body.geometry.attributes.position;
+  const sIdxAttr = body.geometry.attributes.skinIndex;
+  const sWgtAttr = body.geometry.attributes.skinWeight;
+  const n = posAttr.count, out = new Float32Array(n * 3);
+  const bones = body.skeleton.bones, inverses = body.skeleton.boneInverses;
+  const bm = new Float32Array(bones.length * 16);
+  const tmpM = new THREE.Matrix4();
+  for (let b = 0; b < bones.length; b++) {
+    tmpM.multiplyMatrices(bones[b].matrixWorld, inverses[b]).multiply(body.bindMatrix);
+    tmpM.premultiply(body.bindMatrixInverse);
+    tmpM.toArray(bm, b * 16);
+  }
+  if (!posAttr.isInterleavedBufferAttribute && !sIdxAttr.isInterleavedBufferAttribute && !sWgtAttr.isInterleavedBufferAttribute) {
+    const pos = posAttr.array, sIdx = sIdxAttr.array, sWgt = sWgtAttr.array;
+    for (let i = 0; i < n; i++) {
+      const i3 = i * 3, i4 = i * 4;
+      const px = pos[i3], py = pos[i3 + 1], pz = pos[i3 + 2];
+      let rx = 0, ry = 0, rz = 0;
+      for (let k = 0; k < 4; k++) {
+        const w = sWgt[i4 + k];
+        if (w === 0) continue;
+        const mOff = sIdx[i4 + k] * 16;
+        rx += (bm[mOff] * px + bm[mOff + 4] * py + bm[mOff + 8] * pz + bm[mOff + 12]) * w;
+        ry += (bm[mOff + 1] * px + bm[mOff + 5] * py + bm[mOff + 9] * pz + bm[mOff + 13]) * w;
+        rz += (bm[mOff + 2] * px + bm[mOff + 6] * py + bm[mOff + 10] * pz + bm[mOff + 14]) * w;
+      }
+      out[i3] = rx; out[i3 + 1] = ry; out[i3 + 2] = rz;
+    }
+  } else {
+    const v = new THREE.Vector3();
+    for (let i = 0; i < n; i++) body.getVertexPosition(i, v).toArray(out, i * 3);
+  }
+  const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(out, 3));
   if (body.geometry.index) geo.setIndex(body.geometry.index);
-  geo.computeVertexNormals();
-  posed.set(body, geo);
+  if (cache) posed.set(body, geo);
   return geo;
 }
 
 const grids = new WeakMap();
 // DecalGeometry is built in world space on the posed body; map each vertex onto the same point of its body triangle
 // in bind space and borrow that triangle's skin weights, so the artwork deforms with the athlete.
-export function skinDecal(decal, body) {
-  let locate = grids.get(body);
-  if (!locate) grids.set(body, (locate = triangleGrid(posedGeometry(body))));
+export function skinDecal(decal, body, subsetTris = null) {
+  let locate;
+  if (subsetTris && subsetTris.length) {
+    locate = triangleGrid(posedGeometry(body), subsetTris);
+  } else {
+    locate = grids.get(body);
+    if (!locate) grids.set(body, (locate = triangleGrid(posedGeometry(body))));
+  }
   decal.updateMatrixWorld(true);
   body.updateMatrixWorld(true);
   const geo = decal.geometry;
@@ -117,6 +295,13 @@ export function skinDecal(decal, body) {
 export function surfaceAnchor(mesh, worldPoint, worldNormal) {
   const pos = mesh.geometry.attributes.position;
   if (pos.count < 3) return null;
+  if (mesh.userData.anchorTri) {
+    const anchor = { mesh, tri: mesh.userData.anchorTri, sign: 1 };
+    const n = new THREE.Vector3();
+    readAnchor(anchor, new THREE.Vector3(), n);
+    if (n.dot(worldNormal) < 0) anchor.sign = -1;
+    return anchor;
+  }
   mesh.updateMatrixWorld(true);
   mesh.skeleton.update();
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
@@ -304,7 +489,7 @@ function between(t, stops) {
 // stays cheap. apart() is the clearance between the two fists across the body (negative: overlapping).
 function contactGauge(root, left, forward, cell) {
   // Posed world positions of the skinned vertices bound mainly to bones matching `pattern` (indices cached).
-  const meshes = [], bound = new Map();
+  const meshes = [], bound = new Map(), surfaceCache = new Map();
   root.traverse((o) => { if (o.isSkinnedMesh) meshes.push(o); });
   function skinned(pattern) {
     if (!bound.has(pattern.source)) {
@@ -323,11 +508,15 @@ function contactGauge(root, left, forward, cell) {
     return bound.get(pattern.source).flatMap(([mesh, ids]) =>
       ids.map((i) => mesh.getVertexPosition(i, new THREE.Vector3()).applyMatrix4(mesh.matrixWorld)));
   }
+  const key = (v) => `${Math.round(v.dot(left) / cell)},${Math.round(v.y / cell)}`;
   return {
-    gap(side, surface = /^Spine\d*$/) {
-      const key = (v) => `${Math.round(v.dot(left) / cell)},${Math.round(v.y / cell)}`;
-      const front = new Map();
-      for (const v of skinned(surface)) front.set(key(v), Math.max(front.get(key(v)) ?? -Infinity, v.dot(forward)));
+    gap(side, surface = /^Spine\d*$/, reuseSurface = false) {
+      let front = reuseSurface ? surfaceCache.get(surface.source) : null;
+      if (!front) {
+        front = new Map();
+        for (const v of skinned(surface)) front.set(key(v), Math.max(front.get(key(v)) ?? -Infinity, v.dot(forward)));
+        surfaceCache.set(surface.source, front);
+      }
       let gap = Infinity;
       for (const v of skinned(new RegExp(`^${side}Hand$`))) {
         const at = front.get(key(v));
@@ -363,7 +552,7 @@ function victoryChestBeat(root) {
   let press = 0;
   for (let i = 0; i < 3; i++) {
     pose(1.6);
-    const g = contact.gap("Left");
+    const g = contact.gap("Left", /^Spine\d*$/, i > 0);
     if (!Number.isFinite(g)) break;
     press -= g + 0.005;
   }
@@ -442,7 +631,7 @@ function curve(t, keys) {
   return (2 * x3 - 3 * x2 + 1) * v0 + (x3 - 2 * x2 + x) * m0 + (-2 * x3 + 3 * x2) * v1 + (x3 - x2) * m1;
 }
 
-function fightClip(root, name, duration, pose, fit) {
+function fightClip(root, name, duration, pose, fit, fps = FIGHT_FPS) {
   const bone = (n) => root.getObjectByName(n);
   const bones = FIGHT_BONES.map(bone);
   if (!bones.every((b) => b?.isBone)) return null;
@@ -484,7 +673,7 @@ function fightClip(root, name, duration, pose, fit) {
       bendArm(bone(`${side}Arm`), bone(`${side}ForeArm`), bone(`${side}Hand`),
         from.add(vec(sign, offset)), vec(sign, pole), Math.min(1, amount));
     },
-    contact: contactGauge(root, left, forward, 0.04 * L),
+    contact: fit ? contactGauge(root, left, forward, 0.04 * L) : null,
     L,
     at
   };
@@ -507,9 +696,9 @@ function fightClip(root, name, duration, pose, fit) {
   // Lets a move fit itself to this body (e.g. where the chest is) before it is sampled.
   fit?.(rig, sample);
   const times = [], values = bones.map(() => []), lift = [];
-  const frames = Math.round(duration * FIGHT_FPS);
+  const frames = Math.round(duration * fps);
   for (let frame = 0; frame <= frames; frame++) {
-    const t = frame / FIGHT_FPS;
+    const t = frame / fps;
     sample(t);
     times.push(t);
     bones.forEach((b, i) => b.quaternion.normalize().toArray(values[i], values[i].length));
@@ -614,7 +803,7 @@ function tauntHandsDown(root) {
     }
     for (let i = 0; i < 3; i++) {
       sample(TAUNT_TAPS[0] + TAP_OUT);
-      const gap = rig.contact.gap("Right", CHIN);
+      const gap = rig.contact.gap("Right", CHIN, i > 0);
       if (!Number.isFinite(gap)) return;
       chin -= (gap + 0.004) / rig.L;
     }
@@ -632,7 +821,7 @@ function breathingClip(root) {
     rig.turn("Head", "pitch", 0.9 * breath); // eyes stay level as the chest lifts
     rig.turn("Head", "yaw", -1.5 * sway);
     for (const [side, sign] of SIDES) rig.shrug(side, sign, 1.4 * breath);
-  });
+  }, null, 8);
 }
 
 const AUTHORED_MOVES = {
@@ -640,10 +829,17 @@ const AUTHORED_MOVES = {
   Shadowbox_Combo: shadowboxCombo,
   Taunt_Hands_Down: tauntHandsDown
 };
-
-// Builds the authored moves a tenant lists (each is sampled from the rig's current pose: the stance).
-function authoredClips(root, names) {
-  return names.filter((name) => AUTHORED_MOVES[name]).map((name) => AUTHORED_MOVES[name](root)).filter(Boolean);
+const AUTHORED_DURATIONS = {
+  Victory_Chest_Beat: 4,
+  Shadowbox_Combo: 3.75,
+  Taunt_Hands_Down: 4.1
+};
+function canAuthorMove(root, name) {
+  const bone = (n) => root.getObjectByName(n)?.isBone;
+  if (name === "Victory_Chest_Beat") {
+    return ["Head", "Spine", "RightArm", "RightForeArm", "RightHand", "LeftArm", "LeftForeArm", "LeftHand", "LeftUpLeg", "RightUpLeg"].every(bone);
+  }
+  return FIGHT_BONES.every(bone);
 }
 
 /* ---------------------------------------------------- power stance */
@@ -778,14 +974,43 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
   const torso = torsoChain(root).map((bone) => [bone, bone.quaternion.clone()]);
   const stance = byName.has(restName) ? anchoredClip(root, byName.get(restName)) : null;
   if (stance) poseFromFrame(root, stance);
-  const authored = authoredClips(root, entries.map((e) => e.clip));
-  for (const clip of authored) byName.set(clip.name, clip);
-  // Authored moves are already in place and facing the sponsor; only library clips need anchoring.
-  const anchor = (clip) => authored.includes(clip) ? clip : anchoredClip(root, clip);
-  const moves = new Map(entries.filter((e) => byName.has(e.clip)).map((e) => [e.clip, { ...e, clip: anchor(byName.get(e.clip)) }]));
+  const stanceBones = [];
+  root.traverse((b) => { if (b.isBone) stanceBones.push([b, b.quaternion.clone(), b.position.clone()]); });
+  const buildAuthored = (name) => {
+    const cur = stanceBones.map(([b]) => [b.quaternion.clone(), b.position.clone()]);
+    for (const [b, q, p] of stanceBones) { b.quaternion.copy(q); b.position.copy(p); }
+    root.updateMatrixWorld(true);
+    try { return AUTHORED_MOVES[name](root); }
+    finally {
+      stanceBones.forEach(([b], i) => { b.quaternion.copy(cur[i][0]); b.position.copy(cur[i][1]); });
+      root.updateMatrixWorld(true);
+    }
+  };
+  const moves = new Map();
+  const restRefs = [];
+  for (const e of entries) {
+    if (AUTHORED_MOVES[e.clip]) {
+      if (!canAuthorMove(root, e.clip)) continue;
+      moves.set(e.clip, { ...e, name: e.clip, duration: AUTHORED_DURATIONS[e.clip], clip: null, build: () => buildAuthored(e.clip) });
+    } else if (byName.has(e.clip)) {
+      const clip = anchoredClip(root, byName.get(e.clip));
+      moves.set(e.clip, { ...e, name: clip.name, duration: clip.duration, clip });
+      restRefs.push(clip);
+    }
+  }
   if (!moves.size) return null;
+  if (entries.some((e) => AUTHORED_MOVES[e.clip])) {
+    const synthTracks = [];
+    for (const bName of FIGHT_BONES) {
+      const b = root.getObjectByName(bName);
+      if (b?.isBone) synthTracks.push(new THREE.QuaternionKeyframeTrack(`${b.name}.quaternion`, [0], b.quaternion.toArray()));
+    }
+    const hips = root.getObjectByName("Hips");
+    if (hips?.isBone) synthTracks.push(new THREE.VectorKeyframeTrack(`${hips.name}.position`, [0], hips.position.toArray()));
+    restRefs.push(new THREE.AnimationClip("__authored_ref", 0, synthTracks));
+  }
   const mixer = new THREE.AnimationMixer(root);
-  let restSource = restClip(root, [...moves.values()].map((m) => m.clip), stance);
+  let restSource = restClip(root, restRefs, stance);
   // Between moves the athlete breathes (opt-in: off for reduced motion, card captures and tests that compare poses).
   const breathing = idle ? breathingClip(root) : null;
   if (breathing) {
@@ -858,6 +1083,8 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
       onChange?.(name);
       return;
     }
+    if (!move.clip && move.build) move.clip = move.build();
+    if (!move.clip) return;
     const action = mixer.clipAction(move.clip);
     const reps = Math.max(1, Math.round(MIN_PLAY_SECONDS / move.clip.duration));
     action.reset().setLoop(THREE.LoopRepeat, reps);
@@ -871,11 +1098,11 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
 
   return {
     // Each move with how long it plays before it starts settling back to the stance (seconds), for progress feedback.
-    moves: [...moves.values()].map(({ clip, label }) => ({
-      name: clip.name,
+    moves: [...moves.values()].map(({ name, clip, duration, label }) => ({
+      name,
       label,
-      duration: clip === jab?.clip ? GUARD_ENTER + clip.duration + GUARD_EXIT + GUARD_HOLD
-        : clip.duration * Math.max(1, Math.round(MIN_PLAY_SECONDS / clip.duration))
+      duration: clip && clip === jab?.clip ? GUARD_ENTER + duration + GUARD_EXIT + GUARD_HOLD
+        : duration * Math.max(1, Math.round(MIN_PLAY_SECONDS / duration))
     })),
     play,
     settle,

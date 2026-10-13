@@ -20,23 +20,15 @@
   {{{posterTwitterImage}}}
   {{{posterPreload}}}
   {{{modelPreload}}}
-  <script type="importmap">{"imports":{"three":"/vendor/three-0.170.0/three.module.js","three/addons/":"/vendor/three-0.170.0/addons/"}}</script>
-  <link rel="modulepreload" href="/vendor/three-0.170.0/three.module.js">
-  <link rel="modulepreload" href="/vendor/three-0.170.0/addons/loaders/GLTFLoader.js">
-  <link rel="modulepreload" href="/vendor/three-0.170.0/addons/loaders/DRACOLoader.js">
-  <link rel="modulepreload" href="/vendor/three-0.170.0/addons/controls/OrbitControls.js">
-  <link rel="modulepreload" href="/vendor/three-0.170.0/addons/geometries/DecalGeometry.js">
-  <link rel="modulepreload" href="/vendor/three-0.170.0/addons/environments/RoomEnvironment.js">
-  <link rel="modulepreload" href="/vendor/three-0.170.0/addons/utils/BufferGeometryUtils.js">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/barlow-condensed-800.woff2" crossorigin>
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/plus-jakarta-sans-var.woff2" crossorigin>
   <link rel="stylesheet" href="/styles.css?v={{version}}">
+  <script type="importmap">{"imports":{"three":"/vendor/three-0.170.0/three.module.js","three/addons/":"/vendor/three-0.170.0/addons/"}}</script>
 {{{studioAssets}}}</head>
 <body{{{portalBodyClass}}}>
   <main class="portal-shell">
     <header class="topbar">
-      <a class="brand" href="{{homeUrl}}" target="_top" aria-label="{{copy.brandAriaLabel}}">
+      <a class="brand" href="{{homeUrl}}" target="_top" title="{{copy.brandAriaLabel}}">
         <span class="brand-mark">{{athlete.brandMark}}</span>
         <span class="brand-copy"><strong>{{athlete.displayName}}</strong><small>{{event.portalSubtitle}}</small></span>
       </a>
@@ -90,10 +82,10 @@
           <h3 id="selectionName">{{firstPlacement.name}}</h3>
           <p id="selectionDescription">{{initialSelectionDescription}}</p>
           <div class="spec-row" id="specRow"></div>
-          <img class="sponsor-logo" id="sponsorLogo" alt="" hidden>
+          <img class="sponsor-logo" id="sponsorLogo" width="220" height="82" alt="" hidden>
           <button class="secondary-cta" id="openPlacements" hidden>{{copy.openPlacements}}</button>
           <div class="preview-thumb" id="previewThumb" hidden>
-            <img id="previewImg" alt="{{copy.previewAlt}}">
+            <img id="previewImg" width="64" height="40" alt="{{copy.previewAlt}}">
             <button type="button" id="removePreview">{{copy.removePreview}}</button>
           </div>
           <label class="logo-upload">

@@ -11,7 +11,7 @@ const CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src https://fonts.gstatic.com",
+  "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data:",
   "connect-src 'self'",
   "form-action 'self'",
@@ -31,12 +31,12 @@ export function page({ title, body, accent = "#ff6a1a", bodyAttrs = "", script =
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="Manage your 360° athlete sponsorship portal, placements, bids, sponsor contacts, 3D model studio and Stripe payouts.">
   <meta name="theme-color" content="#080808">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <title>${escapeHtml(title)}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/barlow-condensed-700.woff2" crossorigin>
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/plus-jakarta-sans-var.woff2" crossorigin>
   <link rel="stylesheet" href="/dashboard.css?v=${version}">
   <style>:root{--accent:${/^#[0-9a-f]{6}$/i.test(accent) ? accent : "#ff6a1a"}}</style>
 </head>

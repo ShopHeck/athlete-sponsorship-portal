@@ -85,7 +85,7 @@ post_json() {
     headers+=(-H "Cookie: $cookie_name=$cookie")
   fi
   LAST_CODE=$(curl -sS -o "$output" -w '%{http_code}' -X POST "$url" \
-    -H "Origin: $origin" "${headers[@]}" -H 'content-type: application/json' --data-binary "$body")
+    -H "Origin: $origin" ${headers[@]+"${headers[@]}"} -H 'content-type: application/json' --data-binary "$body")
 }
 
 post_json_file() {
@@ -95,7 +95,7 @@ post_json_file() {
     headers+=(-H "Cookie: asp_dash=$cookie")
   fi
   LAST_CODE=$(curl -sS -o "$output" -w '%{http_code}' -X POST "$url" \
-    -H "Origin: $BASE" "${headers[@]}" -H 'content-type: application/json' --data-binary "@$file")
+    -H "Origin: $BASE" ${headers[@]+"${headers[@]}"} -H 'content-type: application/json' --data-binary "@$file")
 }
 
 admin_login() {
