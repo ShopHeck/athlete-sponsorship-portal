@@ -1483,4 +1483,13 @@ function animate(now) {
 }
 selectInitial();
 renderAll();
-startViewer();
+const backdropImg = stage.querySelector(".stage-backdrop img");
+const waitBackdrop = backdropImg && !backdropImg.complete
+  ? Promise.race([
+      new Promise((resolve) => { backdropImg.addEventListener("load", resolve, { once: true }); backdropImg.addEventListener("error", resolve, { once: true }); }),
+      new Promise((resolve) => setTimeout(resolve, 400))
+    ])
+  : Promise.resolve();
+waitBackdrop.then(() => {
+  requestAnimationFrame(() => { setTimeout(startViewer, 180); });
+});
