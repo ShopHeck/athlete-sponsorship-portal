@@ -371,7 +371,7 @@ function makeSlot(spot, side, meshes, owner = null, { anchor = null, layer = nul
   const orientation = new THREE.Euler().setFromRotationMatrix(m);
   // DecalGeometry only reads geometry + matrixWorld, so skinned bodies are projected onto a local slice of the posed mesh.
   const subGeo = hit.object.isSkinnedMesh
-    ? localSubGeometry(hit.object, hit.point, spec, side)
+    ? localSubGeometry(hit.object, hit.point, Math.hypot(spec.w, spec.h, 0.10) * 0.65)
     : null;
   const localTris = subGeo?.userData.tris || null;
   const target = subGeo
@@ -452,7 +452,7 @@ function syncGarmentLayers() {
 
 const yieldToMain = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function buildSlots(meshes, owner, missing, include) {
+async function buildSlots(meshes, owner, missing, include, rig = null) {
   // Each model carries only its own placements: the kit's on the tenant's model, a garment model's on that model.
   const spots = (isShowcase ? showcasePlacements : allPlacements).filter((spot) => {
     const garment = garmentConfig(garmentOf(spot.id));
@@ -465,7 +465,9 @@ async function buildSlots(meshes, owner, missing, include) {
     const failedSides = [];
     for (const side of new Set([spot.side, spot.mirror].filter(Boolean))) {
       if (spot.anchor && !anchor) { failedSides.push(side); continue; }
-      if (!makeSlot(spot, side, anchor ? anchor.meshes : meshes, owner, options)) failedSides.push(side);
+      const runSide = () => makeSlot(spot, side, anchor ? anchor.meshes : meshes, owner, options);
+      const slot = rig ? rig.withProjectionPose(runSide) : runSide();
+      if (!slot) failedSides.push(side);
       await yieldToMain();
     }
     if (failedSides.length) missing.push({ id: spot.id, sides: failedSides });
@@ -488,27 +490,13 @@ function facesPositiveZ(meshes) {
 }
 
 function normalise(root) {
-  root.scale.setScalar(1);
-  root.position.set(0, 0, 0);
-  root.updateMatrixWorld(true);
-  const box = new THREE.Box3();
-  const childBox = new THREE.Box3();
-  root.traverse((o) => {
-    if (!o.isMesh || !o.geometry) return;
-    if (o.isSkinnedMesh) {
-      childBox.copy(posedBounds(o)).applyMatrix4(o.matrixWorld);
-    } else {
-      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
-      childBox.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
-    }
-    box.union(childBox);
-  });
+  const box = new THREE.Box3().setFromObject(root);
   const size = box.getSize(new THREE.Vector3());
-  const s = MODEL_HEIGHT / (size.y || 1);
-  root.scale.setScalar(s);
-  root.position.y = -box.min.y * s;
-  root.position.x = -((box.min.x + box.max.x) / 2) * s;
-  root.position.z = -((box.min.z + box.max.z) / 2) * s;
+  root.scale.setScalar(MODEL_HEIGHT / size.y);
+  box.setFromObject(root);
+  root.position.y -= box.min.y;
+  root.position.x -= (box.min.x + box.max.x) / 2;
+  root.position.z -= (box.min.z + box.max.z) / 2;
   root.updateMatrixWorld(true);
 }
 

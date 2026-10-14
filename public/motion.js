@@ -318,6 +318,8 @@ export function skinDecal(decal, body, subsetTris = null) {
     locate = grids.get(body);
     if (!locate) grids.set(body, (locate = triangleGrid(posedGeometry(body))));
   }
+  decal.updateMatrixWorld(true);
+  body.updateMatrixWorld(true);
   const geo = decal.geometry;
   geo.applyMatrix4(body.matrixWorld.clone().invert().multiply(decal.matrixWorld));
   const pos = geo.attributes.position, bind = body.geometry.attributes.position;
