@@ -29,6 +29,9 @@ function kitFromSource(definition) {
     id: placement.id,
     label: placement.label,
     name: placement.name,
+    w: placement.w,
+    h: placement.h,
+    side: placement.side,
     garmentId: garment.id,
     garmentName: garment.label || garment.tab || garment.id
   })));
@@ -254,17 +257,22 @@ export function materializeConfig(settings, kitId) {
           .filter((placement) => settings.offeredPlacementIds.includes(placement.id))
           .map((placement) => {
             const custom = settings.placementNames?.[placement.id];
-            if (!custom) return placement;
+            const price = settings.placementPricing?.[placement.id];
             const garmentName = garment.label || garment.tab || garment.id;
             return {
               ...placement,
-              name: custom,
-              label: `${garmentName} · ${custom}`
+              ...(custom ? {
+                name: custom,
+                label: `${garmentName} · ${custom}`
+              } : {}),
+              ...(Number.isInteger(price?.minBid) ? { minBid: price.minBid } : {}),
+              ...(Number.isInteger(price?.lockPrice) ? { lockPrice: price.lockPrice } : {}),
+              ...(price?.tier ? { tier: price.tier } : {})
             };
           })
       }))
       .filter((garment) => garment.placements.length > 0)
-      .concat(itemGarments(settings.items, settings.placementNames)),
+      .concat(itemGarments(settings.items, settings.placementNames, settings.placementPricing)),
     sold: {}
   };
   return config;

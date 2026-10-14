@@ -55,7 +55,22 @@ const previewHeaders = config.previewToken ? { "x-preview-token": config.preview
 const isLocked = (id) => Boolean(state.bids[id]?.locked || state.bids[id]?.closed);
 const isSold = (id) => Boolean(state.sold[id]) || isLocked(id);
 const usd = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: config.pricing.currency.toUpperCase(), maximumFractionDigits: 0 }).format(Math.round(n));
-const minimumBid = (id) => { const b = state.bids[id]; return Math.max(state.auction.minBid, b?.high ? b.high + state.auction.increment : 0); };
+const spotById = (id) => allPlacements.find((p) => p.id === id) || null;
+const spotMinBid = (spot) => {
+  const s = typeof spot === "string" ? spotById(spot) : spot;
+  const bidEntry = s ? state.bids[s.id] : null;
+  return Number.isInteger(bidEntry?.minBid) ? bidEntry.minBid : Number.isInteger(s?.minBid) ? s.minBid : state.auction.minBid;
+};
+const spotLockPrice = (spot) => {
+  const s = typeof spot === "string" ? spotById(spot) : spot;
+  const bidEntry = s ? state.bids[s.id] : null;
+  return Number.isInteger(bidEntry?.lockPrice) ? bidEntry.lockPrice : Number.isInteger(s?.lockPrice) ? s.lockPrice : state.auction.lockPrice;
+};
+const spotTier = (spot) => {
+  const s = typeof spot === "string" ? spotById(spot) : spot;
+  return state.bids[s?.id]?.tier || s?.tier || null;
+};
+const minimumBid = (id) => { const b = state.bids[id]; return Math.max(spotMinBid(id), b?.high ? b.high + state.auction.increment : 0); };
 
 /* ------------------------------------------------------------------ DOM */
 const stage = document.getElementById("modelStage");
@@ -72,6 +87,8 @@ const selectionStatus = document.getElementById("selectionStatus");
 const selectionCard = document.getElementById("selectionCard");
 const availabilityEl = document.getElementById("availability");
 const uploadLabel = document.getElementById("uploadLabel");
+const snapshotButton = document.getElementById("snapshotButton");
+const pitchBanner = document.getElementById("pitchBanner");
 const previewThumb = document.getElementById("previewThumb");
 const previewImg = document.getElementById("previewImg");
 const removePreview = document.getElementById("removePreview");
@@ -856,13 +873,15 @@ function renderInventory() {
     const sold = state.sold[spot.id];
     const bid = state.bids[spot.id];
     const locked = !sold && (bid?.locked || bid?.closed);
+    const tier = spotTier(spot);
+    const tierLabel = !sold && !locked && (tier === "anchor" || tier === "prime") ? ` · ${tier.toUpperCase()}` : "";
     const button = document.createElement("button");
     button.className = `inventory-item${spot.id === state.selected ? " is-selected" : ""}${sold || locked ? " is-sold" : ""}`;
     const title = sold ? sold.sponsor : locked ? bid.lockedBy || bid.company || config.copy.lockedFallback : spot.name;
-    const status = sold ? config.copy.soldStatus : locked ? (bid.locked ? config.copy.lockedStatus : config.copy.wonStatus)
+    const status = sold ? config.copy.soldStatus : locked ? (bid.locked ? (bid.paid ? config.copy.soldStatus : config.copy.lockedStatus) : config.copy.wonStatus)
       : bid?.high ? formatCopy(config.copy.statusBid, { amount: usd(bid.high) })
-        : formatCopy(config.copy.statusOpen, { amount: usd(state.auction.minBid) });
-    button.innerHTML = `<span class="num">${String(index + 1).padStart(2, "0")}</span><span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(spot.id)}${sold || locked ? " · " + escapeHtml(spot.name) : ""}</small></span><span class="status">${status}</span>`;
+        : formatCopy(config.copy.statusOpen, { amount: usd(spotMinBid(spot)) });
+    button.innerHTML = `<span class="num">${String(index + 1).padStart(2, "0")}</span><span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(spot.id)}${escapeHtml(tierLabel)}${sold || locked ? " · " + escapeHtml(spot.name) : ""}</small></span><span class="status">${status}</span>`;
     button.setAttribute("aria-pressed", String(spot.id === state.selected));
     button.addEventListener("click", () => selectPlacement(spot.id, true));
     inventoryList.append(button);
@@ -902,8 +921,14 @@ function renderSelection() {
   const bid = state.bids[spot.id];
   const locked = !sold && (bid?.locked || bid?.closed);
   const holder = locked ? bid.lockedBy || bid.company : null;
-  selectionCode.textContent = spot.id;
-  selectionStatus.textContent = sold ? config.copy.soldStatus : locked ? (bid.locked ? config.copy.lockedStatus : config.copy.wonStatus) : bid?.high ? config.copy.biddingStatus : config.copy.availableStatus;
+  const tier = spotTier(spot);
+  selectionCode.textContent = tier && tier !== "standard" ? `${spot.id} · ${tier.toUpperCase()}` : spot.id;
+  const holdRemaining = locked && bid?.locked && !bid?.paid && bid?.lockExpiresAt
+    ? Math.max(0, Math.ceil((Date.parse(bid.lockExpiresAt) - Date.now()) / (3600 * 1000)))
+    : null;
+  selectionStatus.textContent = sold ? config.copy.soldStatus
+    : locked ? (bid.locked ? (bid.paid ? config.copy.soldStatus : holdRemaining ? `RESERVED · ${holdRemaining}H HOLD` : config.copy.lockedStatus) : config.copy.wonStatus)
+      : bid?.high ? config.copy.biddingStatus : config.copy.availableStatus;
   selectionCard.classList.toggle("is-sold", Boolean(sold || locked));
   selectionName.textContent = sold ? sold.sponsor : locked ? holder || config.copy.lockedInFallback : spot.name;
   selectionDescription.textContent = sold ? formatCopy(config.copy.soldDescription, { name: spot.name, sponsor: sold.sponsor })
@@ -911,7 +936,7 @@ function renderSelection() {
       name: spot.name,
       status: bid.locked ? config.copy.placementLocked : config.copy.placementWon,
       holder: holder ? ` by ${holder}` : "",
-      invoiceIssued: config.copy.invoiceIssued
+      invoiceIssued: bid.paid ? "Payment confirmed." : config.copy.invoiceIssued
     })
     : spot.detail;
   if (renderSelection.lastId !== spot.id) bidSuccess.hidden = true;
@@ -949,7 +974,9 @@ function renderSpecs(spot) {
 }
 function renderSlots() { slotMeshes.forEach(drawSlot); }
 function renderBidPanel(spot, bid) {
-  const { minBid, increment, lockPrice, online, paymentsReady } = state.auction;
+  const { increment, online, paymentsReady } = state.auction;
+  const minBid = spotMinBid(spot);
+  const lockPrice = spotLockPrice(spot);
   const floor = minimumBid(spot.id);
   if (isDemo) {
     bidHigh.textContent = config.copy.noBids;
@@ -1218,17 +1245,22 @@ function logoDataUrl(id) {
 }
 function showBidError(message) { bidError.textContent = message; bidError.hidden = false; }
 function showBidSuccess(spot, data, locked, email) {
+  const lockPrice = spotLockPrice(spot);
   bidSuccessLink.hidden = !data.invoiceUrl;
-  if (data.invoiceUrl) bidSuccessLink.href = data.invoiceUrl;
+  if (data.invoiceUrl) {
+    bidSuccessLink.href = data.invoiceUrl;
+    bidSuccessLink.textContent = locked ? `${config.copy.payInvoice} (${usd(lockPrice)}) →` : config.copy.payInvoice;
+  }
   if (locked) {
     bidSuccessTitle.textContent = formatCopy(config.copy.successLockedTitle, { id: spot.id });
-    bidSuccessText.textContent = data.invoiceUrl
+    const holdNote = data.lockExpiresAt ? " Reserved for 24 hours pending invoice payment." : "";
+    bidSuccessText.textContent = (data.invoiceUrl
       ? formatCopy(config.copy.successInvoiceReady, {
-        price: usd(state.auction.lockPrice),
+        price: usd(lockPrice),
         emailed: data.emailed ? formatCopy(config.copy.successInvoiceEmailSuffix, { email }) : "",
         firstName: config.athlete.firstName
       })
-      : formatCopy(config.copy.successInvoicePending, { firstName: config.athlete.firstName, price: usd(state.auction.lockPrice), email });
+      : formatCopy(config.copy.successInvoicePending, { firstName: config.athlete.firstName, price: usd(lockPrice), email })) + holdNote;
   } else {
     bidSuccessTitle.textContent = formatCopy(config.copy.successHighBidTitle, { amount: usd(data.placement.high) });
     bidSuccessText.textContent = formatCopy(config.copy.successBidConfirmation, {
@@ -1244,13 +1276,14 @@ async function submitBid(type) {
   if (isStudio || isShowcase || isDemo) return;
   const spot = findPlacement();
   if (isSold(spot.id)) return;
+  const lockPrice = spotLockPrice(spot);
   const f = bidForm.elements;
   const payload = { id: spot.id, type, company: f.company.value.trim(), name: f.name.value.trim(), email: f.email.value.trim(), phone: f.phone.value.trim(), amount: Number(f.amount.value), logo: logoDataUrl(spot.id) };
   if (!payload.company || !payload.name) return showBidError(config.copy.missingContact);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return showBidError(config.copy.invalidEmail);
   if (type === "bid" && (!Number.isFinite(payload.amount) || payload.amount < minimumBid(spot.id))) return showBidError(formatCopy(config.copy.bidTooLow, { amount: usd(minimumBid(spot.id)) }));
   if (type === "lock" && !confirm(formatCopy(config.copy.lockConfirmation, {
-    id: spot.id, name: spot.name, price: usd(state.auction.lockPrice), email: payload.email
+    id: spot.id, name: spot.name, price: usd(lockPrice), email: payload.email
   }))) return;
   bidError.hidden = true;
   submitBid.busy = true;
@@ -1267,7 +1300,7 @@ async function submitBid(type) {
     renderSlots(); renderInventory(); renderSelection();
     showBidSuccess(spot, data, locked, payload.email);
     toast(locked
-      ? formatCopy(config.copy.toastLocked, { id: spot.id, price: usd(state.auction.lockPrice) })
+      ? formatCopy(config.copy.toastLocked, { id: spot.id, price: usd(lockPrice) })
       : formatCopy(config.copy.toastHighBid, { id: spot.id, amount: usd(data.placement.high) }));
   } catch (err) {
     console.error(err);
@@ -1391,7 +1424,7 @@ function renderCalloutText() {
   calloutMeta.textContent = sold ? config.copy.soldStatus
     : bid?.locked || bid?.closed ? (bid.locked ? config.copy.lockedStatus : config.copy.wonStatus)
       : bid?.high ? formatCopy(config.copy.statusBid, { amount: usd(bid.high) })
-        : formatCopy(config.copy.statusOpen, { amount: usd(state.auction.minBid) });
+        : formatCopy(config.copy.statusOpen, { amount: usd(spotMinBid(spot)) });
   callout.classList.toggle("is-sold", Boolean(sold || bid?.locked || bid?.closed));
 }
 function positionCallout() {
@@ -1472,8 +1505,133 @@ function animate(now) {
   positionCallout();
   if (now) sampleFrame(now);
 }
+/* ----------------------------------------- pitch links & 3D mockup export */
+async function loadPitchFromUrl() {
+  const pitchId = new URLSearchParams(location.search).get("pitch");
+  if (!pitchId || !/^[a-f0-9]{16,32}$/.test(pitchId)) return;
+  try {
+    const pitchUrl = new URL(`/api/${config.slug}/pitches/${pitchId}`, location.origin);
+    if (config.previewToken) pitchUrl.searchParams.set("preview", config.previewToken);
+    const res = await fetch(pitchUrl.href, { headers: previewHeaders });
+    if (!res.ok) return;
+    const pitch = await res.json();
+    if (!pitch || !pitch.placementId) return;
+    const spot = spotById(pitch.placementId);
+    if (!spot) return;
+    if (bidForm?.elements?.company && pitch.company) bidForm.elements.company.value = pitch.company;
+    if (bidForm?.elements?.name && pitch.name) bidForm.elements.name.value = pitch.name;
+    if (pitchBanner) {
+      pitchBanner.innerHTML = `<strong>Prepared for ${escapeHtml(pitch.company)}</strong><span>${escapeHtml(pitch.note || `Previewing ${pitch.company} on ${spot.id} (${spot.name})`)}</span>`;
+      pitchBanner.hidden = false;
+    }
+    if (pitch.logoUrl && !isSold(spot.id)) {
+      try {
+        const img = await loadImage(pitch.logoUrl);
+        state.logos[spot.id] = pitch.logoUrl;
+        state.logoImages[spot.id] = img;
+      } catch {
+        console.warn("Pitch logo failed to load", pitch.logoUrl);
+      }
+    }
+    linkedPlacement = spot;
+    selectPlacement(spot.id, true);
+  } catch (err) {
+    console.warn("Pitch load failed", err);
+  }
+}
+
+async function downloadMockupSnapshot() {
+  const spot = findPlacement();
+  if (!spot || !renderer || !scene || !camera) {
+    toast("Wait a moment for the 3D model to finish loading.");
+    return;
+  }
+  renderer.render(scene, camera);
+  const out = document.createElement("canvas");
+  const W = 1080, H = 1350;
+  out.width = W;
+  out.height = H;
+  const ctx = out.getContext("2d");
+  ctx.fillStyle = "#070709";
+  ctx.fillRect(0, 0, W, H);
+
+  const bgImg = stage.querySelector(".stage-backdrop img");
+  if (bgImg && bgImg.complete && bgImg.naturalWidth > 0) {
+    const scale = Math.max(W / bgImg.naturalWidth, H / bgImg.naturalHeight);
+    const dw = bgImg.naturalWidth * scale, dh = bgImg.naturalHeight * scale;
+    ctx.save();
+    ctx.globalAlpha = 0.42;
+    ctx.drawImage(bgImg, (W - dw) / 2, (H - dh) * 0.2, dw, dh);
+    ctx.restore();
+  }
+
+  const grad = ctx.createRadialGradient(W * 0.5, H * 0.48, 80, W * 0.5, H * 0.5, W * 0.75);
+  grad.addColorStop(0, "rgba(7,7,9,0.08)");
+  grad.addColorStop(1, "rgba(7,7,9,0.88)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  const srcW = canvas.width || 1, srcH = canvas.height || 1;
+  const fitScale = Math.min(W / srcW, (H - 220) / srcH);
+  const drawW = srcW * fitScale, drawH = srcH * fitScale;
+  ctx.drawImage(canvas, (W - drawW) / 2, 90 + (H - 310 - drawH) / 2, drawW, drawH);
+
+  // Top bar
+  ctx.fillStyle = "rgba(10,10,14,0.86)";
+  ctx.fillRect(0, 0, W, 96);
+  ctx.fillStyle = config.brand.accent;
+  ctx.fillRect(0, 94, W, 2);
+  ctx.fillStyle = "#f6f2e9";
+  ctx.font = '800 34px "Barlow Condensed", Impact, sans-serif';
+  ctx.textBaseline = "middle";
+  ctx.fillText(config.athlete.fullDisplay || config.athlete.displayName, 44, 42);
+  ctx.fillStyle = "#a4a097";
+  ctx.font = '600 18px "Barlow Condensed", Impact, sans-serif';
+  ctx.fillText(`${config.event.name.toUpperCase()} · ${config.event.lockupDate}`, 44, 72);
+
+  // Bottom placement spec card
+  const cardX = 40, cardY = H - 210, cardW = W - 80, cardH = 170;
+  ctx.fillStyle = "rgba(14,14,19,0.92)";
+  roundRect(ctx, cardX, cardY, cardW, cardH, 18);
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = config.brand.accent;
+  ctx.stroke();
+
+  const sold = state.sold[spot.id];
+  const bid = state.bids[spot.id];
+  const sponsorName = sold?.sponsor || bidForm?.elements?.company?.value?.trim() || bid?.company || spot.name;
+  ctx.fillStyle = config.brand.accent;
+  ctx.font = '700 22px "Barlow Condensed", Impact, sans-serif';
+  ctx.fillText(`${spot.id} · ${printSize(spot).toUpperCase()}`, cardX + 32, cardY + 42);
+  ctx.fillStyle = "#f6f2e9";
+  ctx.font = '800 42px "Barlow Condensed", Impact, sans-serif';
+  ctx.fillText(String(sponsorName).toUpperCase(), cardX + 32, cardY + 88);
+  ctx.fillStyle = "#c2beb5";
+  ctx.font = '500 22px "Plus Jakarta Sans", -apple-system, sans-serif';
+  const priceLine = sold
+    ? `${spot.name} · Confirmed Sponsor`
+    : `${spot.name} · Lock It Now ${usd(spotLockPrice(spot))} · Opening Bid ${usd(spotMinBid(spot))}`;
+  ctx.fillText(priceLine, cardX + 32, cardY + 134);
+
+  out.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${config.slug}-${spot.id.toLowerCase()}-3d-mockup.png`;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast(`Saved ${spot.id} 3D mockup image`);
+  }, "image/png");
+}
+snapshotButton?.addEventListener("click", downloadMockupSnapshot);
+
 selectInitial();
 renderAll();
+loadPitchFromUrl();
 const backdropImg = stage.querySelector(".stage-backdrop img");
 const waitBackdrop = backdropImg && !backdropImg.complete
   ? Promise.race([

@@ -398,6 +398,36 @@ check "a portal must offer at least one kit spot or item placement" "$LAST_CODE"
 post_json "$BASE/api/dashboard/avery-selfserve/settings" "$ITEM_SETTINGS" "$TMP_DIR/items-restore.json" "$ATHLETE_COOKIE"
 check "kit spots and items are restored" "$LAST_CODE" "200"
 
+TIERED_SETTINGS=$(node -e '
+const x=JSON.parse(process.argv[1]);
+x.placementPricing={"TEE-01":{tier:"anchor",minBid:700,lockPrice:3000}};
+process.stdout.write(JSON.stringify(x));
+' "$ITEM_SETTINGS")
+post_json "$BASE/api/dashboard/avery-selfserve/settings" "$TIERED_SETTINGS" "$TMP_DIR/tiered-settings.json" "$ATHLETE_COOKIE"
+check "per-placement tiered pricing can be saved" "$LAST_CODE" "200"
+BAD_TIER_SETTINGS=$(node -e '
+const x=JSON.parse(process.argv[1]);
+x.placementPricing={"TEE-01":{tier:"anchor",minBid:900,lockPrice:500}};
+process.stdout.write(JSON.stringify(x));
+' "$ITEM_SETTINGS")
+post_json "$BASE/api/dashboard/avery-selfserve/settings" "$BAD_TIER_SETTINGS" "$TMP_DIR/bad-tiered-settings.json" "$ATHLETE_COOKIE"
+check "invalid per-placement lockPrice <= minBid is rejected" "$LAST_CODE" "400"
+post_json "$BASE/api/dashboard/avery-selfserve/settings" "$ITEM_SETTINGS" "$TMP_DIR/items-restore-after-tier.json" "$ATHLETE_COOKIE"
+check "base placement pricing is restored" "$LAST_CODE" "200"
+
+PITCH_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+post_json "$BASE/api/dashboard/avery-selfserve/placements/TEE-01/pitch" \
+  "{\"company\":\"Apex Roofing\",\"name\":\"Mike Carter\",\"note\":\"Custom 3D preview\",\"logo\":\"$PITCH_LOGO\"}" \
+  "$TMP_DIR/pitch-create.json" "$ATHLETE_COOKIE"
+check "athlete can create a personalized 3D sponsor pitch link" "$LAST_CODE" "200"
+PITCH_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).pitch?.id||"")' "$TMP_DIR/pitch-create.json")
+PITCH_GET_CODE=$(curl -sS -o "$TMP_DIR/pitch-get.json" -w '%{http_code}' "$BASE/api/avery-selfserve/pitches/$PITCH_ID?preview=$TENANT_TOKEN")
+check "draft pitch metadata is retrievable with preview token" "$PITCH_GET_CODE" "200"
+json_check "pitch metadata includes company, placementId, note and logoUrl" "$TMP_DIR/pitch-get.json" \
+  'const x=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(x.company==="Apex Roofing"&&x.placementId==="TEE-01"&&x.logoUrl?.includes("/pitch-logos/")?0:1)'
+PITCH_LOGO_CODE=$(curl -sS -o "$TMP_DIR/pitch-logo.png" -w '%{http_code}' "$BASE/api/avery-selfserve/pitch-logos/$PITCH_ID?preview=$TENANT_TOKEN")
+check "pitch logo asset is served" "$PITCH_LOGO_CODE" "200"
+
 post_json_file "$BASE/api/dashboard/avery-selfserve/poster/card" "$TMP_DIR/card.json" "$TMP_DIR/poster-unauth.json"
 check "poster upload requires a dashboard session" "$LAST_CODE" "401"
 post_json_file "$BASE/api/dashboard/avery-selfserve/poster/card" "$TMP_DIR/bad-version.json" "$TMP_DIR/poster-bad-version.json" "$ATHLETE_COOKIE"

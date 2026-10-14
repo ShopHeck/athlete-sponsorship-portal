@@ -11,6 +11,9 @@ export function forTenant(config, { portalUrl }) {
   const MIN_BID = config.pricing.minBid;
   const INCREMENT = config.pricing.increment;
   const LOCK_PRICE = config.pricing.lockPrice;
+  const LOCK_HOLD_HOURS = Number.isInteger(config.pricing.lockHoldHours) && config.pricing.lockHoldHours > 0
+    ? config.pricing.lockHoldHours
+    : 24;
   const DEADLINE = config.pricing.deadline;
   const NOTIFY_EMAIL = config.contact.notifyEmail;
   const NOTIFY_FROM = config.contact.notifyFrom || process.env.NOTIFY_FROM;
@@ -27,6 +30,58 @@ export function forTenant(config, { portalUrl }) {
     maximumFractionDigits: 0
   }).format(Math.round(amount));
   const describePlacement = (id) => placementList.find((placement) => placement.id === id)?.label || id;
+  const placementPricing = (id) => {
+    const p = placementList.find((placement) => placement.id === id);
+    const minBid = Number.isInteger(p?.minBid) ? p.minBid : MIN_BID;
+    const lockPrice = Number.isInteger(p?.lockPrice) ? p.lockPrice : LOCK_PRICE;
+    return { minBid, lockPrice, increment: INCREMENT, tier: p?.tier || null };
+  };
+
+  function isLockExpired(rec, nowMs = Date.now()) {
+    if (!rec?.locked || rec.closed || rec.invoice?.paidAt) return false;
+    if (!rec.lockExpiresAt) return false;
+    const exp = Date.parse(rec.lockExpiresAt);
+    return Number.isFinite(exp) && nowMs > exp;
+  }
+
+  function releaseUnpaidLockRecord(rec, reason = "Reservation hold expired without payment") {
+    const now = new Date().toISOString();
+    const expiredCompany = rec.lockedBy?.company || rec.bidder?.company || "";
+    const history = Array.isArray(rec.history) ? [...rec.history] : [];
+    // Restore the highest regular bid prior to the lock, if any.
+    const priorBids = history.filter((entry) => entry.type === "bid" && Number.isFinite(entry.amount));
+    const bestPrior = priorBids.at(-1) || null;
+    history.push({
+      type: "lock_released",
+      amount: bestPrior ? bestPrior.amount : 0,
+      at: now,
+      company: expiredCompany,
+      name: "",
+      email: "",
+      phone: "",
+      note: reason
+    });
+    rec.locked = false;
+    delete rec.lockedAt;
+    delete rec.lockedBy;
+    delete rec.lockExpiresAt;
+    delete rec.invoice;
+    delete rec.logo;
+    if (bestPrior) {
+      rec.high = bestPrior.amount;
+      rec.bidder = {
+        company: bestPrior.company || "",
+        name: bestPrior.name || "",
+        email: bestPrior.email || "",
+        phone: bestPrior.phone || ""
+      };
+    } else {
+      rec.high = 0;
+      rec.bidder = null;
+    }
+    rec.history = history;
+    return rec;
+  }
   async function soldDetails() {
     const details = new Map();
     for (const [id, entry] of Object.entries(config.sold || {})) {
@@ -137,6 +192,7 @@ export function forTenant(config, { portalUrl }) {
 
   function bidConfirmationEmail(id, rec) {
     const bidder = rec.bidder;
+    const { lockPrice } = placementPricing(id);
     const rows = [
       [config.copy.placementLabel, `${id} — ${describePlacement(id)}`],
       [config.copy.yourBid, usd(rec.high)],
@@ -144,7 +200,7 @@ export function forTenant(config, { portalUrl }) {
       [config.copy.biddingCloses, formatDeadline()]
     ];
     const intro = formatCopy(config.copy.bidReceiptIntro, { name: escapeHtml(bidder.name) });
-    const outro = formatCopy(config.copy.bidReceiptOutro, { price: usd(LOCK_PRICE) });
+    const outro = formatCopy(config.copy.bidReceiptOutro, { price: usd(lockPrice) });
     const cta = { href: placementLink(id), label: config.copy.emailViewPlacement };
     return {
       to: bidder.email,
@@ -156,6 +212,7 @@ export function forTenant(config, { portalUrl }) {
   }
 
   function outbidEmail(id, rec, previous) {
+    const { lockPrice } = placementPricing(id);
     const rows = [
       [config.copy.placementLabel, `${id} — ${describePlacement(id)}`],
       [config.copy.yourBid, usd(previous.amount)],
@@ -164,7 +221,7 @@ export function forTenant(config, { portalUrl }) {
       [config.copy.biddingCloses, formatDeadline()]
     ];
     const intro = formatCopy(config.copy.outbidIntro, { name: escapeHtml(previous.name) });
-    const outro = formatCopy(config.copy.outbidOutro, { price: usd(LOCK_PRICE) });
+    const outro = formatCopy(config.copy.outbidOutro, { price: usd(lockPrice) });
     const cta = { href: placementLink(id), label: config.copy.emailBidAgain };
     const heading = config.copy.emailOutbidHeading;
     return {
@@ -425,6 +482,7 @@ export function forTenant(config, { portalUrl }) {
     MIN_BID,
     INCREMENT,
     LOCK_PRICE,
+    LOCK_HOLD_HOURS,
     DEADLINE,
     EVENT_NAME,
     NOTIFY_EMAIL,
@@ -433,6 +491,9 @@ export function forTenant(config, { portalUrl }) {
     DASHBOARD_SITE_NAME,
     isPlacementId,
     describePlacement,
+    placementPricing,
+    isLockExpired,
+    releaseUnpaidLockRecord,
     soldPlacements,
     soldDetails,
     usd,

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 import { purgeCache } from "@netlify/functions";
 import { parseLogo } from "../lib/logo.mjs";
@@ -201,6 +201,7 @@ async function link(req, slug) {
 
 function placementSummary(placement, record, soldDetail, previewToken = null) {
   const history = record?.history || [];
+  const bidHistory = history.filter((entry) => entry.type === "bid" || entry.type === "lock");
   const invoice = record?.invoice;
   const state = soldDetail
     ? "sold"
@@ -208,7 +209,7 @@ function placementSummary(placement, record, soldDetail, previewToken = null) {
       ? "locked"
       : record?.closed
         ? "won"
-        : history.length || record?.high
+        : bidHistory.length || record?.high
           ? "bidding"
           : "open";
   const rawLogoUrl = soldDetail?.logo || (record?.logo
@@ -223,10 +224,14 @@ function placementSummary(placement, record, soldDetail, previewToken = null) {
     garment: placement.garment,
     garmentLabel: placement.garmentLabel,
     side: placement.side,
+    minBid: Number.isInteger(placement.minBid) ? placement.minBid : null,
+    lockPrice: Number.isInteger(placement.lockPrice) ? placement.lockPrice : null,
+    tier: placement.tier || null,
     state,
     high: record?.high || 0,
-    bidCount: history.length,
-    lastBidAt: history.at(-1)?.at || null,
+    bidCount: bidHistory.length,
+    lastBidAt: bidHistory.at(-1)?.at || null,
+    lockExpiresAt: record?.locked && !invoice?.paidAt ? record.lockExpiresAt || null : null,
     bidder: record?.bidder ? {
       company: record.bidder.company || "",
       name: record.bidder.name || "",
@@ -407,6 +412,7 @@ async function summary(req, slug) {
         offeredPlacementIds: dynamicRecord.settings.offeredPlacementIds,
         items: dynamicRecord.settings.items || {},
         placementNames: dynamicRecord.settings.placementNames || {},
+        placementPricing: dynamicRecord.settings.placementPricing || {},
         arena: dynamicRecord.settings.arena || null,
         backdrop: dynamicRecord.settings.backdrop || "poster",
         poster: poster ? {
@@ -430,6 +436,7 @@ async function summary(req, slug) {
         offeredPlacementIds: tenant.garments.flatMap((garment) => garment.placements.map((placement) => placement.id)),
         items: {},
         placementNames: {},
+        placementPricing: {},
         arena: null,
         backdrop: "poster",
         poster: null
@@ -443,6 +450,9 @@ async function summary(req, slug) {
           id: placement.id,
           label: placement.label,
           name: placement.name,
+          w: placement.w,
+          h: placement.h,
+          side: placement.side,
           garmentName: placement.garmentName,
           offered: dynamicRecord.settings.offeredPlacementIds.includes(placement.id)
         })),
@@ -545,6 +555,30 @@ function validSettings(settings, kit, current = {}) {
       if (typeof name !== "string" || name.trim() !== name || name.length < 1 || name.length > 60 ||
           /[\u0000-\u001f\u007f-\u009f]/.test(name)) {
         return "Placement names must be trimmed, 1 to 60 characters, and contain no control characters.";
+      }
+    }
+  }
+  if (settings.placementPricing !== undefined) {
+    if (!settings.placementPricing || typeof settings.placementPricing !== "object" || Array.isArray(settings.placementPricing)) {
+      return "Placement pricing must be an object keyed by placement IDs.";
+    }
+    for (const [id, entry] of Object.entries(settings.placementPricing)) {
+      if (!placementIds.has(id) && !ITEM_PLACEMENTS.has(id)) {
+        return "Placement pricing can only use IDs from this starter kit or its sponsorship items.";
+      }
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return "Each placement pricing entry must be an object.";
+      }
+      if (entry.tier !== undefined && !["anchor", "prime", "standard"].includes(entry.tier)) {
+        return `Placement ${id} tier must be anchor, prime, or standard.`;
+      }
+      const pMin = entry.minBid ?? settings.minBid;
+      const pLock = entry.lockPrice ?? settings.lockPrice;
+      if (!Number.isInteger(pMin) || pMin < 50 || pMin > 100000) {
+        return `Placement ${id} minimum bid must be an integer from 50 to 100000.`;
+      }
+      if (!Number.isInteger(pLock) || pLock <= pMin || pLock > 250000) {
+        return `Placement ${id} lock price must be greater than its minimum bid and at most 250000.`;
       }
     }
   }
@@ -664,14 +698,14 @@ async function updateSettings(req, slug) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "A valid request body is required." }, 400);
   const current = record.settings;
   const copyOnly = tenant.status === "live";
-  if (copyOnly && ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds", "items", "placementNames"].some((key) =>
-    Object.hasOwn(body, key) && JSON.stringify(body[key]) !== JSON.stringify(current[key] ?? (key === "items" ? {} : undefined)))) {
+  if (copyOnly && ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds", "items", "placementNames", "placementPricing"].some((key) =>
+    Object.hasOwn(body, key) && JSON.stringify(body[key]) !== JSON.stringify(current[key] ?? (key === "items" || key === "placementPricing" ? {} : undefined)))) {
     return json({ error: "Event, pricing, dates and placements are locked after launch" }, 409);
   }
   const allowedSettings = new Set([
     "eventName", "eventDate", "timeZone", "deadline", "minBid", "increment",
     "lockPrice", "packageName", "benefits", "intro", "accent", "offeredPlacementIds",
-    "items", "placementNames", "arena", "backdrop"
+    "items", "placementNames", "placementPricing", "arena", "backdrop"
   ]);
   const changes = Object.fromEntries(Object.entries(body).filter(([key]) => allowedSettings.has(key)));
   // Items left at zero are not offered; storing only the rest keeps the record and launch lock comparisons stable.
@@ -869,7 +903,12 @@ async function loadPlacementsForSummary(tenant, portalUrl, previewToken = null) 
   const sold = await services.soldDetails();
   const store = getStore({ name: "bids", consistency: "strong" });
   const placements = await Promise.all(placementConfigs(tenant).map(async (placement) => {
-    const record = await store.get(`${tenant.slug}/${placement.id}`, { type: "json" });
+    const key = `${tenant.slug}/${placement.id}`;
+    let record = await store.get(key, { type: "json" });
+    if (record && services.isLockExpired(record)) {
+      record = services.releaseUnpaidLockRecord(record);
+      await store.setJSON(key, record);
+    }
     return placementSummary(placement, record, sold.get(placement.id) || null, previewToken);
   }));
   return placements;
@@ -1020,11 +1059,78 @@ async function releaseSale(req, slug, id) {
   const store = getStore({ name: "sold", consistency: "strong" });
   const key = `${slug}/${id}`;
   const record = await store.get(key, { type: "json" });
-  if (!record || record.releasedAt) return json({ error: "This placement is not sold." }, 409);
-  record.releasedAt = new Date().toISOString();
-  record.releasedBy = session.email;
-  await store.setJSON(key, record);
-  return json({ ok: true });
+  if (record && !record.releasedAt) {
+    record.releasedAt = new Date().toISOString();
+    record.releasedBy = session.email;
+    await store.setJSON(key, record);
+    return json({ ok: true });
+  }
+  // Also allow releasing an unpaid Lock It Now reservation hold in the bids store.
+  const bidsStore = getStore({ name: "bids", consistency: "strong" });
+  const bidRecord = await bidsStore.get(key, { type: "json" });
+  if (bidRecord?.locked && !bidRecord.invoice?.paidAt) {
+    const services = forTenant(tenant, { portalUrl: `${platformUrl(req)}/${tenant.slug}` });
+    const released = services.releaseUnpaidLockRecord(bidRecord, `Unpaid lock released by ${session.email}`);
+    await bidsStore.setJSON(key, released);
+    return json({ ok: true, releasedLock: true });
+  }
+  return json({ error: "This placement is not sold." }, 409);
+}
+
+async function createPitch(req, slug, id) {
+  const tenant = await getTenant(slug);
+  if (!tenant) return json({ error: "Tenant not found." }, 404);
+  if (tenant.demo) return json({ error: "Demo portals cannot create sponsor pitches." }, 409);
+  const session = sessionFor(req, slug);
+  if (!session) return json({ error: "Sign in required" }, 401);
+  const base = platformUrl(req);
+  const services = forTenant(tenant, { portalUrl: `${base}/${tenant.slug}` });
+  if (!services.isPlacementId(id)) return json({ error: "Unknown placement." }, 400);
+
+  let body;
+  try { body = await req.json(); } catch { return json({ error: "Invalid JSON body." }, 400); }
+  const company = typeof body?.company === "string" ? body.company.trim() : "";
+  if (!company || company.length > 120) return json({ error: "Prospect company name is required (up to 120 characters)." }, 400);
+  const name = typeof body?.name === "string" ? body.name.trim().slice(0, 120) : "";
+  const note = typeof body?.note === "string" ? body.note.trim().slice(0, 300) : "";
+  const logo = body?.logo === undefined || body?.logo === null ? null : parseLogo(body.logo);
+  if (body?.logo && (!logo || logo.error)) {
+    return json({ error: logo?.error || "Logo must be a PNG, JPG or WebP image." }, 400);
+  }
+
+  const pitchId = randomBytes(8).toString("hex");
+  const at = new Date().toISOString();
+  const pitchRecord = {
+    id: pitchId,
+    slug,
+    placementId: id,
+    company,
+    name,
+    note,
+    at,
+    by: session.email,
+    ...(logo ? { logo: { type: logo.type, at } } : {})
+  };
+  await getStore({ name: "pitches", consistency: "strong" }).setJSON(`${slug}/${pitchId}`, pitchRecord);
+  if (logo) {
+    await getStore({ name: "tenant-assets", consistency: "strong" })
+      .set(`${slug}/pitch-logo/${pitchId}`, logo.bytes, { metadata: { type: logo.type, at } });
+  }
+  const previewToken = tenant.status === "draft" ? tenantPreviewToken(slug) : null;
+  const query = new URLSearchParams({ pitch: pitchId, ...(previewToken ? { preview: previewToken } : {}) });
+  const pitchUrl = `${base}/${encodeURIComponent(slug)}?${query.toString()}#${encodeURIComponent(id)}`;
+  return json({
+    ok: true,
+    pitch: {
+      id: pitchId,
+      placementId: id,
+      company,
+      name,
+      note,
+      at,
+      pitchUrl
+    }
+  });
 }
 
 async function connectOnboard(req, slug) {
@@ -1483,8 +1589,9 @@ export default async function dashboardApi(req) {
   }
 
   if (parts.length === 6 && parts[0] === "api" && parts[1] === "dashboard" &&
-      parts[3] === "placements" && ["sold", "release"].includes(parts[5])) {
+      parts[3] === "placements" && ["sold", "release", "pitch"].includes(parts[5])) {
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+    if (parts[5] === "pitch") return createPitch(req, parts[2], parts[4]);
     return parts[5] === "sold"
       ? markSold(req, parts[2], parts[4])
       : releaseSale(req, parts[2], parts[4]);
@@ -1517,6 +1624,7 @@ export const config = {
     "/api/dashboard/:slug/export.csv",
     "/api/dashboard/:slug/connect/onboard",
     "/api/dashboard/:slug/placements/:id/sold",
-    "/api/dashboard/:slug/placements/:id/release"
+    "/api/dashboard/:slug/placements/:id/release",
+    "/api/dashboard/:slug/placements/:id/pitch"
   ]
 };

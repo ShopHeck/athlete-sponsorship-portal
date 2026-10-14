@@ -20,16 +20,18 @@ import { getTenant, resolveTenantForApi } from "../lib/tenants.mjs";
 --------------------------------------------------------------------------- */
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const publicView = (slug, id, rec) => ({
+const publicView = (slug, id, rec, pricing = null) => ({
   id,
   high: rec.high,
   company: rec.bidder?.company || null,
-  count: rec.history?.length || 0,
+  count: (rec.history || []).filter((h) => h.type === "bid" || h.type === "lock").length,
   locked: Boolean(rec.locked),
   lockedBy: rec.locked ? rec.lockedBy?.company || null : null,
+  lockExpiresAt: rec.locked && !rec.invoice?.paidAt ? rec.lockExpiresAt || null : null,
   closed: Boolean(rec.closed),
   paid: Boolean(rec.invoice?.paidAt),
-  logo: rec.logo ? `/api/${slug}/logos/${id}?v=${encodeURIComponent(rec.logo.at)}` : null
+  logo: rec.logo ? `/api/${slug}/logos/${id}?v=${encodeURIComponent(rec.logo.at)}` : null,
+  ...(pricing ? { minBid: pricing.minBid, lockPrice: pricing.lockPrice, tier: pricing.tier } : {})
 });
 
 const clean = (v, max = 120) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -48,7 +50,8 @@ export default async (req, context) => {
   const portalBase = (process.env.PLATFORM_URL || new URL(req.url).origin).replace(/\/+$/, "");
   const services = forTenant(tenant, { portalUrl: `${portalBase}/${slug}` });
   const {
-    MIN_BID, INCREMENT, LOCK_PRICE, DEADLINE, isPlacementId, usd, describePlacement,
+    MIN_BID, INCREMENT, LOCK_PRICE, LOCK_HOLD_HOURS, DEADLINE, isPlacementId, usd, describePlacement,
+    placementPricing, isLockExpired, releaseUnpaidLockRecord,
     soldPlacements, DASHBOARD_SITE_NAME, tryEmail, notifyOwner, bidConfirmationEmail,
     outbidEmail, invoicePlacement
   } = services;
@@ -67,8 +70,13 @@ export default async (req, context) => {
     await Promise.all(blobs.map(async ({ key }) => {
       const id = key.slice(prefix.length);
       if (!isPlacementId(id)) return;
-      const rec = await store.get(key, { type: "json" });
-      if (rec) placements[id] = publicView(slug, id, rec);
+      let rec = await store.get(key, { type: "json" });
+      if (!rec) return;
+      if (isLockExpired(rec)) {
+        rec = releaseUnpaidLockRecord(rec);
+        await store.setJSON(key, rec);
+      }
+      placements[id] = publicView(slug, id, rec, placementPricing(id));
     }));
     for (const [id, detail] of await services.soldDetails()) {
       if (detail.source !== "dashboard" || !isPlacementId(id)) continue;
@@ -79,7 +87,7 @@ export default async (req, context) => {
           locked: true,
           lockedBy: { company: detail.sponsor },
           closed: true
-        }),
+        }, placementPricing(id)),
         locked: true,
         closed: true,
         lockedBy: detail.sponsor || null,
@@ -88,7 +96,7 @@ export default async (req, context) => {
       };
     }
     const paymentsReady = (await services.connect.readiness()).ready;
-    const payload = { minBid: MIN_BID, increment: INCREMENT, lockPrice: LOCK_PRICE, deadline: DEADLINE, paymentsReady, placements };
+    const payload = { minBid: MIN_BID, increment: INCREMENT, lockPrice: LOCK_PRICE, lockHoldHours: LOCK_HOLD_HOURS, deadline: DEADLINE, paymentsReady, placements };
     if (tenant.showcase) payload.closed = true;
     if (tenant.demo) payload.demo = true;
     return json(payload);
@@ -114,26 +122,33 @@ export default async (req, context) => {
 
   const existing = await store.get(storageKey(id), { type: "json" });
   const prior = existing ? structuredClone(existing) : null;
-  const rec = existing || { high: 0, bidder: null, history: [], locked: false };
-  if (rec.locked || rec.closed) return json({ error: "This placement has been locked by another sponsor.", placement: publicView(slug, id, rec) }, 409);
+  let rec = existing || { high: 0, bidder: null, history: [], locked: false };
+  if (isLockExpired(rec)) {
+    rec = releaseUnpaidLockRecord(rec);
+  }
+  const spotPricing = placementPricing(id);
+  const spotMinBid = spotPricing.minBid;
+  const spotLockPrice = spotPricing.lockPrice;
+  if (rec.locked || rec.closed) return json({ error: "This placement has been locked by another sponsor.", placement: publicView(slug, id, rec, spotPricing) }, 409);
 
   const now = new Date().toISOString();
-  const previous = rec.high ? rec.history[rec.history.length - 1] : null;
+  const previous = rec.high && rec.bidder ? { ...rec.bidder, amount: rec.high } : null;
   let amount;
   if (type === "lock") {
-    amount = LOCK_PRICE;
+    amount = spotLockPrice;
   } else {
     amount = Math.round(Number(body.amount));
-    const floor = Math.max(MIN_BID, rec.high ? rec.high + INCREMENT : 0);
+    const floor = Math.max(spotMinBid, rec.high ? rec.high + INCREMENT : 0);
     if (!Number.isFinite(amount) || amount < floor) {
-      return json({ error: `Bid must be at least ${usd(floor)}.`, placement: publicView(slug, id, rec) }, 409);
+      return json({ error: `Bid must be at least ${usd(floor)}.`, placement: publicView(slug, id, rec, spotPricing) }, 409);
     }
-    if (amount >= LOCK_PRICE) amount = LOCK_PRICE;
+    if (amount >= spotLockPrice) amount = spotLockPrice;
   }
-  if (amount >= LOCK_PRICE) {
+  if (amount >= spotLockPrice) {
     rec.locked = true;
     rec.lockedAt = now;
     rec.lockedBy = bidder;
+    rec.lockExpiresAt = new Date(Date.parse(now) + LOCK_HOLD_HOURS * 3600 * 1000).toISOString();
   }
   rec.high = amount;
   rec.bidder = bidder;
@@ -159,7 +174,13 @@ export default async (req, context) => {
   if (rec.locked) {
     await invoicePlacement(store, id, rec, "lock");
     if (previous && previous.email !== bidder.email) await tryEmail(outbidEmail(id, rec, previous));
-    return json({ ok: true, placement: publicView(slug, id, rec), invoiceUrl: rec.invoice?.url || null, emailed: Boolean(rec.invoice?.emailed) });
+    return json({
+      ok: true,
+      placement: publicView(slug, id, rec, spotPricing),
+      invoiceUrl: rec.invoice?.url || null,
+      lockExpiresAt: rec.lockExpiresAt || null,
+      emailed: Boolean(rec.invoice?.emailed)
+    });
   }
 
   const label = `New high bid ${usd(amount)}`;
@@ -183,7 +204,7 @@ export default async (req, context) => {
     ])
   ]);
 
-  return json({ ok: true, placement: publicView(slug, id, rec) });
+  return json({ ok: true, placement: publicView(slug, id, rec, spotPricing) });
 };
 
 export const config = { path: "/api/:slug/bids" };

@@ -31,8 +31,12 @@ export async function closeAuction(tenant, { portalUrl, force = false } = {}) {
   for (const { key } of blobs) {
     const id = key.slice(prefix.length);
     if (!services.isPlacementId(id)) continue;
-    const rec = await store.get(key, { type: "json" });
+    let rec = await store.get(key, { type: "json" });
     if (!rec) continue;
+    if (services.isLockExpired(rec)) {
+      rec = services.releaseUnpaidLockRecord(rec);
+      await store.setJSON(key, rec);
+    }
     if (rec.invoice?.status === "sent" || sold.has(id)) { summary.skipped.push(id); continue; }
 
     if (rec.locked) {

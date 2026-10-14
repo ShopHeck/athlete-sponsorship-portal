@@ -10,6 +10,39 @@ export default async function tenantAsset(req, context) {
   if (!tenant) return new Response("Not found", { status: 404 });
 
   const url = new URL(req.url);
+  if (context.params?.pitchId) {
+    const pitchId = context.params.pitchId;
+    if (!/^[a-f0-9]{16,32}$/.test(pitchId)) return new Response("Not found", { status: 404 });
+    const pitch = await getStore({ name: "pitches", consistency: "strong" }).get(`${tenant.slug}/${pitchId}`, { type: "json" });
+    if (!pitch) return new Response("Not found", { status: 404 });
+    if (url.pathname.includes("/pitch-logos/")) {
+      if (!pitch.logo) return new Response("Not found", { status: 404 });
+      const asset = await getStore({ name: "tenant-assets", consistency: "strong" })
+        .getWithMetadata(`${tenant.slug}/pitch-logo/${pitchId}`, { type: "arrayBuffer" });
+      if (!asset) return new Response("Not found", { status: 404 });
+      return new Response(req.method === "HEAD" ? null : asset.data, {
+        headers: {
+          "content-type": asset.metadata?.type || pitch.logo.type || "image/png",
+          "cache-control": tenant.status === "draft" ? "private, no-store" : "public, max-age=3600, must-revalidate",
+          "content-security-policy": "default-src 'none'; sandbox",
+          "x-content-type-options": "nosniff"
+        }
+      });
+    }
+    const previewQuery = tenant.status === "draft" && url.searchParams.get("preview")
+      ? `?preview=${encodeURIComponent(url.searchParams.get("preview"))}`
+      : "";
+    return json({
+      id: pitch.id,
+      placementId: pitch.placementId,
+      company: pitch.company,
+      name: pitch.name || "",
+      note: pitch.note || "",
+      at: pitch.at,
+      logoUrl: pitch.logo ? `/api/${tenant.slug}/pitch-logos/${pitch.id}${previewQuery}` : null
+    });
+  }
+
   if (context.params?.id) {
     const id = context.params.id;
     if (!tenant.garments.some((garment) => garment.placements.some((placement) => placement.id === id))) {
@@ -67,5 +100,10 @@ export default async function tenantAsset(req, context) {
 }
 
 export const config = {
-  path: ["/api/:slug/poster/:variant", "/api/:slug/sponsor-logos/:id"]
+  path: [
+    "/api/:slug/poster/:variant",
+    "/api/:slug/sponsor-logos/:id",
+    "/api/:slug/pitches/:pitchId",
+    "/api/:slug/pitch-logos/:pitchId"
+  ]
 };

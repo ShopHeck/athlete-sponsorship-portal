@@ -78,6 +78,7 @@
         </div>
         <div class="inventory-list" id="inventoryList"></div>
         <div class="selection-card" id="selectionCard">
+          <div class="pitch-banner" id="pitchBanner" hidden></div>
           <div class="selection-top"><span id="selectionCode">{{firstPlacement.id}}</span><span id="selectionStatus">{{initialSelectionStatus}}</span></div>
           <h3 id="selectionName">{{firstPlacement.name}}</h3>
           <p id="selectionDescription">{{initialSelectionDescription}}</p>
@@ -88,10 +89,13 @@
             <img id="previewImg" width="64" height="40" alt="{{copy.previewAlt}}">
             <button type="button" id="removePreview">{{copy.removePreview}}</button>
           </div>
-          <label class="logo-upload">
-            <input id="logoInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
-            <span id="uploadLabel">{{copy.uploadLogo}}</span>
-          </label>
+          <div class="logo-actions-row">
+            <label class="logo-upload">
+              <input id="logoInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+              <span id="uploadLabel">{{copy.uploadLogo}}</span>
+            </label>
+            <button type="button" class="snapshot-cta" id="snapshotButton" title="Save a high-resolution 3D mockup image of this placement">Save 3D Mockup</button>
+          </div>
           <div class="bid-success" id="bidSuccess" role="status" hidden>
             <strong id="bidSuccessTitle"></strong>
             <p id="bidSuccessText"></p>

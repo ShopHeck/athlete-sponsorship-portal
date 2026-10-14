@@ -293,10 +293,98 @@ function renderSettings() {
   const placements = el("div", { class: "placement-options" });
   const offered = new Set(values.offeredPlacementIds || []);
   const placementNames = { ...(values.placementNames || {}) };
+  const placementPricing = structuredClone(values.placementPricing || {});
   const placementList = settings.kit?.placements || [];
   const placementGroups = el("div", { class: "placement-groups" });
   const addSelect = el("select", { class: "placement-add-select", "aria-label": "Choose a ready-made placement" });
   const addButton = el("button", { class: "btn", type: "button", text: "Add" });
+  const roundStep = (val, step = 25) => Math.max(50, Math.round(val / step) * step);
+  function renderPriceControls(placement) {
+    const entry = placementPricing[placement.id] || {};
+    const tierSelect = el("select", {
+      class: "placement-tier-select",
+      disabled: locked,
+      "aria-label": `${placement.id} pricing tier`
+    },
+      el("option", { value: "", text: "Base tier" }),
+      el("option", { value: "standard", text: "Standard (1×)" }),
+      el("option", { value: "prime", text: "Prime (1.4×)" }),
+      el("option", { value: "anchor", text: "Anchor (2×)" })
+    );
+    tierSelect.value = entry.tier || "";
+    const minInput = el("input", {
+      class: "placement-price-input",
+      type: "number",
+      min: "50",
+      max: "100000",
+      step: "25",
+      placeholder: `Min $${minBid.value || values.minBid}`,
+      value: Number.isInteger(entry.minBid) ? String(entry.minBid) : "",
+      disabled: locked,
+      "aria-label": `${placement.id} minimum bid`
+    });
+    const lockInput = el("input", {
+      class: "placement-price-input",
+      type: "number",
+      min: "51",
+      max: "250000",
+      step: "25",
+      placeholder: `Lock $${lockPrice.value || values.lockPrice}`,
+      value: Number.isInteger(entry.lockPrice) ? String(entry.lockPrice) : "",
+      disabled: locked,
+      "aria-label": `${placement.id} lock price`
+    });
+    const syncEntry = () => {
+      const m = minInput.value.trim() ? Math.round(Number(minInput.value)) : undefined;
+      const l = lockInput.value.trim() ? Math.round(Number(lockInput.value)) : undefined;
+      const t = tierSelect.value || undefined;
+      if (!m && !l && !t) delete placementPricing[placement.id];
+      else placementPricing[placement.id] = { ...(m ? { minBid: m } : {}), ...(l ? { lockPrice: l } : {}), ...(t ? { tier: t } : {}) };
+    };
+    tierSelect.addEventListener("change", () => {
+      const mult = tierSelect.value === "anchor" ? 2 : tierSelect.value === "prime" ? 1.4 : tierSelect.value === "standard" ? 1 : null;
+      if (mult) {
+        const baseM = Number(minBid.value) || values.minBid || 300;
+        const baseL = Number(lockPrice.value) || values.lockPrice || 1500;
+        minInput.value = mult === 1 ? "" : String(roundStep(baseM * mult));
+        lockInput.value = mult === 1 ? "" : String(roundStep(baseL * mult));
+      } else {
+        minInput.value = "";
+        lockInput.value = "";
+      }
+      syncEntry();
+    });
+    minInput.addEventListener("input", syncEntry);
+    lockInput.addEventListener("input", syncEntry);
+    return el("div", { class: "placement-price-controls" }, tierSelect, minInput, lockInput);
+  }
+  function applyAutoTiers() {
+    const baseM = Number(minBid.value) || values.minBid || 300;
+    const baseL = Number(lockPrice.value) || values.lockPrice || 1500;
+    const allSpots = [
+      ...placementList.filter((p) => offered.has(p.id)),
+      ...itemCatalog.flatMap((item) => item.placements.slice(0, itemCounts[item.id] || 0))
+    ];
+    for (const spot of allSpots) {
+      const area = (spot.w || 0.12) * (spot.h || 0.08);
+      if (area >= 0.028) {
+        placementPricing[spot.id] = { tier: "anchor", minBid: roundStep(baseM * 2), lockPrice: roundStep(baseL * 2) };
+      } else if (area >= 0.014) {
+        placementPricing[spot.id] = { tier: "prime", minBid: roundStep(baseM * 1.4), lockPrice: roundStep(baseL * 1.4) };
+      } else {
+        delete placementPricing[spot.id];
+      }
+    }
+    paintPlacements();
+    paintItems();
+    toast("Applied Anchor / Prime / Standard tiered pricing by placement size");
+  }
+  function resetAllTiers() {
+    for (const key of Object.keys(placementPricing)) delete placementPricing[key];
+    paintPlacements();
+    paintItems();
+    toast("Reset all placements to base pricing");
+  }
   function paintPlacements() {
     const grouped = new Map();
     for (const placement of placementList) {
@@ -321,6 +409,7 @@ function renderSettings() {
         const row = el("div", { class: "placement-edit-row" },
           el("span", { class: "pid placement-id-chip", text: placement.id }),
           name,
+          renderPriceControls(placement),
           !locked ? el("button", {
             class: "btn btn-ghost btn-remove-placement",
             type: "button",
@@ -370,7 +459,10 @@ function renderSettings() {
           "aria-label": `${placement.id} display name`
         });
         name.addEventListener("input", () => { placementNames[placement.id] = name.value; });
-        return el("div", { class: "item-placement-row" }, el("span", { class: "pid placement-id-chip", text: placement.id }), name);
+        return el("div", { class: "item-placement-row" },
+          el("span", { class: "pid placement-id-chip", text: placement.id }),
+          name,
+          renderPriceControls(placement));
       });
       return el("fieldset", { class: `item-card${count ? " is-on" : ""}` },
         el("legend", { text: item.name }),
@@ -420,7 +512,15 @@ function renderSettings() {
     field("Benefits (one per line)", benefits),
     field("Intro", intro),
     field("Accent", accent),
-    el("div", {}, el("p", { class: "eyebrow", text: "Offered placements" }), placements),
+    el("div", {},
+      el("div", { class: "tier-preset-bar" },
+        el("div", {},
+          el("p", { class: "eyebrow", text: "Offered placements & tiered pricing" }),
+          el("p", { class: "muted small", text: "Set custom Min Bid / Lock Price per spot, or auto-price Anchor (2×), Prime (1.4×), and Standard (1×) spots by print size." })),
+        !locked ? el("div", { class: "tier-preset-actions" },
+          el("button", { class: "btn btn-ghost", type: "button", text: "Auto-tier by size", onclick: applyAutoTiers }),
+          el("button", { class: "btn btn-ghost", type: "button", text: "Reset tiers", onclick: resetAllTiers })) : null),
+      placements),
     itemCatalog.length ? el("div", {},
       el("p", { class: "eyebrow", text: "Sponsorship items" }),
       el("p", { class: "muted small", text: "Add the gear you sell space on and how many logo placements each carries. They appear on your 3D athlete as placeholder items." }),
@@ -452,10 +552,16 @@ function renderSettings() {
       ]
         .map((placement) => [placement.id, (placementNames[placement.id] || "").trim(), placement.name || ""])
         .filter(([, name, original]) => name && name !== original)
-        .map(([id, name]) => [id, name]))
+        .map(([id, name]) => [id, name])),
+      placementPricing: Object.fromEntries(
+        Object.entries(placementPricing).filter(([id, val]) =>
+          (offered.has(id) || itemCatalog.some((item) => item.placements.slice(0, itemCounts[item.id] || 0).some((p) => p.id === id))) &&
+          val && (Number.isInteger(val.minBid) || Number.isInteger(val.lockPrice) || val.tier)
+        )
+      )
     };
     if (locked) {
-      for (const key of ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds", "items", "placementNames"]) delete body[key];
+      for (const key of ["eventName", "eventDate", "timeZone", "deadline", "minBid", "increment", "lockPrice", "offeredPlacementIds", "items", "placementNames", "placementPricing"]) delete body[key];
     }
     try {
       await api(`/api/dashboard/${encodeURIComponent(slug)}/settings`, { method: "POST", body });
@@ -702,9 +808,10 @@ function placementStatus(p) {
 function invoiceCell(p) {
   if (!p.invoice) return el("span", { class: "muted", text: p.state === "locked" || p.state === "won" ? "Pending" : "—" });
   if (p.invoice.paidAt) return el("span", { class: "badge badge-ok", text: `Paid ${money(p.invoice.amountPaid ?? p.invoice.amount)}` });
+  const holdSuffix = p.lockExpiresAt ? ` · Hold until ${when(p.lockExpiresAt)}` : "";
   if (p.invoice.status === "sent") return p.invoice.url
-    ? el("a", { href: p.invoice.url, target: "_blank", rel: "noopener", text: `Sent ${p.invoice.number || ""}`.trim() })
-    : el("span", { text: "Sent" });
+    ? el("a", { href: p.invoice.url, target: "_blank", rel: "noopener", text: `${`Sent ${p.invoice.number || ""}`.trim()}${holdSuffix}` })
+    : el("span", { text: `Sent${holdSuffix}` });
   return el("span", { class: "badge badge-bad", text: p.invoice.status === "failed" ? "Failed — retrying" : "Not created" });
 }
 
@@ -718,14 +825,20 @@ function contactBlock(c) {
 
 function renderDetail(p) {
   const actions = [];
+  if (p.state === "open" || p.state === "bidding") {
+    actions.push(el("button", { class: "btn btn-primary", type: "button", text: "Create sponsor pitch link", onclick: () => openPitchDialog(p) }));
+  }
   if (p.state === "open") actions.push(el("button", { class: "btn", type: "button", text: "Mark as sold offline", onclick: () => openSoldDialog(p) }));
+  if (p.state === "locked" && !p.invoice?.paidAt) {
+    actions.push(el("button", { class: "btn btn-danger", type: "button", text: "Release unpaid lock", onclick: () => release(p) }));
+  }
   if (p.state === "sold" && p.soldSource === "dashboard") actions.push(el("button", { class: "btn btn-danger", type: "button", text: "Release placement", onclick: () => release(p) }));
   if (p.state === "sold" && p.soldSource === "config") actions.push(el("p", { class: "muted small", text: "This sale is part of your portal setup. Contact support to change it." }));
   const history = p.history?.length
     ? el("table", { class: "history" },
         el("thead", {}, el("tr", {}, ["When", "Type", "Amount", "Sponsor", "Contact", "Note"].map((h) => el("th", { scope: "col", text: h })))),
         el("tbody", {}, [...p.history].reverse().map((h) => el("tr", {},
-          el("td", { text: when(h.at) }), el("td", { text: h.type === "lock" ? "Lock It Now" : "Bid" }), el("td", { class: "num", text: money(h.amount) }),
+          el("td", { text: when(h.at) }), el("td", { text: h.type === "lock" ? "Lock It Now" : h.type === "lock_released" ? "Lock Released" : "Bid" }), el("td", { class: "num", text: money(h.amount) }),
           el("td", { text: h.company }), el("td", {}, contactBlock({ company: h.name, email: h.email, phone: h.phone })), el("td", { class: "note", text: h.note || "" })))))
     : el("p", { class: "muted", text: p.state === "sold" ? `Sold to ${p.sponsor}${p.soldAmount != null ? ` for ${money(p.soldAmount)}` : ""}.${p.soldNote ? ` ${p.soldNote}` : ""}` : "No bids yet." });
   return el("div", { class: "detail" },
@@ -858,6 +971,107 @@ function openSoldDialog(p) {
   document.body.append(dialog);
   dialog.showModal();
   form.sponsor.focus();
+}
+
+function openPitchDialog(p) {
+  const dialog = el("dialog", { class: "modal", "aria-labelledby": "pitchTitle" });
+  const error = el("p", { class: "notice notice-error", role: "alert", hidden: true });
+  const logoInput = el("input", { id: "pitchLogo", name: "logoFile", type: "file", accept: "image/png,image/jpeg,image/webp" });
+  const logoPreview = el("img", { class: "logo-preview sold-logo-preview", alt: "Prospect logo preview", hidden: true });
+  const logoStatus = el("p", { class: "muted small", hidden: true });
+  const resultBox = el("div", { class: "stack pitch-result", hidden: true });
+  const submitButton = el("button", { class: "btn btn-primary", type: "submit", text: "Generate 3D pitch link" });
+  let logo = null;
+  logoInput.addEventListener("change", async () => {
+    const file = logoInput.files?.[0];
+    if (!file) { logo = null; logoPreview.hidden = true; logoStatus.hidden = true; return; }
+    submitButton.disabled = true;
+    error.hidden = true;
+    logoStatus.hidden = false;
+    logoStatus.textContent = "Preparing prospect logo…";
+    try {
+      logo = await sponsorLogoData(file);
+      logoPreview.src = logo;
+      logoPreview.hidden = false;
+      logoStatus.hidden = true;
+    } catch (err) {
+      logo = null;
+      logoPreview.hidden = true;
+      error.textContent = err.message || "Use a JPG, PNG or WebP image.";
+      error.hidden = false;
+      logoStatus.hidden = true;
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
+  const form = el("form", { class: "stack", method: "dialog", novalidate: true },
+    el("h2", { id: "pitchTitle", text: `Pitch ${p.id} to a sponsor` }),
+    el("p", { class: "muted", text: `${p.label}. Create a personalized 3D portal link with the prospect's logo already mapped onto your kit.` }),
+    el("label", { for: "pitchCompany", text: "Prospect company name" }),
+    el("input", { id: "pitchCompany", name: "company", required: true, maxlength: "120", autocomplete: "off", placeholder: "e.g. Apex Roofing" }),
+    el("label", { for: "pitchName", text: "Contact name (optional)" }),
+    el("input", { id: "pitchName", name: "name", maxlength: "120", autocomplete: "off", placeholder: "e.g. Mike Carter" }),
+    el("label", { for: "pitchNote", text: "Custom banner note (optional)" }),
+    el("input", { id: "pitchNote", name: "note", maxlength: "240", placeholder: `Reserved preview for ${p.label}` }),
+    el("label", { for: "pitchLogo", text: "Prospect logo (optional — PNG, JPG or WebP)" }),
+    logoInput,
+    logoPreview,
+    logoStatus,
+    resultBox,
+    error,
+    el("div", { class: "actions" },
+      el("button", { class: "btn btn-ghost", type: "button", text: "Close", onclick: () => dialog.close() }),
+      submitButton));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const company = form.company.value.trim();
+    if (!company) { error.hidden = false; error.textContent = "Enter the prospect's company name."; return; }
+    submitButton.disabled = true;
+    error.hidden = true;
+    try {
+      const { pitch } = await api(`/api/dashboard/${encodeURIComponent(slug)}/placements/${encodeURIComponent(p.id)}/pitch`, {
+        method: "POST",
+        body: {
+          company,
+          name: form.name.value.trim(),
+          note: form.note.value.trim(),
+          ...(logo ? { logo } : {})
+        }
+      });
+      const urlInput = el("input", { readonly: true, value: pitch.pitchUrl, "aria-label": "Generated pitch URL" });
+      resultBox.replaceChildren(
+        el("p", { class: "notice notice-ok", text: `Pitch link ready for ${pitch.company}. When they open it, the 3D camera flies straight to ${p.id} with their logo on your kit.` }),
+        el("div", { class: "copy-row" },
+          urlInput,
+          el("button", {
+            class: "btn btn-primary",
+            type: "button",
+            text: "Copy link",
+            onclick: async () => {
+              try {
+                await navigator.clipboard.writeText(pitch.pitchUrl);
+                toast("Pitch link copied to clipboard");
+              } catch {
+                urlInput.select();
+                toast("Press Ctrl/Cmd+C to copy", "error");
+              }
+            }
+          }),
+          el("a", { class: "btn btn-ghost", href: pitch.pitchUrl, target: "_blank", rel: "noopener", text: "Preview" }))
+      );
+      resultBox.hidden = false;
+    } catch (err) {
+      error.hidden = false;
+      error.textContent = err.message;
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
+  dialog.append(form);
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+  form.company.focus();
 }
 
 async function release(p) {

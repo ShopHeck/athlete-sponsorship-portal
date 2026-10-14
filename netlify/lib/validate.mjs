@@ -163,10 +163,26 @@ export function validateConfig(config, filename) {
       }
       const anchors = SURFACE_ANCHORS[garment.item] || [];
       const anchorRequired = garment.item !== undefined && garment.item !== "body";
-      if ((placement.anchor !== undefined || anchorRequired) && !anchors.includes(placement.anchor)) {
-        throw new Error(anchors.length
-          ? `placement ${placement.id} anchor must be one of ${anchors.join(", ")}`
-          : `placement ${placement.id} anchor is only allowed on a sponsorship item`);
+      if (placement.anchor !== undefined || anchorRequired) {
+        if (!anchors.includes(placement.anchor)) {
+          throw new Error(anchors.length
+            ? `placement ${placement.id} anchor must be one of ${anchors.join(", ")}`
+            : `placement ${placement.id} anchor is only allowed on a sponsorship item`);
+        }
+      }
+      if (placement.tier !== undefined && !["anchor", "prime", "standard"].includes(placement.tier)) {
+        throw new Error(`placement ${placement.id} tier must be anchor, prime, or standard`);
+      }
+      if (placement.minBid !== undefined) {
+        if (!Number.isInteger(placement.minBid) || placement.minBid < 50 || placement.minBid > 100000) {
+          throw new Error(`placement ${placement.id} minBid must be an integer from 50 to 100000`);
+        }
+      }
+      if (placement.lockPrice !== undefined) {
+        const effectiveMin = placement.minBid ?? config.pricing?.minBid ?? 50;
+        if (!Number.isInteger(placement.lockPrice) || placement.lockPrice <= effectiveMin || placement.lockPrice > 250000) {
+          throw new Error(`placement ${placement.id} lockPrice must be greater than minBid and at most 250000`);
+        }
       }
       ids.add(placement.id);
     }

@@ -5,6 +5,7 @@ import {
   ITEM_PLACEMENTS, SPONSOR_ITEMS, SURFACE_ANCHORS, countsCovering, itemCatalog, itemGarments,
   offeredItemPlacementIds, validateItemCounts
 } from "../netlify/lib/sponsor-items.mjs";
+import { forTenant } from "../netlify/lib/sponsorship.mjs";
 import { validateConfig } from "../netlify/lib/validate.mjs";
 
 const tenantIds = fs.readdirSync("tenants").filter((file) => file.endsWith(".json"))
@@ -87,4 +88,61 @@ test("the dashboard catalog lists every slot", () => {
   const catalog = itemCatalog();
   assert.equal(catalog.find((item) => item.id === "gloves").max, 4);
   assert.deepEqual(catalog.find((item) => item.id === "hat").placements[0], { id: "HAT-01", name: "Front panel", side: "front" });
+});
+
+test("per-placement tiered pricing validates and resolves through forTenant", () => {
+  const base = JSON.parse(fs.readFileSync("tenants/jordan-reyes.json", "utf8"));
+  const garments = itemGarments(
+    { tee: 2 },
+    { "TEE-01": "Anchor Chest" },
+    { "TEE-01": { tier: "anchor", minBid: 800, lockPrice: 3200 } }
+  );
+  const config = validateConfig({ ...base, garments: [...base.garments, ...garments] });
+  const services = forTenant(config, { portalUrl: "http://localhost:8890/jordan-reyes" });
+  assert.deepEqual(services.placementPricing("TEE-01"), {
+    minBid: 800,
+    lockPrice: 3200,
+    increment: base.pricing.increment,
+    tier: "anchor"
+  });
+  assert.deepEqual(services.placementPricing("TEE-02"), {
+    minBid: base.pricing.minBid,
+    lockPrice: base.pricing.lockPrice,
+    increment: base.pricing.increment,
+    tier: null
+  });
+  assert.throws(
+    () => validateConfig({ ...base, garments: itemGarments({ tee: 1 }, {}, { "TEE-01": { minBid: 800, lockPrice: 500 } }) }),
+    /lockPrice must be greater than minBid/
+  );
+});
+
+test("unpaid lock reservation holds expire and restore prior high bids", () => {
+  const base = JSON.parse(fs.readFileSync("tenants/jordan-reyes.json", "utf8"));
+  const services = forTenant(base, { portalUrl: "http://localhost:8890/jordan-reyes" });
+  const past = new Date(Date.now() - 3600_000).toISOString();
+  const future = new Date(Date.now() + 3600_000).toISOString();
+  const activeLock = { locked: true, lockExpiresAt: future, high: 1500, bidder: { company: "Apex" }, history: [] };
+  assert.equal(services.isLockExpired(activeLock), false);
+  const paidLock = { locked: true, lockExpiresAt: past, invoice: { paidAt: past }, high: 1500, bidder: { company: "Apex" }, history: [] };
+  assert.equal(services.isLockExpired(paidLock), false);
+  const expiredLock = {
+    locked: true,
+    lockedAt: past,
+    lockedBy: { company: "Ghost Co" },
+    lockExpiresAt: past,
+    high: 1500,
+    bidder: { company: "Ghost Co", name: "Ghost", email: "ghost@example.test", phone: "" },
+    invoice: { id: "inv_1", status: "sent" },
+    history: [
+      { type: "bid", amount: 650, at: past, company: "Real Bid LLC", name: "Pat", email: "pat@real.test", phone: "555" },
+      { type: "lock", amount: 1500, at: past, company: "Ghost Co", name: "Ghost", email: "ghost@example.test", phone: "" }
+    ]
+  };
+  assert.equal(services.isLockExpired(expiredLock), true);
+  const released = services.releaseUnpaidLockRecord(expiredLock);
+  assert.equal(released.locked, false);
+  assert.equal(released.high, 650);
+  assert.equal(released.bidder?.company, "Real Bid LLC");
+  assert.equal(released.history.at(-1)?.type, "lock_released");
 });

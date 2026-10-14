@@ -166,7 +166,7 @@ export function countsCovering(items = {}, placementIds = []) {
 }
 
 // Tenant garments for the offered items, appended after the kit's garments. `placementNames` may rename slots.
-export function itemGarments(items = {}, placementNames = {}) {
+export function itemGarments(items = {}, placementNames = {}, placementPricing = {}) {
   return SPONSOR_ITEMS
     .filter((item) => (items?.[item.id] || 0) > 0)
     .map((item) => ({
@@ -176,12 +176,17 @@ export function itemGarments(items = {}, placementNames = {}) {
       lateralLabel: item.lateralLabel,
       item: item.surface,
       placements: item.slots.slice(0, items[item.id]).map((slot, index) => {
-        const name = placementNames?.[itemPlacementId(item, index)] || slot.name;
+        const id = itemPlacementId(item, index);
+        const name = placementNames?.[id] || slot.name;
+        const price = placementPricing?.[id];
         return {
-          id: itemPlacementId(item, index),
+          id,
           ...slot,
           name,
-          label: `${item.name} · ${name}`
+          label: `${item.name} · ${name}`,
+          ...(Number.isInteger(price?.minBid) ? { minBid: price.minBid } : {}),
+          ...(Number.isInteger(price?.lockPrice) ? { lockPrice: price.lockPrice } : {}),
+          ...(price?.tier ? { tier: price.tier } : {})
         };
       })
     }));
