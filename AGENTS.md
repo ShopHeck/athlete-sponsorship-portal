@@ -37,6 +37,9 @@ operating one. `reference/gotchas.md` first when debugging.
 - Package the skill for Claude / Codex / ChatGPT: `scripts/package-skill.sh` → `dist/skill/`
 - Production deploys happen from Git (`main`) via Netlify; do not `netlify deploy` a linked site.
 
+## Cloud Agents
+The shared Cloud Agent environment also checks out `ai-training-work`, which requires Node.js 24. Install puts Node `24.21.0` and Netlify CLI `27.12.1` on `PATH`, runs `npm ci` in both repositories, and runs `npm run build` here so `netlify/lib/platform.generated.json` exists. On boot, mock Stripe/Resend/Meshy listens on `127.0.0.1:4343` and `netlify dev --offline --port 8890` serves http://127.0.0.1:8890 with the mock credentials in the smoke-test header (`sk_test_mock`, `re_mock`, `devpreview`, `devtoken`, `devdashboard`). Those processes are already running; reuse them. Before the curl suites, run `INCLUDE_TEST_TENANTS=1 npm run build`, reset `.netlify/blobs-serve`, and restart the dev server so it reloads the test registry. `ai-training-work` checks are `npm test` and `npm run typecheck`. Live collect/generate still need `TAVILY_API_KEY` and an LLM key; they are not required to develop or test.
+
 ## Architecture
 - **No framework, no frontend bundler.** HTTP Netlify Functions (`netlify/functions/*.mjs`, esbuild) declare their
   own routes via `export const config = { path }`; `netlify.toml` has no redirects. Exceptions: `close-auction`
