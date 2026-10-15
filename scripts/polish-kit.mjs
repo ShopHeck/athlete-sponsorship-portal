@@ -143,7 +143,10 @@ for (let y = 0; y < TEX; y++) for (let x = 0; x < TEX; x++) {
   const m = mask[y * TEX + x];
   if (!m) continue;
   const folds = noise(x / 36, y / 36) * 0.5 + noise(x / 14, y / 14) * 0.2;
-  const grain = m === 1 ? (hash(x, y) * 0.16 + noise(x / 2.1, y / 2.1) * 0.22) : noise(x / 4, y / 4) * 0.08;
+  // Band-limited weave avoids single-pixel white noise that turns into 8x8 WebP macroblocks on normal maps.
+  const grain = m === 1
+    ? (noise(x / 2.4, y / 2.4) * 0.2 + noise(x / 5.2, y / 5.2) * 0.14)
+    : (noise(x / 3.8, y / 3.8) * 0.09 + noise(x / 8.0, y / 8.0) * 0.05);
   height[y * TEX + x] = (m === 1 ? folds * 0.55 : folds * 0.45) + grain;
 }
 const normalPx = Buffer.alloc(TEX * TEX * 3, 128);
@@ -194,9 +197,9 @@ material.setMetallicRoughnessTexture(doc.createTexture("kit-roughness").setImage
   .setNormalScale(0.65);
 
 await doc.transform(
-  textureCompress({ encoder: sharp, targetFormat: "webp", resize: [4096, 4096], quality: 85, slots: /baseColor/ }),
-  textureCompress({ encoder: sharp, targetFormat: "webp", quality: 80, slots: /(normal|metallicRoughness)/ }),
-  draco()
+  textureCompress({ encoder: sharp, targetFormat: "webp", resize: [4096, 4096], quality: 88, slots: /baseColor/ }),
+  textureCompress({ encoder: sharp, targetFormat: "webp", quality: 92, slots: /(normal|metallicRoughness)/ }),
+  draco({ quantizeTexcoord: 14 })
 );
 const bytes = Buffer.from(await io.writeBinary(doc));
 writeFileSync(output, bytes);

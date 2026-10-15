@@ -670,20 +670,22 @@ function victoryChestBeat(root) {
     root.updateMatrixWorld(true);
     const bow = ease(t, 0, 0.5) * (1 - ease(t, 1, 1.55));
     const raised = ease(t, 1, 1.55) * (1 - ease(t, 3, 3.7));
-    spine.quaternion.copy(turned(spine, [[X, 7 * bow - 5 * raised]]));
+    const left = ease(t, 1, 1.4) * (1 - ease(t, 3.1, 3.7));
+    const beat = left > 0 ? between(t, beats) : 0;
+    // Subtle chest recoil as each fist beat lands on the pecs.
+    spine.quaternion.copy(turned(spine, [[X, 7 * bow - 5 * raised - 1.8 * beat]]));
     spine.updateMatrixWorld(true);
-    head.quaternion.copy(turned(head, [[X, 32 * bow - 24 * raised]]));
+    head.quaternion.copy(turned(head, [[X, 32 * bow - 24 * raised + 1.2 * beat]]));
     head.updateMatrixWorld(true);
 
     if (raised > 0) {
       const shoulder = rArm.getWorldPosition(new THREE.Vector3());
-      const target = shoulder.clone().add(new THREE.Vector3(-0.015, 0.43, 0.16));
+      const pump = 0.012 * beat;
+      const target = shoulder.clone().add(new THREE.Vector3(-0.015, 0.43 + pump, 0.16));
       bendArm(rArm, rFore, rHand, target, new THREE.Vector3(-0.3, 0.15, 0.13), raised);
     }
-    const left = ease(t, 1, 1.4) * (1 - ease(t, 3.1, 3.7));
     if (left > 0) {
       const shoulder = lArm.getWorldPosition(new THREE.Vector3());
-      const beat = between(t, beats);
       const target = shoulder.clone().add(new THREE.Vector3(-0.14, -0.18 + 0.045 * (1 - beat), 0.11 + press + 0.10 * (1 - beat)));
       bendArm(lArm, lFore, lHand, target, new THREE.Vector3(0.09, -0.3, 0.1), left);
     }
@@ -751,10 +753,14 @@ function fightClip(root, name, duration, pose, fit, fps = FIGHT_FPS) {
   let moved = false;
   const rig = {
     turn(n, axis, degrees) { if (degrees) spinBone(bone(n), axes[axis], degrees); },
-    // Hips lowered (negative raises) in arm lengths and turned about the vertical, with the feet kept planted.
-    hips(drop, yaw = 0) {
-      if (!drop && !yaw) return;
-      const p = hips.getWorldPosition(new THREE.Vector3()).addScaledVector(up, -drop * L);
+    // Hips lowered (negative raises) and shifted laterally/forward in arm lengths, and turned about the vertical,
+    // with the feet kept planted via two-bone leg IK.
+    hips(drop, yaw = 0, shiftLeft = 0, shiftForward = 0) {
+      if (!drop && !yaw && !shiftLeft && !shiftForward) return;
+      const p = hips.getWorldPosition(new THREE.Vector3())
+        .addScaledVector(up, -drop * L)
+        .addScaledVector(left, shiftLeft * L)
+        .addScaledVector(forward, shiftForward * L);
       hips.position.copy(hips.parent.worldToLocal(p));
       hips.updateMatrixWorld(true);
       if (yaw) spinBone(hips, up, yaw);
@@ -811,28 +817,42 @@ function fightClip(root, name, duration, pose, fit, fps = FIGHT_FPS) {
   ]);
 }
 
-// Hands up into a high guard with a light bounce, then jab, jab, cross, lead hook, cross, turning the torso
-// into every punch, and back to the stance.
+// Hands up into a high guard with a light bounce, then jab, jab, cross, lead hook, cross, turning the hips and
+// thoracic spine sequentially into every punch (ground-up kinetic chain), and back to the stance.
 const GUARD_POLE = [0.25, -1, 0.1]; // elbows down and in
 function shadowboxCombo(root) {
   const punches = [
-    { side: "Left", start: 0.6, out: 0.11, hold: 0.03, back: 0.17, to: [-0.15, 0.12, 0.93], yaw: -14 },
-    { side: "Left", start: 0.98, out: 0.11, hold: 0.03, back: 0.17, to: [-0.15, 0.12, 0.93], yaw: -14 },
-    { side: "Right", start: 1.38, out: 0.13, hold: 0.05, back: 0.22, to: [-0.24, 0.1, 0.91], yaw: 26, hipYaw: 10 },
-    { side: "Left", start: 2.0, out: 0.18, hold: 0.05, back: 0.26, to: [-0.4, 0.08, 0.5], yaw: -30, hipYaw: -12, hook: true },
-    { side: "Right", start: 2.62, out: 0.13, hold: 0.06, back: 0.25, to: [-0.24, 0.1, 0.91], yaw: 26, hipYaw: 10 }
+    { side: "Left", start: 0.6, out: 0.11, hold: 0.03, back: 0.17, to: [-0.15, 0.12, 0.93], yaw: -14, hipYaw: -4, roll: 2 },
+    { side: "Left", start: 0.98, out: 0.11, hold: 0.03, back: 0.17, to: [-0.15, 0.12, 0.93], yaw: -14, hipYaw: -5, roll: 2 },
+    { side: "Right", start: 1.38, out: 0.13, hold: 0.05, back: 0.22, to: [-0.24, 0.1, 0.91], yaw: 26, hipYaw: 11, roll: -3.5 },
+    { side: "Left", start: 2.0, out: 0.18, hold: 0.05, back: 0.26, to: [-0.4, 0.08, 0.5], yaw: -30, hipYaw: -13, roll: 4, hook: true },
+    { side: "Right", start: 2.62, out: 0.13, hold: 0.06, back: 0.25, to: [-0.24, 0.1, 0.91], yaw: 26, hipYaw: 11, roll: -3.5 }
   ];
   const guard = { Left: [-0.16, 0.0, 0.62], Right: [-0.2, 0.03, 0.46] };
   return fightClip(root, "Shadowbox_Combo", 3.75, (t, rig) => {
     const up = ease(t, 0, 0.4) * (1 - ease(t, 3.2, 3.75));
-    const bounce = up * (0.5 - 0.5 * Math.cos(2 * Math.PI * 2 * Math.max(0, t - 0.4)));
-    let yaw = -8 * up, hipYaw = 0;
-    const fists = { Left: { to: guard.Left, pole: GUARD_POLE }, Right: { to: guard.Right, pole: GUARD_POLE } };
+    const rhythmPhase = 2 * Math.PI * 2 * Math.max(0, t - 0.4);
+    const bounce = up * (0.5 - 0.5 * Math.cos(rhythmPhase));
+    const weave = up * Math.sin(rhythmPhase * 0.5);
+    let yaw = -8 * up, hipYaw = 0, roll = 1.8 * weave, weightFwd = 0.003 * bounce, weightLat = 0.003 * weave;
+    const fists = { Left: { to: [...guard.Left], pole: GUARD_POLE }, Right: { to: [...guard.Right], pole: GUARD_POLE } };
+    const shoulderProtract = { Left: 0, Right: 0 };
     for (const p of punches) {
+      // Ground-up kinetic chain: pelvis initiates 25ms early, torso whips 12ms early, fist snaps through last.
+      const sHip = strike(t, p.start - 0.025, p.out + 0.015, p.hold, p.back + 0.02);
+      const sTorso = strike(t, p.start - 0.012, p.out + 0.008, p.hold, p.back + 0.01);
       const s = strike(t, p.start, p.out, p.hold, p.back);
+      if (!s && !sHip && !sTorso) continue;
+      yaw += p.yaw * sTorso;
+      hipYaw += (p.hipYaw || 0) * sHip;
+      roll += (p.roll || 0) * sTorso;
+      weightFwd += 0.004 * sHip;
+      shoulderProtract[p.side] += 4.5 * s;
+      // Non-punching hand tightens slightly to the cheek to cover the chin during the strike.
+      const other = p.side === "Left" ? "Right" : "Left";
+      fists[other].to[1] += 0.025 * s;
+      fists[other].to[2] -= 0.02 * s;
       if (!s) continue;
-      yaw += p.yaw * s;
-      hipYaw += (p.hipYaw || 0) * s;
       const from = new THREE.Vector3(...guard[p.side]), to = new THREE.Vector3(...p.to);
       const fist = from.lerp(to, s);
       // A hook swings the fist out and round on a bent arm with the elbow up; straight punches extend the arm.
@@ -841,14 +861,20 @@ function shadowboxCombo(root) {
       const pole = new THREE.Vector3(...GUARD_POLE).lerp(new THREE.Vector3(...(p.hook ? [1, 0.05, -0.3] : [0.3, -1, 0])), s);
       fists[p.side] = { to: fist.toArray(), pole: pole.toArray() };
     }
-    rig.hips(0.07 * up + 0.03 * bounce, hipYaw);
-    rig.turn("Spine02", "pitch", 4 * up);
+    rig.hips(0.07 * up + 0.03 * bounce, hipYaw, weightLat, weightFwd);
+    rig.turn("Spine02", "pitch", 4 * up + 1.2 * bounce);
+    rig.turn("Spine02", "roll", roll * 0.4);
+    rig.turn("Spine01", "roll", roll * 0.6);
     rig.turn("Spine02", "yaw", (yaw - hipYaw) * 0.35);
     rig.turn("Spine01", "yaw", (yaw - hipYaw) * 0.35);
     rig.turn("Spine", "yaw", (yaw - hipYaw) * 0.3);
     rig.turn("Head", "yaw", -yaw * 0.6); // eyes stay on the sponsor
     rig.turn("Head", "pitch", 8 * up);
-    for (const [side, sign] of SIDES) rig.fist(side, sign, fists[side].to, fists[side].pole, up);
+    rig.turn("Head", "roll", -roll * 0.5);
+    for (const [side, sign] of SIDES) {
+      rig.shrug(side, sign, shoulderProtract[side]);
+      rig.fist(side, sign, fists[side].to, fists[side].pole, up);
+    }
   });
 }
 
@@ -908,18 +934,44 @@ function tauntHandsDown(root) {
   });
 }
 
-// The rest stance, breathing: two slow breaths lift the chest and shoulders while the weight sways a little from side
-// to side, over an 8-second loop whose first and last frames match, so it repeats without a seam.
+// Full-body biomechanical idle over an 8-second seamless loop: phased abdominal-to-thoracic breathing, subtle pelvic
+// weight transfer with planted-foot knee IK flex, clavicle and forearm micro-relaxation, and vestibulo-ocular head
+// stabilization so the athlete feels alive from head to toe rather than frozen below the chest.
 function breathingClip(root) {
   return fightClip(root, "__breathing", 8, (t, rig) => {
+    const wave = (cycles, phase = 0) => Math.sin((2 * Math.PI * cycles * t) / 8 + phase) - Math.sin(phase);
     const breath = 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / 4);
-    const sway = Math.sin((2 * Math.PI * t) / 8);
-    rig.hips(0, 0.8 * sway);
-    rig.turn("Spine", "pitch", -1.2 * breath);
-    rig.turn("Head", "pitch", 0.9 * breath); // eyes stay level as the chest lifts
-    rig.turn("Head", "yaw", -1.5 * sway);
-    for (const [side, sign] of SIDES) rig.shrug(side, sign, 1.4 * breath);
-  }, null, 8);
+    const deep = 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / 8);
+    const sway = wave(1, 0);
+    const micro = wave(2, 0.55);
+
+    // Lower-body weight shift & knee flex (feet stay planted via fightClip's leg IK solver).
+    rig.hips(0.0022 * breath + 0.0012 * deep, 0.85 * sway, 0.0032 * sway, 0.0015 * breath);
+
+    // Phased respiratory wave propagating up the spine + subtle contrapposto counter-balance.
+    rig.turn("Spine02", "pitch", -0.35 * breath + 0.15 * wave(2, -0.35));
+    rig.turn("Spine02", "roll", 0.45 * sway);
+    rig.turn("Spine02", "yaw", -0.25 * sway);
+    rig.turn("Spine01", "pitch", -0.55 * breath - 0.15 * deep);
+    rig.turn("Spine01", "roll", -0.35 * sway);
+    rig.turn("Spine", "pitch", -0.85 * breath - 0.2 * deep);
+    rig.turn("Spine", "yaw", -0.35 * sway + 0.2 * micro);
+
+    // Vestibulo-ocular neck/head stabilization and natural micro-gaze drift.
+    rig.turn("neck", "pitch", 0.45 * breath);
+    rig.turn("neck", "yaw", -0.4 * sway);
+    rig.turn("Head", "pitch", 0.85 * breath + 0.2 * deep);
+    rig.turn("Head", "yaw", -1.1 * sway - 0.3 * micro);
+    rig.turn("Head", "roll", 0.35 * sway);
+
+    // Clavicle lift and subtle arm/forearm living relaxation.
+    for (const [side, sign] of SIDES) {
+      rig.shrug(side, sign, 1.3 * breath + 0.18 * deep);
+      rig.turn(`${side}Arm`, "roll", -sign * (0.45 * breath + 0.15 * deep));
+      rig.turn(`${side}Arm`, "pitch", -0.35 * breath);
+      rig.turn(`${side}ForeArm`, "pitch", -0.65 * breath - 0.2 * wave(1, sign * 0.4));
+    }
+  }, null, 24);
 }
 
 const AUTHORED_MOVES = {
@@ -1124,6 +1176,52 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
   root.updateMatrixWorld(true);
   let current = null, settling = false, quiet = 0;
 
+  // Interactive camera-aware gaze layer: when the visitor orbits in the front arc while the athlete is idling,
+  // the neck and head subtly track the camera so the athlete feels present and responsive.
+  const headBone = root.getObjectByName("Head");
+  const neckBone = root.getObjectByName("neck");
+  const hipsBone = root.getObjectByName("Hips");
+  let gazeTarget = null;
+  let gazeYaw = 0, gazePitch = 0;
+  const gazeHeadPos = new THREE.Vector3(), gazeDir = new THREE.Vector3(), gazeFwd = new THREE.Vector3();
+  const gazeUp = new THREE.Vector3(0, 1, 0), gazeRight = new THREE.Vector3(1, 0, 0);
+  function applyGaze(dt) {
+    if (!gazeTarget || !idle || !headBone?.isBone) return false;
+    let targetYaw = 0, targetPitch = 0;
+    if (!current && !fade && !settling) {
+      root.updateMatrixWorld(true);
+      headBone.getWorldPosition(gazeHeadPos);
+      gazeDir.copy(gazeTarget).sub(gazeHeadPos);
+      const horizDist = Math.hypot(gazeDir.x, gazeDir.z);
+      if (horizDist > 0.25) {
+        const bodyQuat = (hipsBone || root).getWorldQuaternion(new THREE.Quaternion());
+        gazeFwd.set(0, 0, 1).applyQuaternion(bodyQuat).setY(0).normalize();
+        const bodyAz = Math.atan2(gazeFwd.x, gazeFwd.z);
+        const camAz = Math.atan2(gazeDir.x, gazeDir.z);
+        let relAz = camAz - bodyAz;
+        relAz = Math.atan2(Math.sin(relAz), Math.cos(relAz));
+        const relEl = Math.atan2(gazeDir.y, horizDist);
+        // Track smoothly inside the front ±58° cone; fade smoothly back to neutral as the camera orbits behind.
+        const cone = Math.max(0, 1 - (relAz / THREE.MathUtils.degToRad(58)) ** 2);
+        if (cone > 0) {
+          targetYaw = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(relAz) * 0.32, -11, 11) * cone;
+          targetPitch = THREE.MathUtils.clamp(-THREE.MathUtils.radToDeg(relEl) * 0.28, -5, 5) * cone;
+        }
+      }
+    }
+    const alpha = 1 - Math.exp(-Math.max(dt, 1 / 120) * 5.5);
+    gazeYaw += (targetYaw - gazeYaw) * alpha;
+    gazePitch += (targetPitch - gazePitch) * alpha;
+    if (Math.abs(gazeYaw) < 0.02 && Math.abs(gazePitch) < 0.02) return false;
+    if (neckBone?.isBone) {
+      spinBone(neckBone, gazeUp, gazeYaw * 0.35);
+      spinBone(neckBone, gazeRight, gazePitch * 0.35);
+    }
+    spinBone(headBone, gazeUp, gazeYaw * 0.65);
+    spinBone(headBone, gazeRight, gazePitch * 0.65);
+    return true;
+  }
+
   // Eased crossfades. three's own fades ramp weights linearly, so a move starts (and the body settles) with a jolt;
   // here every contributing action eases from its current weight to its target together, so blends stay continuous
   // even when a move is interrupted mid-fade.
@@ -1204,6 +1302,11 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
     })),
     play,
     settle,
+    setGazeTarget(point) {
+      if (!point) { gazeTarget = null; return; }
+      if (!gazeTarget) gazeTarget = new THREE.Vector3();
+      gazeTarget.copy(point);
+    },
     // Runs fn with the stance's arms and legs but the bind pose's square-on torso, so placements authored as
     // front/back/side rays land where intended even though the idle stance turns the athlete slightly.
     withProjectionPose(fn) {
@@ -1222,6 +1325,7 @@ export function createMotion(root, gltfClips, entries, { onChange, onSettled, re
       else if (quiet++ > 0) return false; // one extra step lands exactly on the rest pose
       stepFade(dt);
       mixer.update(dt);
+      applyGaze(dt);
       if (current?.phase === "enter" || current?.phase === "recover") {
         current.elapsed += dt;
         if (current.phase === "enter" && current.elapsed >= GUARD_ENTER) {

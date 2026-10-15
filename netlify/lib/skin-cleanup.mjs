@@ -72,10 +72,14 @@ export function separateLimbWeights(document) {
           if (cap.arm) armFit = Math.min(armFit, fit); else bodyFit = Math.min(bodyFit, fit);
         }
         const dropArm = bodyFit <= armFit;
+        // Smooth transition right at the axilla/hip crease when both capsules fit almost equally well;
+        // cleanly sever cross-surface weights everywhere else so hands and flanks separate without tearing.
+        const diff = Math.abs(bodyFit - armFit);
+        const attenuate = diff < 0.14 ? Math.max(0, (0.14 - diff) / 0.14) * 0.35 : 0;
         let total = 0;
         for (let k = 0; k < 4; k++) {
           const cap = capsules[j[k]];
-          if (cap && cap.arm === dropArm) w[k] = 0;
+          if (cap && cap.arm === dropArm) w[k] *= attenuate;
           total += w[k];
         }
         if (!total) continue;

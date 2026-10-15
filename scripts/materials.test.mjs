@@ -3,11 +3,17 @@ import test from "node:test";
 import * as THREE from "three";
 import { athleteMaterial, CLOTH_ROUGHNESS } from "../public/materials.js";
 
-test("models with their own PBR maps keep their material", () => {
+test("models with their own PBR maps keep their material and gain skin subsurface shader hooks", () => {
   const source = new THREE.MeshStandardMaterial({ map: new THREE.Texture(), roughnessMap: new THREE.Texture(), normalMap: new THREE.Texture() });
   assert.equal(athleteMaterial(source, { anisotropy: 8 }), source);
   assert.equal(source.map.anisotropy, 8);
+  assert.equal(source.normalMap.anisotropy, 8);
+  assert.equal(source.roughnessMap.anisotropy, 8);
   assert.equal(source.side, THREE.FrontSide);
+  const shader = { uniforms: {}, fragmentShader: THREE.ShaderLib.standard.fragmentShader };
+  source.onBeforeCompile(shader);
+  assert.match(shader.fragmentShader, /sssTint/);
+  assert.match(shader.fragmentShader, /microWeave/);
 });
 
 test("a bare colour atlas becomes skin-aware cloth: every shader hook it patches exists in three's physical shader", () => {

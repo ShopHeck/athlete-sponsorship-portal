@@ -122,7 +122,7 @@ async function largestTextureSize(document) {
   return largest;
 }
 
-export async function optimizeGlb(inputBytes, { linearColor = false, pbrTextureSize, texcoordBits = 12 } = {}) {
+export async function optimizeGlb(inputBytes, { linearColor = false, pbrTextureSize, texcoordBits = 14 } = {}) {
   if (pbrTextureSize !== undefined && (!Number.isInteger(pbrTextureSize) || pbrTextureSize < 256 || pbrTextureSize > 4096)) {
     throw new Error("PBR texture size must be an integer between 256 and 4096.");
   }
@@ -160,7 +160,7 @@ export async function optimizeGlb(inputBytes, { linearColor = false, pbrTextureS
       encoder: sharp,
       targetFormat: "webp",
       resize: [4096, 4096],
-      quality: 85
+      quality: 88
     }),
     draco({ quantizeTexcoord: texcoordBits })
   );

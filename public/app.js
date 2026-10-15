@@ -135,16 +135,6 @@ function syncTouchScrolling() {
 narrowViewport.addEventListener("change", syncTouchScrolling);
 syncTouchScrolling();
 
-if (narrowViewport.matches && typeof window.createImageBitmap === "function") {
-  const nativeCreateImageBitmap = window.createImageBitmap.bind(window);
-  window.createImageBitmap = function (source, ...args) {
-    if (source instanceof Blob && source.size > 60000 && args.length <= 1) {
-      return nativeCreateImageBitmap(source, { ...(args[0] || {}), resizeWidth: 512, resizeHeight: 512, resizeQuality: "medium" });
-    }
-    return nativeCreateImageBitmap(source, ...args);
-  };
-}
-
 let renderer = null;
 let isSoftwareGpu = false;
 let maxAnisotropy = 4;
@@ -205,7 +195,7 @@ function initThreeScene() {
   key.shadow.camera.near = 1; key.shadow.camera.far = 12;
   key.shadow.camera.left = key.shadow.camera.bottom = -1.6;
   key.shadow.camera.right = key.shadow.camera.top = 1.6;
-  key.shadow.bias = -0.0005; key.shadow.normalBias = 0.03;
+  key.shadow.bias = -0.0002; key.shadow.normalBias = 0.008;
   key.shadow.radius = 4;
   scene.add(key);
   const rim = new THREE.DirectionalLight(accentColor, 1.9);
@@ -262,16 +252,18 @@ const decalMaterialBase = { transparent: true, roughness: 0.7, metalness: 0, dep
 
 function slotTexture(spec) {
   const c = document.createElement("canvas");
-  const baseW = narrowViewport.matches ? 256 : 512;
-  c.width = baseW; c.height = Math.max(80, Math.round(baseW * spec.h / spec.w));
+  const baseW = narrowViewport.matches ? 512 : 768;
+  c.width = baseW; c.height = Math.max(96, Math.round(baseW * spec.h / spec.w));
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
   tex.anisotropy = maxAnisotropy;
   return { canvas: c, tex };
 }
 // Artwork is drawn at higher resolution when high-res artwork is supplied; base resolution covers standard logos cleanly.
 function ensureArtworkResolution(slot, img) {
-  const targetW = narrowViewport.matches ? 512 : 1024;
+  const targetW = narrowViewport.matches ? 1024 : 2048;
   if (slot.canvas.width >= targetW || (img && img.width <= slot.canvas.width)) return;
   const { spot } = slot;
   slot.canvas.width = targetW;
@@ -279,6 +271,8 @@ function ensureArtworkResolution(slot, img) {
   slot.tex.dispose();
   slot.tex = new THREE.CanvasTexture(slot.canvas);
   slot.tex.colorSpace = THREE.SRGBColorSpace;
+  slot.tex.minFilter = THREE.LinearMipmapLinearFilter;
+  slot.tex.magFilter = THREE.LinearFilter;
   slot.tex.anisotropy = maxAnisotropy;
   slot.mesh.material.map = slot.tex;
 }
@@ -534,11 +528,12 @@ function prepareModel(gltf) {
     o.material = athleteMaterial(o.material, { anisotropy: maxAnisotropy });
     for (const map of [o.material.map, o.material.normalMap, o.material.roughnessMap]) {
       if (!map) continue;
-      map.anisotropy = maxAnisotropy;
-      if (narrowViewport.matches && (map.image?.width > 1024 || map.image?.height > 1024)) {
-        map.generateMipmaps = false;
-        map.minFilter = THREE.LinearFilter;
+      if (!isSoftwareGpu && map.minFilter !== THREE.LinearFilter && map.minFilter !== THREE.NearestFilter) {
+        map.generateMipmaps = true;
+        map.minFilter = THREE.LinearMipmapLinearFilter;
+        map.magFilter = THREE.LinearFilter;
       }
+      map.anisotropy = maxAnisotropy;
       map.needsUpdate = true;
     }
     if (o.isSkinnedMesh) o.frustumCulled = false; // limbs leave the rest-pose bounds mid-move
@@ -674,7 +669,7 @@ async function startViewer() {
   initThreeScene();
   await yieldToMain();
   if (!renderer) {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: !narrowViewport.matches, alpha: true, powerPreference: "high-performance" });
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
     await yieldToMain();
     const gl = renderer.getContext();
     const dbg = gl.getExtension("WEBGL_debug_renderer_info");
@@ -688,7 +683,7 @@ async function startViewer() {
     const useShadows = !isSoftwareGpu && !narrowViewport.matches;
     renderer.setPixelRatio(resolution.ratio);
     renderer.toneMapping = THREE.NeutralToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    renderer.toneMappingExposure = 1.02;
     renderer.shadowMap.enabled = useShadows;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.shadowMap.autoUpdate = false;
@@ -696,7 +691,7 @@ async function startViewer() {
     resize();
   }
   await yieldToMain();
-  if (!scene.environment && !isSoftwareGpu && !narrowViewport.matches) {
+  if (!scene.environment && !isSoftwareGpu) {
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = 0.55;
@@ -1443,12 +1438,17 @@ function printSize(spot) {
 
 let lastSide = null;
 let slowDevice = false;
+let slowStreak = 0;
+const gazeWorld = { cam: null, target: null };
 function animate(now) {
   requestAnimationFrame(animate);
   if (!stageVisible || document.hidden || !renderer || !clock) { lastFrameAt = 0; return; }
   const dt = Math.min(clock.getDelta(), 0.05);
   stepTween(dt);
   controls.update(dt);
+  if (motion?.setGazeTarget && camera) {
+    motion.setGazeTarget(camera.position);
+  }
   bodyMoving = Boolean(motion && (!slowDevice || motion.active) && motion.update(dt));
   // A rig hidden mid-move (the visitor switched garments) keeps settling out of sight, so it reappears in its stance.
   for (const rig of [kit, ...outfits.values()]) {
@@ -1475,20 +1475,26 @@ function animate(now) {
   const renderStart = performance.now();
   renderer.render(scene, camera);
   const renderMs = performance.now() - renderStart;
-  if (renderMs > 38) {
-    slowDevice = true;
-    if (!userInteracted) {
-      controls.autoRotate = false;
-      turntablePending = false;
-      if (tween) {
-        const { from, delta, onDone } = tween;
-        applyPose({ az: from.az + delta.az, polar: from.polar + delta.polar, dist: from.dist + delta.dist, targetY: from.targetY + delta.targetY, targetX: from.targetX + delta.targetX, fov: from.fov + delta.fov });
-        tween = null;
-        lastSide = null;
-        onDone?.();
+  if (isSoftwareGpu || (now && now >= resolution.settleUntil && renderMs > 55)) {
+    slowStreak++;
+    if (isSoftwareGpu || slowStreak >= 15) {
+      slowDevice = true;
+      if (!userInteracted) {
+        controls.autoRotate = false;
+        turntablePending = false;
+        if (tween) {
+          const { from, delta, onDone } = tween;
+          applyPose({ az: from.az + delta.az, polar: from.polar + delta.polar, dist: from.dist + delta.dist, targetY: from.targetY + delta.targetY, targetX: from.targetX + delta.targetX, fov: from.fov + delta.fov });
+          tween = null;
+          lastSide = null;
+          onDone?.();
+        }
+        motion?.settle();
       }
-      motion?.settle();
     }
+  } else if (renderMs < 24 && slowStreak > 0) {
+    slowStreak = Math.max(0, slowStreak - 1);
+    if (slowStreak === 0 && !isSoftwareGpu) slowDevice = false;
   }
   positionCallout();
   if (now) sampleFrame(now);
